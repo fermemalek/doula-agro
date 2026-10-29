@@ -1,0 +1,1 @@
+ALTER TYPE public.reco_kind ADD VALUE IF NOT EXISTS 'irrigation';

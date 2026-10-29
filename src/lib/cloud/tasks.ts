@@ -1,0 +1,159 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useRealtimeInvalidate } from "./realtime";
+
+export type TaskKind =
+  | "generale"
+  | "irrigation"
+  | "fertilisation"
+  | "pulverisation"
+  | "maintenance"
+  | "recolte"
+  | "correction_anomalie";
+
+export type TaskPriority = "basse" | "normale" | "haute" | "urgente";
+export type TaskStatus = "a_faire" | "en_cours" | "fait" | "rejete" | "annule";
+
+export interface CloudTask {
+  id: string;
+  farm_id: string;
+  parcel_id: string | null;
+  title: string;
+  description: string | null;
+  kind: TaskKind;
+  priority: TaskPriority;
+  status: TaskStatus;
+  due_date: string | null;
+  assigned_to: string | null;
+  created_by: string;
+  linked_alert_id: string | null;
+  recurrence: unknown;
+  reject_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+const KEY = ["tasks"] as const;
+
+export function useTasks() {
+  useRealtimeInvalidate("rt-tasks", "tasks", [KEY]);
+  return useQuery({
+    queryKey: KEY,
+    queryFn: async (): Promise<CloudTask[]> => {
+      const { data, error } = await supabase
+        .from("tasks")
+        .select("*")
+        .order("due_date", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as CloudTask[];
+    },
+  });
+}
+
+export interface CreateTaskInput {
+  title: string;
+  description?: string | null;
+  kind?: TaskKind;
+  priority?: TaskPriority;
+  due_date?: string | null;
+  parcel_id?: string | null;
+  assigned_to?: string | null;
+  linked_alert_id?: string | null;
+}
+
+export function useTaskActions() {
+  const qc = useQueryClient();
+
+  const create = useMutation({
+    mutationFn: async (input: CreateTaskInput) => {
+      const { data: { session: __s } } = await supabase.auth.getSession(); const u = { user: __s?.user ?? null };
+      if (!u.user) throw new Error("Non authentifié");
+      const { enqueueOp } = await import("@/lib/offline/sync-engine");
+      await enqueueOp({
+        op: "task.create",
+        table: "tasks",
+        payload: {
+          title: input.title,
+          description: input.description ?? null,
+          kind: input.kind ?? "generale",
+          priority: input.priority ?? "normale",
+          due_date: input.due_date ?? null,
+          parcel_id: input.parcel_id ?? null,
+          assigned_to: input.assigned_to ?? null,
+          linked_alert_id: input.linked_alert_id ?? null,
+          created_by: u.user.id,
+        },
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+
+  const queueUpdate = async (id: string, patch: Record<string, unknown>) => {
+    const { enqueueOp } = await import("@/lib/offline/sync-engine");
+    const cur = qc.getQueryData<CloudTask[]>(KEY)?.find((t) => t.id === id);
+    await enqueueOp({
+      op: "task.update",
+      table: "tasks",
+      record_id: id,
+      base_updated_at: cur?.updated_at ?? null,
+      payload: { id, base_updated_at: cur?.updated_at ?? null, patch },
+    });
+  };
+
+  const markDone = useMutation({
+    mutationFn: async (id: string) => queueUpdate(id, { status: "fait" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+
+  const reject = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) =>
+      queueUpdate(id, { status: "a_faire", reject_reason: reason }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      const { enqueueOp } = await import("@/lib/offline/sync-engine");
+      await enqueueOp({ op: "task.delete", table: "tasks", record_id: id, payload: { id } });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+
+  const update = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) =>
+      queueUpdate(id, patch),
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+
+  return { create, markDone, reject, remove, update };
+}
+
+/** Liste des exécutants disponibles pour l'assignation. */
+export function useExecutants() {
+  return useQuery({
+    queryKey: ["executants"],
+    queryFn: async () => {
+      const { data: roles, error } = await supabase
+        .from("user_roles")
+        .select("user_id, role");
+      if (error) throw error;
+      const ids = (roles ?? []).map((r) => r.user_id);
+      if (ids.length === 0) return [] as { id: string; name: string; role: string; phone: string | null }[];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("id, full_name, phone")
+        .in("id", ids);
+      const map = new Map((profiles ?? []).map((p) => [p.id, { name: p.full_name, phone: p.phone }]));
+      return (roles ?? []).map((r) => {
+        const info = map.get(r.user_id);
+        return {
+          id: r.user_id,
+          name: info?.name || "Sans nom",
+          role: r.role as string,
+          phone: info?.phone || null,
+        };
+      });
+    },
+  });
+}

@@ -1,0 +1,2071 @@
+[
+  {
+    "kind": "fertilisation",
+    "title": "09 Mars Nectarine",
+    "comment": "Programme de prescription pour les cultures : Nectarine : Nablara et REDIX® 25",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-03-09",
+        "frequency": 1.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "3.5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Urée / يوريا",
+                "qty": "2",
+                "unit": "kg",
+                "price": "45",
+                "solubility": 105.0,
+                "time": 5,
+                "note": "Très soluble. Refroidit l'eau (endothermique)."
+              },
+              {
+                "name": "Sulfate de Potassium / سلفات البوتاسيوم SOP",
+                "qty": "3.5",
+                "unit": "kg",
+                "price": "220",
+                "solubility": 10.0,
+                "time": 20,
+                "note": "Le plus difficile à dissoudre du marché."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "1.5",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Phosphorique / حامض فوسفوريك",
+                "qty": "2.5",
+                "unit": "litres",
+                "price": "500",
+                "solubility": 5000,
+                "time": 1,
+                "note": "Sécurité : Toujours verser l'acide dans l'eau."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "2",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "1",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "09 Mars Nectarine - Pulvérisation",
+    "comment": "Programme de pulvérisation foliaire pour les cultures : Nectarine : Nablara et REDIX® 25",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "pulverisation",
+        "date": "2026-03-09",
+        "items": [
+          {
+            "name": "Calcium-Bore Foliaire / كالسيوم بورون",
+            "qty": "6",
+            "unit": "litres",
+            "price": "550",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Appliquer aux stades critiques du fruit."
+          },
+          {
+            "name": "Algreen / طحالب بحرية",
+            "qty": "6",
+            "unit": "litres",
+            "price": "2000",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Soutien de la vigueur foliaire et division."
+          },
+          {
+            "name": "Oligo-éléments / عناصر صغري",
+            "qty": "6",
+            "unit": "kg",
+            "price": "3450",
+            "solubility": 60.0,
+            "time": 10,
+            "note": "Mélange complet d'oligo-éléments chélatés."
+          }
+        ],
+        "total": 36000.0
+      }
+    }
+  },
+  {
+    "kind": "phytosanitaire",
+    "title": "09 Mars Nectarine - Phytosanitaire",
+    "comment": "Programme de traitement phytosanitaire pour les cultures : Nectarine : Nablara et REDIX® 25",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "phytosanitaire",
+        "date": "2026-03-09",
+        "products": [
+          {
+            "product": "Bellis",
+            "cible": "Spécifique arbres à noyau (Coryneum du nectarinier, Oïdium)",
+            "dosage": "0.5 kg/ha",
+            "volume": "2",
+            "price": "48000",
+            "dar": "25% + 12% / 7j"
+          }
+        ],
+        "total": 48000.0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "09 Mars Pommier",
+    "comment": "Programme de prescription pour les cultures : Pommier : Pommier 1 et 2",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-03-09",
+        "frequency": 1.0,
+        "entries": [
+          {
+            "bac": "C",
+            "items": [
+              {
+                "name": "GZB Stimulateur de racines / منشط جذور",
+                "qty": "2.5",
+                "unit": "litres",
+                "price": "2200",
+                "solubility": 5000,
+                "time": 0,
+                "note": "Stimulant organique complexe à injecter à part."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Phosphorique / حامض فوسفوريك",
+                "qty": "2.5",
+                "unit": "litres",
+                "price": "500",
+                "solubility": 5000,
+                "time": 1,
+                "note": "Sécurité : Toujours verser l'acide dans l'eau."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "09 Mars Pommier - Pulvérisation",
+    "comment": "Programme de pulvérisation foliaire pour les cultures : Pommier : Pommier 1 et 2",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "pulverisation",
+        "date": "2026-03-09",
+        "items": [
+          {
+            "name": "Soufre Micronisé / كبريت ميكروني",
+            "qty": "6",
+            "unit": "kg",
+            "price": "400",
+            "solubility": 0,
+            "time": 0,
+            "note": "Traitement préventif oïdium/tavelure."
+          }
+        ],
+        "total": 2400.0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "17 Mars Olivier",
+    "comment": "Programme de prescription pour les cultures : Oliviers Parcelle (1 a 4)",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "oliviers"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-03-17",
+        "frequency": 1.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "2.5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Urée / يوريا",
+                "qty": "2",
+                "unit": "kg",
+                "price": "45",
+                "solubility": 105.0,
+                "time": 5,
+                "note": "Très soluble. Refroidit l'eau (endothermique)."
+              },
+              {
+                "name": "Nitrate de Potassium / نترات البوتاسيوم",
+                "qty": "3.5",
+                "unit": "kg",
+                "price": "26",
+                "solubility": 30.0,
+                "time": 15,
+                "note": "Sensible à l'eau froide du puits."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "2",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              }
+            ]
+          },
+          {
+            "bac": "C",
+            "items": [
+              {
+                "name": "Fer 6% / حديد 6%",
+                "qty": "0.25",
+                "unit": "kg",
+                "price": "2700",
+                "solubility": 90.0,
+                "time": 8,
+                "note": "Indispensable contre la chlorose en sol calcaire."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Phosphorique / حامض فوسفوريك",
+                "qty": "2.5",
+                "unit": "litres",
+                "price": "500",
+                "solubility": 5000,
+                "time": 1,
+                "note": "Sécurité : Toujours verser l'acide dans l'eau."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "1.5",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "1.5",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "01 Avril Nectarine",
+    "comment": "Programme de prescription pour les cultures : Nectarine : Nablara et REDIX® 25",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-04-01",
+        "frequency": 2.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Urée / يوريا",
+                "qty": "3",
+                "unit": "kg",
+                "price": "45",
+                "solubility": 105.0,
+                "time": 5,
+                "note": "Très soluble. Refroidit l'eau (endothermique)."
+              },
+              {
+                "name": "Nitrate de Potassium / نترات البوتاسيوم",
+                "qty": "2.5",
+                "unit": "kg",
+                "price": "26",
+                "solubility": 30.0,
+                "time": 15,
+                "note": "Sensible à l'eau froide du puits."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "2.5",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Phosphorique / حامض فوسفوريك",
+                "qty": "2",
+                "unit": "litres",
+                "price": "500",
+                "solubility": 5000,
+                "time": 1,
+                "note": "Sécurité : Toujours verser l'acide dans l'eau."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "2",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "01 Avril Nectarine - Pulvérisation",
+    "comment": "Programme de pulvérisation foliaire pour les cultures : Nectarine : Nablara et REDIX® 25",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "pulverisation",
+        "date": "2026-04-01",
+        "items": [
+          {
+            "name": "Algreen / طحالب بحرية",
+            "qty": "6",
+            "unit": "litres",
+            "price": "2000",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Soutien de la vigueur foliaire et division."
+          },
+          {
+            "name": "Oligo-éléments / عناصر صغري",
+            "qty": "6",
+            "unit": "kg",
+            "price": "3450",
+            "solubility": 60.0,
+            "time": 10,
+            "note": "Mélange complet d'oligo-éléments chélatés."
+          }
+        ],
+        "total": 32700.0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "01 Avril Pommier",
+    "comment": "Programme de prescription pour les cultures : Pommier : Pommier 1 et 2",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-04-01",
+        "frequency": 2.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Urée / يوريا",
+                "qty": "2.5",
+                "unit": "kg",
+                "price": "45",
+                "solubility": 105.0,
+                "time": 5,
+                "note": "Très soluble. Refroidit l'eau (endothermique)."
+              },
+              {
+                "name": "Sulfate de Potassium / سلفات البوتاسيوم SOP",
+                "qty": "2.5",
+                "unit": "kg",
+                "price": "220",
+                "solubility": 10.0,
+                "time": 20,
+                "note": "Le plus difficile à dissoudre du marché."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "1.5",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Phosphorique / حامض فوسفوريك",
+                "qty": "2.5",
+                "unit": "litres",
+                "price": "500",
+                "solubility": 5000,
+                "time": 1,
+                "note": "Sécurité : Toujours verser l'acide dans l'eau."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "2",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "01 Avril Pommier - Pulvérisation",
+    "comment": "Programme de pulvérisation foliaire pour les cultures : Pommier : Pommier 1 et 2",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "pulverisation",
+        "date": "2026-04-01",
+        "items": [
+          {
+            "name": "Cytokinine / سيتوكينين",
+            "qty": "2",
+            "unit": "litres",
+            "price": "2500",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Division cellulaire"
+          },
+          {
+            "name": "Calcium-Bore Foliaire / كالسيوم بورون",
+            "qty": "3",
+            "unit": "litres",
+            "price": "550",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Appliquer aux stades critiques du fruit."
+          }
+        ],
+        "total": 6650.0
+      }
+    }
+  },
+  {
+    "kind": "phytosanitaire",
+    "title": "01 Avril Pommier - Phytosanitaire",
+    "comment": "Programme de traitement phytosanitaire pour les cultures : Pommier : Pommier 1 et 2",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "phytosanitaire",
+        "date": "2026-04-01",
+        "products": [
+          {
+            "product": "Bellis",
+            "cible": "Spécifique arbres à noyau (Coryneum du nectarinier, Oïdium)",
+            "dosage": "0.5 kg/ha",
+            "volume": "1",
+            "price": "24000",
+            "dar": "25% + 12% / 7j"
+          }
+        ],
+        "total": 24000.0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "20 Avril Nectarine",
+    "comment": "Programme de prescription pour les cultures : Nectarine : Nabara",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-04-20",
+        "frequency": 2.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Urée / يوريا",
+                "qty": "5",
+                "unit": "kg",
+                "price": "45",
+                "solubility": 105.0,
+                "time": 5,
+                "note": "Très soluble. Refroidit l'eau (endothermique)."
+              },
+              {
+                "name": "Nitrate de Potassium / نترات البوتاسيوم",
+                "qty": "6",
+                "unit": "kg",
+                "price": "26",
+                "solubility": 30.0,
+                "time": 15,
+                "note": "Sensible à l'eau froide du puits."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "3",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              }
+            ]
+          },
+          {
+            "bac": "C",
+            "items": [
+              {
+                "name": "Acide Humique / أسمدة عضوية",
+                "qty": "5",
+                "unit": "litres",
+                "price": "420",
+                "solubility": 50.0,
+                "time": 15,
+                "note": "Améliore la structure du sol et l'assimilation."
+              },
+              {
+                "name": "Fer 6% / حديد 6%",
+                "qty": "0.5",
+                "unit": "kg",
+                "price": "2700",
+                "solubility": 90.0,
+                "time": 8,
+                "note": "Indispensable contre la chlorose en sol calcaire."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Phosphorique / حامض فوسفوريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "500",
+                "solubility": 5000,
+                "time": 1,
+                "note": "Sécurité : Toujours verser l'acide dans l'eau."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "1.5",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              },
+              {
+                "name": "Acide Ascorbique / اسكوربيك اسيد",
+                "qty": "1",
+                "unit": "kg",
+                "price": "3000",
+                "solubility": 330.0,
+                "time": 5,
+                "note": "Soutient la plante contre le stress thermique saharien."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "2",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "20 Avril Nectarine - Pulvérisation",
+    "comment": "Programme de pulvérisation foliaire pour les cultures : Nectarine : Nabara",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "pulverisation",
+        "date": "2026-04-20",
+        "items": [
+          {
+            "name": "Calcium-Bore Foliaire / كالسيوم بورون",
+            "qty": "10",
+            "unit": "litres",
+            "price": "550",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Appliquer aux stades critiques du fruit."
+          }
+        ],
+        "total": 5500.0
+      }
+    }
+  },
+  {
+    "kind": "phytosanitaire",
+    "title": "20 Avril Nectarine - Phytosanitaire",
+    "comment": "Programme de traitement phytosanitaire pour les cultures : Nectarine : Nabara",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "phytosanitaire",
+        "date": "2026-04-20",
+        "products": [
+          {
+            "product": "Amistar",
+            "cible": "Fongicide préventif large spectre",
+            "dosage": "1 litres/ha",
+            "volume": "4",
+            "price": "18000",
+            "dar": "250 g/L / 7j"
+          },
+          {
+            "product": "Emamectine Benzoate",
+            "cible": "",
+            "dosage": "0.5 kg/ha",
+            "volume": "2",
+            "price": "0.0",
+            "dar": ""
+          }
+        ],
+        "total": 18000.0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "06 Mai Nectarine",
+    "comment": "Programme de prescription pour les cultures : Nectarine : Nablara et REDIX® 25",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-05-06",
+        "frequency": 3.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Urée / يوريا",
+                "qty": "8",
+                "unit": "kg",
+                "price": "45",
+                "solubility": 105.0,
+                "time": 5,
+                "note": "Très soluble. Refroidit l'eau (endothermique)."
+              },
+              {
+                "name": "Nitrate de Potassium / نترات البوتاسيوم",
+                "qty": "8",
+                "unit": "kg",
+                "price": "26",
+                "solubility": 30.0,
+                "time": 15,
+                "note": "Sensible à l'eau froide du puits."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "3.5",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              },
+              {
+                "name": "Urée / يوريا",
+                "qty": "5",
+                "unit": "kg",
+                "price": "45",
+                "solubility": 105.0,
+                "time": 5,
+                "note": "Très soluble. Refroidit l'eau (endothermique)."
+              }
+            ]
+          },
+          {
+            "bac": "C",
+            "items": [
+              {
+                "name": "Acide Humique / أسمدة عضوية",
+                "qty": "5",
+                "unit": "litres",
+                "price": "420",
+                "solubility": 50.0,
+                "time": 15,
+                "note": "Améliore la structure du sol et l'assimilation."
+              },
+              {
+                "name": "Fer 6% / حديد 6%",
+                "qty": "0.5",
+                "unit": "kg",
+                "price": "2700",
+                "solubility": 90.0,
+                "time": 8,
+                "note": "Indispensable contre la chlorose en sol calcaire."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "2",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              },
+              {
+                "name": "Acide Ascorbique / اسكوربيك اسيد",
+                "qty": "1",
+                "unit": "kg",
+                "price": "3000",
+                "solubility": 330.0,
+                "time": 5,
+                "note": "Soutient la plante contre le stress thermique saharien."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "2",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "06 Mai Nectarine - Pulvérisation",
+    "comment": "Programme de pulvérisation foliaire pour les cultures : Nectarine : Nablara et REDIX® 25",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "pulverisation",
+        "date": "2026-05-06",
+        "items": [
+          {
+            "name": "Algreen / طحالب بحرية",
+            "qty": "6",
+            "unit": "litres",
+            "price": "2000",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Soutien de la vigueur foliaire et division."
+          },
+          {
+            "name": "Oligo-éléments / عناصر صغري",
+            "qty": "6",
+            "unit": "kg",
+            "price": "3450",
+            "solubility": 60.0,
+            "time": 10,
+            "note": "Mélange complet d'oligo-éléments chélatés."
+          }
+        ],
+        "total": 32700.0
+      }
+    }
+  },
+  {
+    "kind": "phytosanitaire",
+    "title": "06 Mai Nectarine - Phytosanitaire",
+    "comment": "Programme de traitement phytosanitaire pour les cultures : Nectarine : Nablara et REDIX® 25",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "phytosanitaire",
+        "date": "2026-05-06",
+        "products": [
+          {
+            "product": "Deltaméthrine + Acetamipride",
+            "cible": "",
+            "dosage": "0.5 kg/ha",
+            "volume": "2",
+            "price": "0.0",
+            "dar": ""
+          }
+        ],
+        "total": 0.0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "06 Mai Pommier",
+    "comment": "Programme de prescription pour les cultures : Pommier : Pommier 1 et 2",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-05-06",
+        "frequency": 3.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Nitrate de Potassium / نترات البوتاسيوم",
+                "qty": "6",
+                "unit": "kg",
+                "price": "26",
+                "solubility": 30.0,
+                "time": 15,
+                "note": "Sensible à l'eau froide du puits."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "2.5",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              }
+            ]
+          },
+          {
+            "bac": "C",
+            "items": [
+              {
+                "name": "Fer 6% / حديد 6%",
+                "qty": "0.75",
+                "unit": "kg",
+                "price": "2700",
+                "solubility": 90.0,
+                "time": 8,
+                "note": "Indispensable contre la chlorose en sol calcaire."
+              },
+              {
+                "name": "Acide Humique / أسمدة عضوية",
+                "qty": "5",
+                "unit": "litres",
+                "price": "420",
+                "solubility": 50.0,
+                "time": 15,
+                "note": "Améliore la structure du sol et l'assimilation."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "2",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "2",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "06 Mai Pommier - Pulvérisation",
+    "comment": "Programme de pulvérisation foliaire pour les cultures : Pommier : Pommier 1 et 2",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "pulverisation",
+        "date": "2026-05-06",
+        "items": [
+          {
+            "name": "Calcium-Bore Foliaire / كالسيوم بورون",
+            "qty": "5",
+            "unit": "litres",
+            "price": "550",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Appliquer aux stades critiques du fruit."
+          },
+          {
+            "name": "Algreen / طحالب بحرية",
+            "qty": "4",
+            "unit": "litres",
+            "price": "2000",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Soutien de la vigueur foliaire et division."
+          },
+          {
+            "name": "Oligo-éléments / عناصر صغري",
+            "qty": "3",
+            "unit": "kg",
+            "price": "3450",
+            "solubility": 60.0,
+            "time": 10,
+            "note": "Mélange complet d'oligo-éléments chélatés."
+          }
+        ],
+        "total": 21100.0
+      }
+    }
+  },
+  {
+    "kind": "phytosanitaire",
+    "title": "06 Mai Pommier - Phytosanitaire",
+    "comment": "Programme de traitement phytosanitaire pour les cultures : Pommier : Pommier 1 et 2",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "phytosanitaire",
+        "date": "2026-05-06",
+        "products": [
+          {
+            "product": "Abamectine + Spirotetramat",
+            "cible": "",
+            "dosage": "0.5 kg/ha",
+            "volume": "1",
+            "price": "0.0",
+            "dar": ""
+          }
+        ],
+        "total": 0.0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "06 Mai Olivier",
+    "comment": "Programme de prescription pour les cultures : Oliviers Parcelle (1 a 4)",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "oliviers"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-05-06",
+        "frequency": 3.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "3.5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Nitrate de Potassium / نترات البوتاسيوم",
+                "qty": "7",
+                "unit": "kg",
+                "price": "26",
+                "solubility": 30.0,
+                "time": 15,
+                "note": "Sensible à l'eau froide du puits."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "2.5",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Phosphorique / حامض فوسفوريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "500",
+                "solubility": 5000,
+                "time": 1,
+                "note": "Sécurité : Toujours verser l'acide dans l'eau."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "2",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              },
+              {
+                "name": "Acide Ascorbique / اسكوربيك اسيد",
+                "qty": "1",
+                "unit": "kg",
+                "price": "3000",
+                "solubility": 330.0,
+                "time": 5,
+                "note": "Soutient la plante contre le stress thermique saharien."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "28 Mai Nectarine 2",
+    "comment": "Programme de prescription pour les cultures : Nectarine : REDIX® 25",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-05-28",
+        "frequency": 4.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Urée / يوريا",
+                "qty": "10",
+                "unit": "kg",
+                "price": "45",
+                "solubility": 105.0,
+                "time": 5,
+                "note": "Très soluble. Refroidit l'eau (endothermique)."
+              },
+              {
+                "name": "Nitrate de Potassium / نترات البوتاسيوم",
+                "qty": "5",
+                "unit": "kg",
+                "price": "26",
+                "solubility": 30.0,
+                "time": 15,
+                "note": "Sensible à l'eau froide du puits."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "3.5",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "2.5",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              }
+            ]
+          },
+          {
+            "bac": "C",
+            "items": [
+              {
+                "name": "Acide Humique / أسمدة عضوية",
+                "qty": "5",
+                "unit": "litres",
+                "price": "420",
+                "solubility": 50.0,
+                "time": 15,
+                "note": "Améliore la structure du sol et l'assimilation."
+              },
+              {
+                "name": "Fer 6% / حديد 6%",
+                "qty": "0.5",
+                "unit": "kg",
+                "price": "2700",
+                "solubility": 90.0,
+                "time": 8,
+                "note": "Indispensable contre la chlorose en sol calcaire."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "2",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "1",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "28 Mai Nectarine 2 - Pulvérisation",
+    "comment": "Programme de pulvérisation foliaire pour les cultures : Nectarine : REDIX® 25",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "pulverisation",
+        "date": "2026-05-28",
+        "items": [
+          {
+            "name": "Acides Aminés 80% / أحماض أمينية",
+            "qty": "10",
+            "unit": "litres",
+            "price": "1500",
+            "solubility": 0,
+            "time": 0,
+            "note": "Anti-stress foliaire post-Sirocco."
+          },
+          {
+            "name": "Oligo-éléments / عناصر صغري",
+            "qty": "6",
+            "unit": "kg",
+            "price": "3450",
+            "solubility": 60.0,
+            "time": 10,
+            "note": "Mélange complet d'oligo-éléments chélatés."
+          },
+          {
+            "name": "Algreen / طحالب بحرية",
+            "qty": "10",
+            "unit": "litres",
+            "price": "2000",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Soutien de la vigueur foliaire et division."
+          }
+        ],
+        "total": 55700.0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "28 Mai Nectarine 1",
+    "comment": "Programme de prescription pour les cultures : Nectarine : Nablara",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-05-28",
+        "frequency": 5.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Urée / يوريا",
+                "qty": "6",
+                "unit": "kg",
+                "price": "45",
+                "solubility": 105.0,
+                "time": 5,
+                "note": "Très soluble. Refroidit l'eau (endothermique)."
+              },
+              {
+                "name": "Nitrate de Potassium / نترات البوتاسيوم",
+                "qty": "4",
+                "unit": "kg",
+                "price": "26",
+                "solubility": 30.0,
+                "time": 15,
+                "note": "Sensible à l'eau froide du puits."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "2.5",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              }
+            ]
+          },
+          {
+            "bac": "C",
+            "items": [
+              {
+                "name": "GZB Stimulateur de racines / منشط جذور",
+                "qty": "10",
+                "unit": "litres",
+                "price": "2200",
+                "solubility": 5000,
+                "time": 0,
+                "note": "Stimulant organique complexe à injecter à part."
+              },
+              {
+                "name": "Acide Humique / أسمدة عضوية",
+                "qty": "5",
+                "unit": "litres",
+                "price": "420",
+                "solubility": 50.0,
+                "time": 15,
+                "note": "Améliore la structure du sol et l'assimilation."
+              },
+              {
+                "name": "Fer 6% / حديد 6%",
+                "qty": "0.5",
+                "unit": "kg",
+                "price": "2700",
+                "solubility": 90.0,
+                "time": 8,
+                "note": "Indispensable contre la chlorose en sol calcaire."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "1",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "1",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "28 Mai Nectarine 1 - Pulvérisation",
+    "comment": "Programme de pulvérisation foliaire pour les cultures : Nectarine : Nablara",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "nablara",
+        "redix25"
+      ],
+      "program": {
+        "kind": "pulverisation",
+        "date": "2026-05-28",
+        "items": [
+          {
+            "name": "Acides Aminés 80% / أحماض أمينية",
+            "qty": "10",
+            "unit": "litres",
+            "price": "1500",
+            "solubility": 0,
+            "time": 0,
+            "note": "Anti-stress foliaire post-Sirocco."
+          },
+          {
+            "name": "Oligo-éléments / عناصر صغري",
+            "qty": "6",
+            "unit": "kg",
+            "price": "3450",
+            "solubility": 60.0,
+            "time": 10,
+            "note": "Mélange complet d'oligo-éléments chélatés."
+          },
+          {
+            "name": "Algreen / طحالب بحرية",
+            "qty": "10",
+            "unit": "litres",
+            "price": "2000",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Soutien de la vigueur foliaire et division."
+          },
+          {
+            "name": "Gibbérelline 10% / جبريليك",
+            "qty": "14",
+            "unit": "litres",
+            "price": "2000",
+            "solubility": 0,
+            "time": 0,
+            "note": "Allongement et calibre cellulaire (5 pastilles/1000L)."
+          }
+        ],
+        "total": 83700.0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "28 Mai Pommier",
+    "comment": "Programme de prescription pour les cultures : Pommier : Pommier 1",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-05-28",
+        "frequency": 3.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Nitrate de Potassium / نترات البوتاسيوم",
+                "qty": "8",
+                "unit": "kg",
+                "price": "26",
+                "solubility": 30.0,
+                "time": 15,
+                "note": "Sensible à l'eau froide du puits."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "2.5",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              }
+            ]
+          },
+          {
+            "bac": "C",
+            "items": [
+              {
+                "name": "Fer 6% / حديد 6%",
+                "qty": "0.75",
+                "unit": "kg",
+                "price": "2700",
+                "solubility": 90.0,
+                "time": 8,
+                "note": "Indispensable contre la chlorose en sol calcaire."
+              },
+              {
+                "name": "Acide Humique / أسمدة عضوية",
+                "qty": "5",
+                "unit": "litres",
+                "price": "420",
+                "solubility": 50.0,
+                "time": 15,
+                "note": "Améliore la structure du sol et l'assimilation."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "2",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "2",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "28 Mai Pommier - Pulvérisation",
+    "comment": "Programme de pulvérisation foliaire pour les cultures : Pommier : Pommier 1",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "pulverisation",
+        "date": "2026-05-28",
+        "items": [
+          {
+            "name": "Calcium-Bore Foliaire / كالسيوم بورون",
+            "qty": "5",
+            "unit": "litres",
+            "price": "550",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Appliquer aux stades critiques du fruit."
+          },
+          {
+            "name": "Algreen / طحالب بحرية",
+            "qty": "4",
+            "unit": "litres",
+            "price": "2000",
+            "solubility": 5000,
+            "time": 0,
+            "note": "Soutien de la vigueur foliaire et division."
+          },
+          {
+            "name": "Oligo-éléments / عناصر صغري",
+            "qty": "3",
+            "unit": "kg",
+            "price": "3450",
+            "solubility": 60.0,
+            "time": 10,
+            "note": "Mélange complet d'oligo-éléments chélatés."
+          }
+        ],
+        "total": 21100.0
+      }
+    }
+  },
+  {
+    "kind": "phytosanitaire",
+    "title": "28 Mai Pommier - Phytosanitaire",
+    "comment": "Programme de traitement phytosanitaire pour les cultures : Pommier : Pommier 1",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "pulverisation",
+      "crop_group": [
+        "pommiers"
+      ],
+      "program": {
+        "kind": "phytosanitaire",
+        "date": "2026-05-28",
+        "products": [
+          {
+            "product": "Calypso",
+            "cible": "Insecticide systémique (Pucerons, Carpocapse du pommier)",
+            "dosage": "0.5 litres/ha",
+            "volume": "1",
+            "price": "20000",
+            "dar": "480 g/L / 14j"
+          },
+          {
+            "product": "Fluxapyroxad",
+            "cible": "",
+            "dosage": "0.5 kg/ha",
+            "volume": "1",
+            "price": "0.0",
+            "dar": ""
+          }
+        ],
+        "total": 20000.0
+      }
+    }
+  },
+  {
+    "kind": "fertilisation",
+    "title": "28 Mai Olivier",
+    "comment": "Programme de prescription pour les cultures : Oliviers Parcelle (1 a 4)",
+    "parcel_ids": [],
+    "photo_urls": [],
+    "status": "envoyee",
+    "payload": {
+      "method": "irrigation",
+      "crop_group": [
+        "oliviers"
+      ],
+      "program": {
+        "kind": "fertilisation",
+        "date": "2026-05-28",
+        "frequency": 2.0,
+        "entries": [
+          {
+            "bac": "A",
+            "items": [
+              {
+                "name": "Nitrate de Calcium / نترات كالسـيوم",
+                "qty": "3.5",
+                "unit": "kg",
+                "price": "160",
+                "solubility": 120.0,
+                "time": 6,
+                "note": "CRITIQUE : Isoler totalement des Sulfates/Phosphates."
+              }
+            ]
+          },
+          {
+            "bac": "B",
+            "items": [
+              {
+                "name": "Nitrate de Potassium / نترات البوتاسيوم",
+                "qty": "7",
+                "unit": "kg",
+                "price": "26",
+                "solubility": 30.0,
+                "time": 15,
+                "note": "Sensible à l'eau froide du puits."
+              },
+              {
+                "name": "Nitrate de Magnésium / نترات ماغنسيوم",
+                "qty": "3",
+                "unit": "kg",
+                "price": "260",
+                "solubility": 70.0,
+                "time": 8,
+                "note": "Excellente source de magnésium soluble."
+              },
+              {
+                "name": "Urée / يوريا",
+                "qty": "5",
+                "unit": "kg",
+                "price": "45",
+                "solubility": 105.0,
+                "time": 5,
+                "note": "Très soluble. Refroidit l'eau (endothermique)."
+              }
+            ]
+          },
+          {
+            "bac": "D",
+            "items": [
+              {
+                "name": "Acide Phosphorique / حامض فوسفوريك",
+                "qty": "2",
+                "unit": "litres",
+                "price": "500",
+                "solubility": 5000,
+                "time": 1,
+                "note": "Sécurité : Toujours verser l'acide dans l'eau."
+              },
+              {
+                "name": "Acide Nitrique / حامض نيتريك",
+                "qty": "1",
+                "unit": "litres",
+                "price": "378.15",
+                "solubility": 5000,
+                "time": 1,
+                "note": "CORROSIF : Gants + lunettes obligatoires."
+              },
+              {
+                "name": "Acide Citrique / حامض سيتريك",
+                "qty": "2",
+                "unit": "kg",
+                "price": "410.55",
+                "solubility": 590.0,
+                "time": 4,
+                "note": "Idéal pour chélater et nettoyer les goutteurs."
+              },
+              {
+                "name": "Acide Ascorbique / اسكوربيك اسيد",
+                "qty": "1",
+                "unit": "kg",
+                "price": "3000",
+                "solubility": 330.0,
+                "time": 5,
+                "note": "Soutient la plante contre le stress thermique saharien."
+              }
+            ]
+          }
+        ],
+        "total": 0
+      }
+    }
+  }
+]
