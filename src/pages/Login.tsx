@@ -68,17 +68,42 @@ function LoginPage() {
         }
         toast.success("Compte créé. Bienvenue !");
       } else {
-        // Liste des candidats d'identifiants à essayer (compatibilité anciens comptes + mots de passe modifiés par l'admin)
+        // Correspondance entre les e-mails modifiés dans le profil et les identifiants initiaux de création
+        const knownAliases: Record<string, string[]> = {
+          "fermemalek@gmail.com": ["abderrahmane", "abdou", "admin", "fermemalek"],
+          "abderrahmane": ["fermemalek@gmail.com", "abdou"],
+          "doujadz31@gmail.com": ["khadij", "khadija", "doujadz31", "doujadzj1@gmail.com"],
+          "doujadzj1@gmail.com": ["khadij", "khadija", "doujadz31@gmail.com"],
+          "khadij": ["doujadz31@gmail.com", "khadija"],
+          "malekfilois@gmail.com": ["abdelmalek", "malek", "malekfilois"],
+          "abdelmalek": ["malekfilois@gmail.com", "malek"],
+        };
+
         const localPart = cleanInput.includes("@") ? cleanInput.split("@")[0] : cleanInput;
-        const candidates = Array.from(
-          new Set([
-            resolvedEmail,
-            buildAuthAlias(cleanInput, password),
-            `${localPart}@doulaagro.local`,
-            `${localPart}@gmail.com`,
-            buildAuthAlias(localPart, password),
-          ]),
-        );
+        const extraNames = [
+          ...(knownAliases[cleanInput] ?? []),
+          ...(knownAliases[localPart] ?? []),
+        ];
+
+        const rawCandidates = [
+          resolvedEmail,
+          buildAuthAlias(cleanInput, password),
+          `${localPart}@doulaagro.local`,
+          `${localPart}@gmail.com`,
+          buildAuthAlias(localPart, password),
+        ];
+
+        for (const extra of extraNames) {
+          if (extra.includes("@")) {
+            rawCandidates.push(extra);
+            rawCandidates.push(buildAuthAlias(extra, password));
+          } else {
+            rawCandidates.push(`${extra}@doulaagro.local`);
+            rawCandidates.push(buildAuthAlias(extra, password));
+          }
+        }
+
+        const candidates = Array.from(new Set(rawCandidates));
 
         let lastError: any = null;
         let connected = false;
