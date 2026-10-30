@@ -1,11 +1,19 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, ListTodo, Check, X, Home, Leaf, Apple, Settings, Bell, Volume2, VolumeX, Mail, MessageSquare } from "lucide-react";
+import { Plus, Trash2, ListTodo, Check, X, Home, Leaf, Apple, Settings, Bell, Volume2, VolumeX, Mail, MessageSquare, Pencil, Eye } from "lucide-react";
 import {
   useTasks,
   useTaskActions,
@@ -13,10 +21,12 @@ import {
   useMyAssignedTasks,
   type TaskPriority,
   type TaskKind,
+  type TaskStatus,
   type CloudTask,
 } from "@/lib/cloud/tasks";
 import { useParcels } from "@/lib/parcel-store";
 import { useRole } from "@/lib/role";
+import { useLocation } from "@/lib/router-compat";
 import {
   ListPageShell,
   ProgramFiltersBar,
@@ -43,12 +53,53 @@ const KIND_LABEL: Record<TaskKind, string> = {
 };
 
 function TachePage() {
-  const { data: tasks = [] } = useTasks();
+  const { data: rawTasks = [] } = useTasks();
   const { data: executants = [] } = useExecutants();
   const { myTasks, matchedIds, matchedMemberName } = useMyAssignedTasks();
   const parcels = useParcels();
-  const { create, markDone, reject, remove } = useTaskActions();
+  const { create, markDone, reject, remove, update } = useTaskActions();
   const { isAdmin } = useRole();
+  const location = useLocation();
+
+  // Filtrer les tâches orphelines (assignées à un compte ingénieur/supprimé) et éviter les doublons
+  const validExecIds = useMemo(
+    () => new Set(executants.map((e) => e.id)),
+    [executants],
+  );
+
+  const tasks = useMemo(() => {
+    const seen = new Set<string>();
+    const list: CloudTask[] = [];
+    for (const t of rawTasks) {
+      if (executants.length > 0 && t.assigned_to && !validExecIds.has(t.assigned_to)) {
+        continue;
+      }
+      const key = `${t.title.trim().toLowerCase()}|${(t.due_date || "").slice(0, 16)}|${t.parcel_id || ""}|${t.assigned_to || ""}|${t.status}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push(t);
+    }
+    return list;
+  }, [rawTasks, executants.length, validExecIds]);
+
+  // Nettoyer automatiquement en arrière-plan les doublons orphelins (👤 —)
+  useEffect(() => {
+    if (!isAdmin || executants.length === 0) return;
+    for (const t of rawTasks) {
+      if (t.assigned_to && !validExecIds.has(t.assigned_to)) {
+        const hasValidSibling = rawTasks.some(
+          (other) =>
+            other.id !== t.id &&
+            other.title.trim().toLowerCase() === t.title.trim().toLowerCase() &&
+            Boolean(other.assigned_to && validExecIds.has(other.assigned_to)),
+        );
+        if (hasValidSibling) {
+          remove.mutate(t.id);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, rawTasks.length, executants.length]);
 
   const [filters, setFilters] = useFilters();
   const [selectedSpecies, setSelectedSpecies] = useState<'all' | 'olivier' | 'pommier' | 'nectarine'>('all');
@@ -61,6 +112,84 @@ function TachePage() {
   const [sendingTest, setSendingTest] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [audioAlertsActive, setAudioAlertsActive] = useState(true);
+
+  // États pour la fenêtre de visualisation / modification d'une tâche
+  const [selectedTask, setSelectedTask] = useState<CloudTask | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editDueTime, setEditDueTime] = useState("12:00");
+  const [editPriority, setEditPriority] = useState<TaskPriority>("normale");
+  const [editKind, setEditKind] = useState<TaskKind>("generale");
+  const [editStatus, setEditStatus] = useState<TaskStatus>("a_faire");
+  const [editParcelId, setEditParcelId] = useState("");
+  const [editAssignedTo, setEditAssignedTo] = useState("");
+
+  function openTaskModal(t: CloudTask) {
+    setSelectedTask(t);
+    setEditTitle(t.title || "");
+    setEditDescription(t.description || "");
+    if (t.due_date) {
+      const d = new Date(t.due_date);
+      if (!isNaN(d.getTime())) {
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        const hh = String(d.getHours()).padStart(2, "0");
+        const min = String(d.getMinutes()).padStart(2, "0");
+        setEditDueDate(`${yyyy}-${mm}-${dd}`);
+        setEditDueTime(`${hh}:${min}`);
+      } else {
+        setEditDueDate(t.due_date.slice(0, 10));
+        setEditDueTime("12:00");
+      }
+    } else {
+      setEditDueDate("");
+      setEditDueTime("12:00");
+    }
+    setEditPriority(t.priority);
+    setEditKind(t.kind);
+    setEditStatus(t.status);
+    setEditParcelId(t.parcel_id || "");
+    setEditAssignedTo(t.assigned_to || "");
+  }
+
+  // Ouvrir automatiquement la tâche si l'URL contient ?taskId=...
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || "");
+    const tid = params.get("taskId");
+    if (!tid || tasks.length === 0) return;
+    const found = tasks.find((x) => x.id === tid);
+    if (found) {
+      openTaskModal(found);
+    }
+  }, [location.search, tasks]);
+
+  async function handleSaveTaskEdit() {
+    if (!selectedTask || !editTitle.trim()) return;
+    try {
+      const newDueIso = editDueDate
+        ? new Date(`${editDueDate}T${editDueTime || "12:00"}:00`).toISOString()
+        : null;
+      await update.mutateAsync({
+        id: selectedTask.id,
+        patch: {
+          title: editTitle.trim(),
+          description: editDescription.trim() || null,
+          due_date: newDueIso,
+          priority: editPriority,
+          kind: editKind,
+          status: editStatus,
+          parcel_id: editParcelId || null,
+          assigned_to: editAssignedTo || null,
+        },
+      });
+      toast.success("Tâche mise à jour avec succès !");
+      setSelectedTask(null);
+    } catch (e: any) {
+      toast.error(e?.message || "Erreur lors de la modification de la tâche");
+    }
+  }
 
   // Web Audio synthesizer beep
   const playNotificationSound = (type: 'info' | 'alarm') => {
@@ -117,11 +246,11 @@ function TachePage() {
     const diffTime = due - now;
     const diffDays = diffTime / (1000 * 60 * 60 * 24);
     if (diffTime < 0) {
-      const days = Math.abs(Math.floor(diffDays));
+      const days = Math.floor(Math.abs(diffDays));
       return {
         urgent: true,
         overdue: true,
-        message: days === 0 ? "⚠️ Retard: Échéance aujourd'hui !" : `⚠️ Retard: Dépassé de ${days} jour(s)`,
+        message: days === 0 ? "⚠️ Échéance aujourd'hui !" : `⚠️ Retard: Dépassé de ${days} jour(s)`,
       };
     } else if (diffDays <= 2) {
       const hours = Math.round(diffTime / (1000 * 60 * 60));
@@ -822,7 +951,9 @@ function TachePage() {
 
             return (
               <li key={t.id} className="relative group">
-                <Card className={`p-3.5 flex items-start gap-3 transition-all duration-300 ${
+                <Card
+                  onClick={() => openTaskModal(t)}
+                  className={`p-3.5 flex items-start gap-3 cursor-pointer transition-all duration-300 ${
                   isDone ? "opacity-70 bg-muted/20" 
                   : statusInfo.overdue ? "border-destructive/60 bg-destructive/[0.02] shadow-[0_0_12px_rgba(239,68,68,0.12)] ring-1 ring-destructive/20"
                   : statusInfo.urgent ? "border-amber-500/60 bg-amber-500/[0.02] shadow-[0_0_12px_rgba(245,158,11,0.12)] ring-1 ring-amber-500/20"
@@ -896,7 +1027,10 @@ function TachePage() {
                       {/* Manual sound trigger for demo/test purposes */}
                       {statusInfo.urgent && !isDone && (
                         <button
-                          onClick={() => playNotificationSound('alarm')}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            playNotificationSound('alarm');
+                          }}
                           className="text-[10px] text-primary hover:underline flex items-center gap-0.5 ml-auto font-semibold"
                           title="Tester le signal sonore de rappel"
                         >
@@ -908,41 +1042,246 @@ function TachePage() {
                       <p className="mt-1 text-[11px] text-destructive">Rejet : {t.reject_reason}</p>
                     )}
                   </div>
-                  {isAdmin && (
-                    <div className="flex flex-col gap-1">
-                      {t.status === "fait" && (
+                  <div className="flex flex-col gap-1" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => openTaskModal(t)}
+                      title={isAdmin ? "Visualiser / Modifier la tâche" : "Visualiser la tâche"}
+                      className="rounded p-1 text-primary hover:bg-primary/10"
+                    >
+                      {isAdmin ? <Pencil className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                    {isAdmin && (
+                      <>
+                        {t.status === "fait" && (
+                          <button
+                            onClick={() => onReject(t)}
+                            title="Rejeter et renvoyer"
+                            className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
+                        {!isDone && t.status !== "annule" && (
+                          <button
+                            onClick={() => markDone.mutate(t.id)}
+                            title="Marquer fait"
+                            className="rounded p-1 text-emerald-700 hover:bg-emerald-500/10"
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
+                        )}
                         <button
-                          onClick={() => onReject(t)}
-                          title="Rejeter et renvoyer"
+                          onClick={() => remove.mutate(t.id)}
                           className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          title="Supprimer"
                         >
-                          <X className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
-                      )}
-                      {!isDone && t.status !== "annule" && (
-                        <button
-                          onClick={() => markDone.mutate(t.id)}
-                          title="Marquer fait"
-                          className="rounded p-1 text-emerald-700 hover:bg-emerald-500/10"
-                        >
-                          <Check className="h-4 w-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => remove.mutate(t.id)}
-                        className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                        title="Supprimer"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
+                      </>
+                    )}
+                  </div>
                 </Card>
               </li>
             );
           })}
         </ul>
       )}
+
+      {/* Fenêtre de Visualisation & Modification de la tâche */}
+      <Dialog open={Boolean(selectedTask)} onOpenChange={(o) => !o && setSelectedTask(null)}>
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ListTodo className="h-5 w-5 text-primary" />
+              {isAdmin ? "Visualiser / Modifier la tâche" : "Détails de la tâche"}
+            </DialogTitle>
+            <DialogDescription>
+              {isAdmin
+                ? "Consultez ou modifiez toutes les informations de cette tâche."
+                : "Consultez les détails complets de la tâche assignée."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedTask && (
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <div className="col-span-2 space-y-1">
+                <Label className="text-xs font-semibold">Titre de la tâche *</Label>
+                <Input
+                  value={editTitle}
+                  disabled={!isAdmin}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="Titre de la tâche"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Date d'échéance</Label>
+                <Input
+                  type="date"
+                  value={editDueDate}
+                  disabled={!isAdmin}
+                  onChange={(e) => setEditDueDate(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Heure d'échéance</Label>
+                <Input
+                  type="time"
+                  value={editDueTime}
+                  disabled={!isAdmin}
+                  onChange={(e) => setEditDueTime(e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Nature</Label>
+                <select
+                  disabled={!isAdmin}
+                  className="w-full rounded-md border bg-background px-2.5 py-2 text-sm disabled:opacity-70"
+                  value={editKind}
+                  onChange={(e) => setEditKind(e.target.value as TaskKind)}
+                >
+                  {(Object.keys(KIND_LABEL) as TaskKind[]).map((k) => (
+                    <option key={k} value={k}>
+                      {KIND_LABEL[k]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Priorité</Label>
+                <select
+                  disabled={!isAdmin}
+                  className="w-full rounded-md border bg-background px-2.5 py-2 text-sm disabled:opacity-70"
+                  value={editPriority}
+                  onChange={(e) => setEditPriority(e.target.value as TaskPriority)}
+                >
+                  {(Object.keys(PRIORITY_LABEL) as TaskPriority[]).map((p) => (
+                    <option key={p} value={p}>
+                      {PRIORITY_LABEL[p]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Statut</Label>
+                <select
+                  disabled={!isAdmin}
+                  className="w-full rounded-md border bg-background px-2.5 py-2 text-sm disabled:opacity-70"
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value as TaskStatus)}
+                >
+                  <option value="a_faire">À faire</option>
+                  <option value="en_cours">En cours</option>
+                  <option value="fait">Fait (Terminée)</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs font-semibold">Assigné à</Label>
+                <select
+                  disabled={!isAdmin}
+                  className="w-full rounded-md border bg-background px-2.5 py-2 text-sm disabled:opacity-70"
+                  value={editAssignedTo}
+                  onChange={(e) => setEditAssignedTo(e.target.value)}
+                >
+                  <option value="">— Non assigné —</option>
+                  {executants.map((ex) => (
+                    <option key={ex.id} value={ex.id}>
+                      {ex.name} ({ex.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-span-2 space-y-1">
+                <Label className="text-xs font-semibold">Parcelle</Label>
+                <select
+                  disabled={!isAdmin}
+                  className="w-full rounded-md border bg-background px-2.5 py-2 text-sm disabled:opacity-70"
+                  value={editParcelId}
+                  onChange={(e) => setEditParcelId(e.target.value)}
+                >
+                  <option value="">— Toute la ferme / Aucune parcelle spécifique —</option>
+                  {parcels.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="col-span-2 space-y-1">
+                <Label className="text-xs font-semibold">Description / Instructions</Label>
+                <Textarea
+                  rows={3}
+                  disabled={!isAdmin}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Instructions détaillées de la tâche..."
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex flex-wrap gap-2 sm:justify-between">
+            <div className="flex gap-2">
+              {selectedTask && selectedTask.status !== "fait" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-500/10"
+                  onClick={() => {
+                    if (!selectedTask) return;
+                    markDone.mutate(selectedTask.id, {
+                      onSuccess: () => {
+                        toast.success("Tâche marquée comme réalisée !");
+                        setSelectedTask(null);
+                      },
+                    });
+                  }}
+                >
+                  <Check className="h-4 w-4 mr-1" /> Marquer Fait
+                </Button>
+              )}
+              {isAdmin && selectedTask && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => {
+                    if (!selectedTask) return;
+                    remove.mutate(selectedTask.id, {
+                      onSuccess: () => {
+                        toast.success("Tâche supprimée");
+                        setSelectedTask(null);
+                      },
+                    });
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" /> Supprimer
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setSelectedTask(null)}>
+                Fermer
+              </Button>
+              {isAdmin && (
+                <Button
+                  type="button"
+                  onClick={handleSaveTaskEdit}
+                  disabled={!editTitle.trim() || update.isPending}
+                >
+                  {update.isPending ? "Enregistrement…" : "Enregistrer les modifications"}
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ListPageShell>
   );
 }

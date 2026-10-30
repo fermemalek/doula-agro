@@ -146,7 +146,8 @@ function HomePage() {
               return (
                 <li
                   key={task.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3 shadow-xs"
+                  onClick={() => navigate({ to: `/tache?taskId=${task.id}` })}
+                  className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border bg-card p-3 shadow-xs transition hover:border-primary/40"
                 >
                   <div className="flex items-start gap-2.5 min-w-0 flex-1">
                     <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -168,7 +169,7 @@ function HomePage() {
                         </span>
                         {isOverdue && (
                           <span className="rounded bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">
-                            ⚠️ En retard
+                            ⚠️ Échéance
                           </span>
                         )}
                       </div>
@@ -188,17 +189,25 @@ function HomePage() {
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() =>
-                      markDone.mutate(task.id, {
-                        onSuccess: () => toast.success("Tâche marquée comme réalisée !"),
-                      })
-                    }
-                    disabled={markDone.isPending}
-                    className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
-                  >
-                    <Check className="h-3.5 w-3.5" /> Fait
-                  </button>
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      onClick={() => navigate({ to: `/tache?taskId=${task.id}` })}
+                      className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl border bg-background px-2.5 text-xs font-bold text-foreground shadow-xs hover:bg-muted active:scale-95"
+                    >
+                      ✏️ Modifier
+                    </button>
+                    <button
+                      onClick={() =>
+                        markDone.mutate(task.id, {
+                          onSuccess: () => toast.success("Tâche marquée comme réalisée !"),
+                        })
+                      }
+                      disabled={markDone.isPending}
+                      className="inline-flex h-9 shrink-0 items-center gap-1 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 active:scale-95 disabled:opacity-50"
+                    >
+                      <Check className="h-3.5 w-3.5" /> Fait
+                    </button>
+                  </div>
                 </li>
               );
             })}
