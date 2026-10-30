@@ -15,6 +15,7 @@ import {
   useTaskActions,
   useExecutants,
   useMyAssignedTasks,
+  unpackTaskDescription,
 } from "@/lib/cloud/tasks";
 import { useParcels } from "@/lib/parcel-store";
 import { toast } from "sonner";
@@ -143,6 +144,10 @@ function HomePage() {
               const pName = parcelName(task.parcel_id);
               const isOverdue =
                 task.due_date && new Date(task.due_date).getTime() < Date.now();
+              const unpacked = unpackTaskDescription(task.description);
+              const cleanDesc = [unpacked.reminderPrefix, unpacked.cleanDescription]
+                .filter(Boolean)
+                .join(" ");
               return (
                 <li
                   key={task.id}
@@ -173,9 +178,9 @@ function HomePage() {
                           </span>
                         )}
                       </div>
-                      {task.description && (
+                      {cleanDesc && (
                         <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">
-                          {task.description}
+                          {cleanDesc}
                         </p>
                       )}
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
@@ -185,7 +190,12 @@ function HomePage() {
                           </span>
                         )}
                         {pName && <span>🌳 {pName}</span>}
-                        <span>👤 {exName(task.assigned_to)}</span>
+                        {task.assigned_to && <span>👤 {exName(task.assigned_to)}</span>}
+                        {unpacked.externalWorkers.length > 0 && (
+                          <span className="font-semibold text-primary">
+                            👷 {unpacked.externalWorkers.join(", ")}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

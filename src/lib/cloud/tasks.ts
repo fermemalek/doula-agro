@@ -259,3 +259,66 @@ export function useMyAssignedTasks() {
     };
   }, [tasks, executants, userId, session]);
 }
+
+const EXTERNAL_WORKERS_STORAGE_KEY = "doula-external-workers";
+
+export function getSavedExternalWorkers(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(EXTERNAL_WORKERS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x) => typeof x === "string" && x.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveExternalWorkersList(names: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    const unique = Array.from(
+      new Set(names.map((n) => n.trim()).filter(Boolean)),
+    );
+    localStorage.setItem(EXTERNAL_WORKERS_STORAGE_KEY, JSON.stringify(unique));
+  } catch {}
+}
+
+/**
+ * Encode les noms des autres exécutants (sans compte dans l'application) dans la description
+ * sous la forme "[Exécutants: Nom1, Nom2] Description..."
+ */
+export function packTaskDescription(
+  cleanDescription: string,
+  externalWorkers: string[],
+  reminderPrefix = "",
+): string | null {
+  const workers = Array.from(
+    new Set(externalWorkers.map((w) => w.trim()).filter(Boolean)),
+  );
+  const workersTag = workers.length > 0 ? `[Exécutants: ${workers.join(", ")}] ` : "";
+  const combined = `${workersTag}${reminderPrefix}${cleanDescription.trim()}`.trim();
+  return combined || null;
+}
+
+/**
+ * Extrait les noms des autres exécutants (sans compte) et la description propre.
+ */
+export function unpackTaskDescription(rawDescription: string | null | undefined): {
+  externalWorkers: string[];
+  cleanDescription: string;
+} {
+  const raw = (rawDescription || "").trim();
+  const match = raw.match(/^\[Exécutants:\s*([^\]]+)\]\s*(.*)$/s);
+  if (!match) {
+    return { externalWorkers: [], cleanDescription: raw };
+  }
+  const workers = match[1]
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return {
+    externalWorkers: workers,
+    cleanDescription: (match[2] || "").trim(),
+  };
+}

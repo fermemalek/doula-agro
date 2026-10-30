@@ -19,6 +19,10 @@ import {
   useTaskActions,
   useExecutants,
   useMyAssignedTasks,
+  getSavedExternalWorkers,
+  saveExternalWorkersList,
+  packTaskDescription,
+  unpackTaskDescription,
   type TaskPriority,
   type TaskKind,
   type TaskStatus,
@@ -113,10 +117,34 @@ function TachePage() {
   const [showSettings, setShowSettings] = useState(false);
   const [audioAlertsActive, setAudioAlertsActive] = useState(true);
 
+  // Liste des autres exécutants / ouvriers sans compte dans l'application (mémorisés localement)
+  const [savedWorkers, setSavedWorkers] = useState<string[]>(() => getSavedExternalWorkers());
+
+  function addNewSavedWorker(rawInput: string, onAdded?: (names: string[]) => void) {
+    const names = rawInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (names.length === 0) return;
+    const merged = Array.from(new Set([...savedWorkers, ...names]));
+    setSavedWorkers(merged);
+    saveExternalWorkersList(merged);
+    onAdded?.(names);
+  }
+
+  function removeSavedWorker(nameToRemove: string) {
+    const next = savedWorkers.filter((w) => w !== nameToRemove);
+    setSavedWorkers(next);
+    saveExternalWorkersList(next);
+    setSelectedExternalWorkers((prev) => prev.filter((w) => w !== nameToRemove));
+    setEditExternalWorkers((prev) => prev.filter((w) => w !== nameToRemove));
+  }
+
   // États pour la fenêtre de visualisation / modification d'une tâche
   const [selectedTask, setSelectedTask] = useState<CloudTask | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const [editReminderPrefix, setEditReminderPrefix] = useState("");
   const [editDueDate, setEditDueDate] = useState("");
   const [editDueTime, setEditDueTime] = useState("12:00");
   const [editPriority, setEditPriority] = useState<TaskPriority>("normale");
@@ -124,11 +152,24 @@ function TachePage() {
   const [editStatus, setEditStatus] = useState<TaskStatus>("a_faire");
   const [editParcelId, setEditParcelId] = useState("");
   const [editAssignedTo, setEditAssignedTo] = useState("");
+  const [editExternalWorkers, setEditExternalWorkers] = useState<string[]>([]);
+  const [editNewWorkerInput, setEditNewWorkerInput] = useState("");
 
   function openTaskModal(t: CloudTask) {
     setSelectedTask(t);
     setEditTitle(t.title || "");
-    setEditDescription(t.description || "");
+    const unpacked = unpackTaskDescription(t.description);
+    setEditDescription(unpacked.cleanDescription);
+    setEditReminderPrefix(unpacked.reminderPrefix);
+    setEditExternalWorkers(unpacked.externalWorkers);
+    setEditNewWorkerInput("");
+    if (unpacked.externalWorkers.length > 0) {
+      const merged = Array.from(new Set([...savedWorkers, ...unpacked.externalWorkers]));
+      if (merged.length !== savedWorkers.length) {
+        setSavedWorkers(merged);
+        saveExternalWorkersList(merged);
+      }
+    }
     if (t.due_date) {
       const d = new Date(t.due_date);
       if (!isNaN(d.getTime())) {
@@ -163,11 +204,31 @@ function TachePage() {
     if (found) {
       openTaskModal(found);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search, tasks]);
 
   async function handleSaveTaskEdit() {
     if (!selectedTask || !editTitle.trim()) return;
     try {
+      const pendingExtra = editNewWorkerInput
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const finalExternalWorkers = Array.from(
+        new Set([...editExternalWorkers, ...pendingExtra]),
+      );
+      if (pendingExtra.length > 0) {
+        const merged = Array.from(new Set([...savedWorkers, ...pendingExtra]));
+        setSavedWorkers(merged);
+        saveExternalWorkersList(merged);
+      }
+
+      const packedDesc = packTaskDescription(
+        editDescription,
+        finalExternalWorkers,
+        editReminderPrefix,
+      );
+
       const newDueIso = editDueDate
         ? new Date(`${editDueDate}T${editDueTime || "12:00"}:00`).toISOString()
         : null;
@@ -175,7 +236,7 @@ function TachePage() {
         id: selectedTask.id,
         patch: {
           title: editTitle.trim(),
-          description: editDescription.trim() || null,
+          description: packedDesc,
           due_date: newDueIso,
           priority: editPriority,
           kind: editKind,
@@ -277,10 +338,24 @@ function TachePage() {
   const [kind, setKind] = useState<TaskKind>("generale");
   const [parcelId, setParcelId] = useState("");
   const [assignedToIds, setAssignedToIds] = useState<string[]>([]);
+  const [selectedExternalWorkers, setSelectedExternalWorkers] = useState<string[]>([]);
+  const [newWorkerInput, setNewWorkerInput] = useState("");
 
   function toggleAssign(id: string) {
     setAssignedToIds((arr) =>
       arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id],
+    );
+  }
+
+  function toggleExternalWorker(name: string) {
+    setSelectedExternalWorkers((arr) =>
+      arr.includes(name) ? arr.filter((x) => x !== name) : [...arr, name],
+    );
+  }
+
+  function toggleEditExternalWorker(name: string) {
+    setEditExternalWorkers((arr) =>
+      arr.includes(name) ? arr.filter((x) => x !== name) : [...arr, name],
     );
   }
 
@@ -291,37 +366,66 @@ function TachePage() {
     setKind("generale");
     setParcelId("");
     setAssignedToIds([]);
+    setSelectedExternalWorkers([]);
+    setNewWorkerInput("");
     setDueTime("12:00");
     setReminderAdvance("none");
   }
   async function save() {
-    if (!title.trim() || assignedToIds.length === 0) return;
+    const typedExtra = newWorkerInput
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const finalExternalWorkers = Array.from(
+      new Set([...selectedExternalWorkers, ...typedExtra]),
+    );
+    if (!title.trim() || (assignedToIds.length === 0 && finalExternalWorkers.length === 0)) return;
     try {
+      if (typedExtra.length > 0) {
+        const merged = Array.from(new Set([...savedWorkers, ...typedExtra]));
+        setSavedWorkers(merged);
+        saveExternalWorkersList(merged);
+      }
+
       const advanceLabels: Record<string, string> = {
         '1h': '1 heure avant',
         '2h': '2 heures avant',
         '1d': '1 jour avant',
         '1w': '1 semaine avant',
       };
-      const advancePrefix = reminderAdvance !== 'none' ? `[Rappel: ${advanceLabels[reminderAdvance]}] ` : '';
-      const finalDesc = advancePrefix + (description.trim() || '');
+      const advancePrefix = reminderAdvance !== 'none' ? `[Rappel: ${advanceLabels[reminderAdvance]}]` : '';
+      const finalDesc = packTaskDescription(
+        description,
+        finalExternalWorkers,
+        advancePrefix,
+      );
+      const dueIso = dueDate ? new Date(dueDate + "T" + (dueTime || "12:00") + ":00").toISOString() : null;
 
-      for (const uid of assignedToIds) {
+      if (assignedToIds.length > 0) {
+        for (const uid of assignedToIds) {
+          await create.mutateAsync({
+            title: title.trim(),
+            description: finalDesc,
+            priority,
+            kind,
+            due_date: dueIso,
+            parcel_id: parcelId || null,
+            assigned_to: uid,
+          });
+        }
+      } else {
+        // Tâche assignée uniquement à des ouvriers / exécutants sans compte dans l'application
         await create.mutateAsync({
           title: title.trim(),
-          description: finalDesc || null,
+          description: finalDesc,
           priority,
           kind,
-          due_date: dueDate ? new Date(dueDate + "T" + (dueTime || "12:00") + ":00").toISOString() : null,
+          due_date: dueIso,
           parcel_id: parcelId || null,
-          assigned_to: uid,
+          assigned_to: null,
         });
       }
-      toast.success(
-        assignedToIds.length === 1
-          ? "Tâche créée et assignée"
-          : `Tâche assignée à ${assignedToIds.length} exécutants`,
-      );
+      toast.success("Tâche créée et assignée avec succès !");
       reset();
       setOpen(false);
     } catch (e) {
@@ -855,29 +959,122 @@ function TachePage() {
                 ))}
               </select>
             </div>
-            <div className="col-span-2">
-              <Label className="text-xs">
-                Assigné à * {assignedToIds.length > 0 && `(${assignedToIds.length})`}
+            <div className="col-span-2 space-y-2">
+              <Label className="text-xs font-semibold">
+                Assigné à *{" "}
+                {(assignedToIds.length > 0 || selectedExternalWorkers.length > 0) &&
+                  `(${assignedToIds.length + selectedExternalWorkers.length})`}
               </Label>
-              <div className="mt-1 max-h-40 space-y-1 overflow-auto rounded-md border bg-background p-2">
+
+              {/* 1. Membres ayant un compte dans l'application */}
+              <div className="rounded-md border bg-background p-2.5 space-y-1.5">
+                <p className="text-[11px] font-semibold text-muted-foreground">
+                  👤 Comptes de l'application (Administrateur / Exécutant) :
+                </p>
                 {executants.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Aucun exécutant disponible.</p>
+                  <p className="text-xs text-muted-foreground">Aucun compte disponible.</p>
                 )}
-                {executants.map((e) => (
-                  <label
-                    key={e.id}
-                    className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted"
+                <div className="max-h-36 space-y-1 overflow-auto">
+                  {executants.map((e) => (
+                    <label
+                      key={e.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={assignedToIds.includes(e.id)}
+                        onChange={() => toggleAssign(e.id)}
+                      />
+                      <span className="truncate font-medium">
+                        {e.name} <span className="text-xs text-muted-foreground">({e.role})</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. Autres exécutants / ouvriers sans accès à l'application */}
+              <div className="rounded-md border border-dashed border-primary/40 bg-primary/[0.02] p-2.5 space-y-2">
+                <p className="text-[11px] font-semibold text-foreground flex items-center gap-1.5">
+                  👷 Autres exécutants / ouvriers (sans accès à l'application) :
+                </p>
+
+                {savedWorkers.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {savedWorkers.map((workerName) => {
+                      const active = selectedExternalWorkers.includes(workerName);
+                      return (
+                        <div
+                          key={workerName}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                            active
+                              ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                              : "border-border bg-background text-foreground hover:bg-muted"
+                          }`}
+                        >
+                          <label className="flex cursor-pointer items-center gap-1.5">
+                            <input
+                              type="checkbox"
+                              checked={active}
+                              onChange={() => toggleExternalWorker(workerName)}
+                              className="h-3.5 w-3.5 accent-primary"
+                            />
+                            <span>{workerName}</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => removeSavedWorker(workerName)}
+                            title="Retirer de la liste mémorisée"
+                            className={`ml-0.5 rounded-full p-0.5 hover:bg-black/10 ${
+                              active ? "text-primary-foreground/80" : "text-muted-foreground"
+                            }`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Input
+                    value={newWorkerInput}
+                    onChange={(e) => setNewWorkerInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addNewSavedWorker(newWorkerInput, (added) => {
+                          setSelectedExternalWorkers((prev) =>
+                            Array.from(new Set([...prev, ...added])),
+                          );
+                          setNewWorkerInput("");
+                        });
+                      }
+                    }}
+                    placeholder="Ajouter un nom d'ouvrier / exécutant (ex: Ahmed, Karim...)"
+                    className="h-8 text-xs bg-background"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 shrink-0 text-xs"
+                    onClick={() => {
+                      addNewSavedWorker(newWorkerInput, (added) => {
+                        setSelectedExternalWorkers((prev) =>
+                          Array.from(new Set([...prev, ...added])),
+                        );
+                        setNewWorkerInput("");
+                      });
+                    }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={assignedToIds.includes(e.id)}
-                      onChange={() => toggleAssign(e.id)}
-                    />
-                    <span className="truncate">
-                      {e.name} <span className="text-xs text-muted-foreground">({e.role})</span>
-                    </span>
-                  </label>
-                ))}
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter
+                  </Button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Les noms ajoutés ici sont mémorisés pour vos prochaines tâches, même si ces personnes n'ont pas de compte sur l'application.
+                </p>
               </div>
             </div>
             <div className="col-span-2">
@@ -900,7 +1097,13 @@ function TachePage() {
           </div>
           <Button
             onClick={save}
-            disabled={!title.trim() || assignedToIds.length === 0 || create.isPending}
+            disabled={
+              !title.trim() ||
+              (assignedToIds.length === 0 &&
+                selectedExternalWorkers.length === 0 &&
+                !newWorkerInput.trim()) ||
+              create.isPending
+            }
             className="w-full"
           >
             {create.isPending ? "Enregistrement…" : "Enregistrer"}
@@ -937,6 +1140,10 @@ function TachePage() {
             const isDone = t.status === "fait";
             const isAssignedToMe = Boolean(t.assigned_to && matchedIds.has(t.assigned_to));
             const statusInfo = getTaskStatusInfo(t.due_date, t.status);
+            const unpacked = unpackTaskDescription(t.description);
+            const displayDesc = [unpacked.reminderPrefix, unpacked.cleanDescription]
+              .filter(Boolean)
+              .join(" ");
 
             // Auto-trigger audible alarm if enabled and task is urgent
             if (audioAlertsActive && statusInfo.urgent && !isDone) {
@@ -1006,8 +1213,8 @@ function TachePage() {
                         }`}>{PRIORITY_LABEL[t.priority]}</span>
                       </div>
                     </div>
-                    {t.description && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{t.description}</p>
+                    {displayDesc && (
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{displayDesc}</p>
                     )}
                     <div className="text-xs text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
                       {t.due_date && (
@@ -1017,7 +1224,15 @@ function TachePage() {
                       )}
                       <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-mono">{KIND_LABEL[t.kind]}</span>
                       {parcel && <span className="text-foreground/80">🌳 {parcel.name}</span>}
-                      <span>👤 {exName(t.assigned_to)}</span>
+                      {t.assigned_to && <span>👤 {exName(t.assigned_to)}</span>}
+                      {unpacked.externalWorkers.length > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                          👷 {unpacked.externalWorkers.join(", ")}
+                        </span>
+                      )}
+                      {!t.assigned_to && unpacked.externalWorkers.length === 0 && (
+                        <span>👤 —</span>
+                      )}
                       <span className={`rounded px-1.5 py-0.2 text-[10px] font-bold ${
                         t.status === "fait" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                         : t.status === "en_cours" ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
@@ -1181,20 +1396,108 @@ function TachePage() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Assigné à</Label>
+                <Label className="text-xs font-semibold">Assigné à (Compte application)</Label>
                 <select
                   disabled={!isAdmin}
                   className="w-full rounded-md border bg-background px-2.5 py-2 text-sm disabled:opacity-70"
                   value={editAssignedTo}
                   onChange={(e) => setEditAssignedTo(e.target.value)}
                 >
-                  <option value="">— Non assigné —</option>
+                  <option value="">— Aucun compte application —</option>
                   {executants.map((ex) => (
                     <option key={ex.id} value={ex.id}>
                       {ex.name} ({ex.role})
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div className="col-span-2 rounded-md border border-dashed border-primary/40 bg-primary/[0.02] p-2.5 space-y-2">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  👷 Autres exécutants / ouvriers (sans accès à l'application)
+                </Label>
+                {savedWorkers.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {savedWorkers.map((workerName) => {
+                      const active = editExternalWorkers.includes(workerName);
+                      return (
+                        <div
+                          key={workerName}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                            active
+                              ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                              : "border-border bg-background text-foreground hover:bg-muted"
+                          }`}
+                        >
+                          <label className="flex cursor-pointer items-center gap-1.5">
+                            <input
+                              type="checkbox"
+                              disabled={!isAdmin}
+                              checked={active}
+                              onChange={() => toggleEditExternalWorker(workerName)}
+                              className="h-3.5 w-3.5 accent-primary"
+                            />
+                            <span>{workerName}</span>
+                          </label>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => removeSavedWorker(workerName)}
+                              title="Retirer de la liste mémorisée"
+                              className={`ml-0.5 rounded-full p-0.5 hover:bg-black/10 ${
+                                active ? "text-primary-foreground/80" : "text-muted-foreground"
+                              }`}
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Aucun exécutant externe sélectionné.
+                  </p>
+                )}
+
+                {isAdmin && (
+                  <div className="flex gap-2">
+                    <Input
+                      value={editNewWorkerInput}
+                      onChange={(e) => setEditNewWorkerInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addNewSavedWorker(editNewWorkerInput, (added) => {
+                            setEditExternalWorkers((prev) =>
+                              Array.from(new Set([...prev, ...added])),
+                            );
+                            setEditNewWorkerInput("");
+                          });
+                        }
+                      }}
+                      placeholder="Ajouter un exécutant sans compte (ex: Ahmed, Karim...)"
+                      className="h-8 text-xs bg-background"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 shrink-0 text-xs"
+                      onClick={() => {
+                        addNewSavedWorker(editNewWorkerInput, (added) => {
+                          setEditExternalWorkers((prev) =>
+                            Array.from(new Set([...prev, ...added])),
+                          );
+                          setEditNewWorkerInput("");
+                        });
+                      }}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div className="col-span-2 space-y-1">

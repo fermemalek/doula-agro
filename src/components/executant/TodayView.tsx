@@ -26,7 +26,7 @@ import {
   todayKey,
   type Reminder,
 } from "@/lib/reminders-store";
-import { useTasks, useTaskActions, type CloudTask, type TaskPriority } from "@/lib/cloud/tasks";
+import { useTasks, useTaskActions, unpackTaskDescription, type CloudTask, type TaskPriority } from "@/lib/cloud/tasks";
 import { usePrograms, type ProgramKind } from "@/lib/cloud/programs";
 import { useAlerts, useAlertActions, type CloudAlert } from "@/lib/cloud/alerts";
 import { useParcels } from "@/lib/parcel-store";
@@ -88,6 +88,7 @@ function TaskCard({
   tone?: "default" | "danger" | "today";
   loading?: boolean;
 }) {
+  const unpacked = unpackTaskDescription(t.description);
   const ring =
     tone === "danger"
       ? "border-destructive/40 bg-destructive/5"
@@ -108,9 +109,17 @@ function TaskCard({
             {t.priority}
           </span>
         </div>
+        {unpacked.cleanDescription && (
+          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{unpacked.cleanDescription}</p>
+        )}
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
           {t.due_date && <span>{fmtDate(t.due_date)}</span>}
           {parcelName && <span>· {parcelName}</span>}
+          {unpacked.externalWorkers.length > 0 && (
+            <span className="font-semibold text-primary">
+              · 👷 {unpacked.externalWorkers.join(", ")}
+            </span>
+          )}
         </div>
         {tone === "danger" && t.due_date && (
           <p className="mt-1 text-[11px] font-semibold text-destructive">
