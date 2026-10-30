@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useRole } from "@/lib/role";
 import { useRealtimeInvalidate } from "./realtime";
 
 export type TaskKind =
@@ -129,7 +131,7 @@ export function useTaskActions() {
   return { create, markDone, reject, remove, update };
 }
 
-/** Liste des exécutants disponibles pour l'assignation (basée uniquement sur les profils existants). */
+/** Liste des exécutants/administrateurs disponibles pour les tâches (exclut les comptes ingénieurs). */
 export function useExecutants() {
   return useQuery({
     queryKey: ["executants"],
@@ -182,7 +184,78 @@ export function useExecutants() {
             phone,
             email,
           };
+        })
+        .filter((e) => {
+          const r = (e.role || "").toLowerCase();
+          const n = (e.name || "").toLowerCase();
+          const em = (e.email || "").toLowerCase();
+          // Exclure tous les comptes ingénieurs (ainsi que le compte khadij) du module Tâches
+          if (r === "ingenieur") return false;
+          if (n.includes("khadij") || em.includes("doujadz")) return false;
+          return true;
         });
     },
   });
+}
+
+/**
+ * Retourne les tâches en cours assignées à l'utilisateur actuellement connecté
+ * (fonctionne aussi bien pour un Exécutant que pour un Administrateur comme Abderrahmane ou Abdelmalek,
+ * même si la connexion s'est faite via un alias e-mail/identifiant).
+ */
+export function useMyAssignedTasks() {
+  const { data: tasks = [] } = useTasks();
+  const { data: executants = [] } = useExecutants();
+  const { userId, session } = useRole();
+
+  return useMemo(() => {
+    const matchedIds = new Set<string>();
+    if (userId && userId !== "00000000-0000-0000-0000-000000000000") {
+      matchedIds.add(userId);
+    }
+
+    const sessionEmail = (session?.user?.email || "").trim().toLowerCase();
+    const sessionLocal = sessionEmail.includes("@") ? sessionEmail.split("@")[0] : sessionEmail;
+    const sessionFullName = ((session?.user?.user_metadata?.full_name as string) || "")
+      .trim()
+      .toLowerCase();
+
+    let matchedMemberName: string | null = null;
+
+    for (const ex of executants) {
+      const exName = ex.name.trim().toLowerCase();
+      const exEmail = (ex.email || "").trim().toLowerCase();
+      const exEmailLocal = exEmail.includes("@") ? exEmail.split("@")[0] : exEmail;
+
+      const isDirectId = ex.id === userId;
+      const isEmailMatch =
+        Boolean(sessionEmail) &&
+        sessionEmail !== "agri@farmfriendy.local" &&
+        (exEmail === sessionEmail ||
+          exEmailLocal === sessionLocal ||
+          sessionLocal.includes(exName) ||
+          (exEmailLocal && sessionLocal.includes(exEmailLocal)));
+      const isNameMatch =
+        Boolean(sessionFullName) &&
+        sessionFullName !== "administrateur" &&
+        exName === sessionFullName;
+
+      if (isDirectId || isEmailMatch || isNameMatch) {
+        matchedIds.add(ex.id);
+        if (!matchedMemberName) matchedMemberName = ex.name;
+      }
+    }
+
+    const myTasks = tasks.filter(
+      (t) =>
+        (t.status === "a_faire" || t.status === "en_cours") &&
+        Boolean(t.assigned_to && matchedIds.has(t.assigned_to)),
+    );
+
+    return {
+      myTasks,
+      matchedIds,
+      matchedMemberName,
+    };
+  }, [tasks, executants, userId, session]);
 }

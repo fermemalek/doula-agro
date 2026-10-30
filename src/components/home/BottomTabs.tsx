@@ -2,10 +2,19 @@ import { Link } from "@/lib/router-compat";
 import { Home, Map, Plus, History, BellRing, User, ListTodo, Wrench, Lightbulb, CalendarRange } from "lucide-react";
 import { useDisplayRole } from "@/lib/display-role";
 import { useTranslation } from "@/lib/i18n";
+import { useMyAssignedTasks, useTasks } from "@/lib/cloud/tasks";
 
 export function BottomTabs() {
   const role = useDisplayRole();
   const { t } = useTranslation();
+  const { data: allTasks = [] } = useTasks();
+  const { myTasks } = useMyAssignedTasks();
+
+  const activeTasksCount = allTasks.filter(
+    (task) => task.status === "a_faire" || task.status === "en_cours",
+  ).length;
+  const badgeCount = myTasks.length > 0 ? myTasks.length : activeTasksCount;
+  const hasPersonalTasks = myTasks.length > 0;
 
   const ADMIN_TABS = [
     { to: "/", label: t("tabs.home", "Accueil"), icon: Home },
@@ -33,22 +42,39 @@ export function BottomTabs() {
     return (
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
         <ul className="mx-auto flex max-w-3xl">
-          {ADMIN_TABS.map(({ to, label, icon: Icon }) => (
-            <li key={to} className="flex-1">
-              <Link
-                to={to}
-                activeOptions={{ exact: to === "/" }}
-                className="flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-                activeProps={{
-                  className:
-                    "flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-primary border-t-2 border-primary -mt-px",
-                }}
-              >
-                <Icon className="h-5 w-5" />
-                {label}
-              </Link>
-            </li>
-          ))}
+          {ADMIN_TABS.map(({ to, label, icon: Icon }) => {
+            const showBadge =
+              (to === "/tache" && badgeCount > 0) ||
+              (to === "/" && hasPersonalTasks);
+            const count = to === "/" ? myTasks.length : badgeCount;
+            return (
+              <li key={to} className="flex-1">
+                <Link
+                  to={to}
+                  activeOptions={{ exact: to === "/" }}
+                  className="relative flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                  activeProps={{
+                    className:
+                      "relative flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium text-primary border-t-2 border-primary -mt-px",
+                  }}
+                >
+                  <span className="relative inline-flex">
+                    <Icon className="h-5 w-5" />
+                    {showBadge && (
+                      <span
+                        className={`absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white shadow ${
+                          hasPersonalTasks ? "bg-destructive animate-pulse" : "bg-amber-500"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </span>
+                  {label}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       </nav>
     );

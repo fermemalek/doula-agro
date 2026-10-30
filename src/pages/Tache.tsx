@@ -10,6 +10,7 @@ import {
   useTasks,
   useTaskActions,
   useExecutants,
+  useMyAssignedTasks,
   type TaskPriority,
   type TaskKind,
   type CloudTask,
@@ -44,6 +45,7 @@ const KIND_LABEL: Record<TaskKind, string> = {
 function TachePage() {
   const { data: tasks = [] } = useTasks();
   const { data: executants = [] } = useExecutants();
+  const { myTasks, matchedIds, matchedMemberName } = useMyAssignedTasks();
   const parcels = useParcels();
   const { create, markDone, reject, remove } = useTaskActions();
   const { isAdmin } = useRole();
@@ -213,7 +215,12 @@ function TachePage() {
         ? t.status === "fait" || t.status === "annule"
         : t.status === "a_faire" || t.status === "en_cours",
     )
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    .sort((a, b) => {
+      const aMine = Boolean(a.assigned_to && matchedIds.has(a.assigned_to)) ? 1 : 0;
+      const bMine = Boolean(b.assigned_to && matchedIds.has(b.assigned_to)) ? 1 : 0;
+      if (aMine !== bMine) return bMine - aMine;
+      return b.created_at.localeCompare(a.created_at);
+    });
 
   const exName = (id: string | null) =>
     executants.find((e) => e.id === id)?.name ?? "—";
@@ -774,6 +781,22 @@ function TachePage() {
 
       <ProgramFiltersBar value={filters} onChange={setFilters} years={years} />
 
+      {!showArchived && myTasks.length > 0 && (
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl border-2 border-amber-500/50 bg-amber-500/10 p-3 text-xs font-semibold text-foreground shadow-xs">
+          <div className="flex items-center gap-2">
+            <Bell className="h-4 w-4 shrink-0 text-amber-600 animate-bounce" />
+            <span>
+              {matchedMemberName
+                ? `${matchedMemberName}, vous avez ${myTasks.length} tâche(s) qui vous sont personnellement assignées à réaliser.`
+                : `Vous avez ${myTasks.length} tâche(s) qui vous sont personnellement assignées à réaliser.`}
+            </span>
+          </div>
+          <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">
+            {myTasks.length}
+          </span>
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <Card className="p-6 text-center text-sm text-muted-foreground">
           {showArchived ? "Aucune tâche archivée." : "Aucune tâche en cours."}
@@ -783,6 +806,7 @@ function TachePage() {
           {filtered.map((t) => {
             const parcel = parcels.find((p) => p.id === t.parcel_id);
             const isDone = t.status === "fait";
+            const isAssignedToMe = Boolean(t.assigned_to && matchedIds.has(t.assigned_to));
             const statusInfo = getTaskStatusInfo(t.due_date, t.status);
 
             // Auto-trigger audible alarm if enabled and task is urgent
@@ -825,6 +849,11 @@ function TachePage() {
                             : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
                           }`}>
                             {parcel.type === 'olivier' ? 'Olivier' : parcel.type === 'pommier' ? 'Pommier' : 'Nectarinier'}
+                          </span>
+                        )}
+                        {isAssignedToMe && !isDone && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-primary text-primary-foreground">
+                            👤 Assignée à vous
                           </span>
                         )}
                       </div>
