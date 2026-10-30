@@ -24,9 +24,13 @@ import {
   Loader2,
   CheckCircle,
   Trash2,
+  Eye,
+  EyeOff,
+  KeyRound,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRole } from "@/lib/role";
+import { buildAuthAlias } from "@/pages/Login";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -70,6 +74,9 @@ export default function ManageUsers() {
   const [editFullName, setEditFullName] = useState("");
   const [editUsername, setEditUsername] = useState("");
   const [editPhone, setEditPhone] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [showCreatePwd, setShowCreatePwd] = useState(false);
+  const [showEditPwd, setShowEditPwd] = useState(false);
   const [editRole, setEditRole] = useState<"admin" | "executant" | "ingenieur">("executant");
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -100,10 +107,21 @@ export default function ManageUsers() {
         .select("*");
       if (rErr) throw rErr;
 
+      // Nettoyer automatiquement les rôles orphelins (ex: "Sans nom (ingenieur)" sans profil)
+      const validProfileIds = new Set((profiles ?? []).map((p) => p.id));
+      const orphanUserIds = (roles ?? [])
+        .map((r) => r.user_id)
+        .filter((uid) => !validProfileIds.has(uid));
+      if (orphanUserIds.length > 0) {
+        await supabase.from("user_roles").delete().in("user_id", orphanUserIds);
+      }
+
       // Organiser les rôles par ID utilisateur
       const roleMap: Record<string, "admin" | "executant" | "ingenieur"> = {};
       roles?.forEach((r) => {
-        roleMap[r.user_id] = r.role as any;
+        if (validProfileIds.has(r.user_id)) {
+          roleMap[r.user_id] = r.role as any;
+        }
       });
 
       // Fusionner les données
@@ -231,6 +249,8 @@ export default function ManageUsers() {
     setEditRole(user.role);
     setEditUsername(user.username);
     setEditPhone(user.phone);
+    setEditPassword("");
+    setShowEditPwd(false);
   };
 
   const handleSaveEdit = async () => {
@@ -243,43 +263,111 @@ export default function ManageUsers() {
       toast.error("Le nom d'utilisateur ne peut pas être vide.");
       return;
     }
+    if (editPassword.trim() && editPassword.trim().length < 6) {
+      toast.error("Le nouveau mot de passe doit contenir au moins 6 caractères.");
+      return;
+    }
 
     setSavingEdit(true);
     try {
-      // 1. Mettre à jour le rôle
+      const cleanEditUser = editUsername.trim().toLowerCase();
+      const combinedPhoneVal = editPhone.trim()
+        ? `${cleanEditUser}|${editPhone.trim()}`
+        : cleanEditUser;
+
+      let targetUserId = editingUser.id;
+      const newPwd = editPassword.trim();
+
+      // Si un nouveau mot de passe est saisi :
+      if (newPwd) {
+        // Cas 1 : l'administrateur modifie son propre mot de passe
+        if (editingUser.id === session?.user?.id) {
+          const { error: selfPwdErr } = await supabase.auth.updateUser({
+            password: newPwd,
+          });
+          if (selfPwdErr) {
+            console.warn("[ManageUsers] updateUser self password:", selfPwdErr.message);
+          }
+        }
+
+        // Cas 2 : synchroniser un alias d'authentification déterministe pour permettre
+        // à ce membre (Exécutant, Ingénieur ou Admin) de se connecter avec ce nouveau mot de passe
+        const aliasEmail = buildAuthAlias(cleanEditUser, newPwd);
+        let syncedId: string | null = null;
+
+        const { data: signUpData, error: signUpErr } = await tempClient.auth.signUp({
+          email: aliasEmail,
+          password: newPwd,
+          options: {
+            data: { full_name: editFullName.trim() },
+          },
+        });
+
+        if (!signUpErr && signUpData?.user?.id) {
+          syncedId = signUpData.user.id;
+        } else {
+          // Si l'alias existe déjà avec ce mot de passe, récupérer son ID
+          const { data: signInData } = await tempClient.auth.signInWithPassword({
+            email: aliasEmail,
+            password: newPwd,
+          });
+          if (signInData?.user?.id) {
+            syncedId = signInData.user.id;
+          }
+        }
+
+        // Si un nouvel ID a été créé pour un autre utilisateur, transférer ses tâches/rôles/profil
+        if (syncedId && syncedId !== editingUser.id && editingUser.id !== session?.user?.id) {
+          await new Promise((r) => setTimeout(r, 700));
+          targetUserId = syncedId;
+
+          // Transférer les tâches, programmes et alertes assignés à l'ancien ID
+          await supabase.from("tasks").update({ assigned_to: targetUserId }).eq("assigned_to", editingUser.id);
+          await supabase.from("module_records").update({ assigned_to: targetUserId }).eq("assigned_to", editingUser.id);
+          await supabase.from("alerts").update({ assigned_to: targetUserId }).eq("assigned_to", editingUser.id);
+
+          // Supprimer l'ancien rôle et l'ancien profil pour éviter tout doublon dans la liste
+          await supabase.from("user_roles").delete().eq("user_id", editingUser.id);
+          await supabase.from("profiles").delete().eq("id", editingUser.id);
+        }
+      }
+
+      // 1. Mettre à jour le rôle sur targetUserId
       const { data: existingRoles } = await supabase
         .from("user_roles")
         .select("*")
-        .eq("user_id", editingUser.id);
+        .eq("user_id", targetUserId);
 
       if (existingRoles && existingRoles.length > 0) {
         const { error: roleErr } = await supabase
           .from("user_roles")
           .update({ role: editRole })
-          .eq("user_id", editingUser.id);
+          .eq("user_id", targetUserId);
         if (roleErr) throw roleErr;
       } else {
         const { error: roleErr } = await supabase
           .from("user_roles")
-          .insert({ user_id: editingUser.id, role: editRole });
+          .insert({ user_id: targetUserId, role: editRole });
         if (roleErr) throw roleErr;
       }
 
       // 2. Mettre à jour le nom complet, le nom d'utilisateur et le téléphone
-      const cleanEditUser = editUsername.trim().toLowerCase();
-      const combinedPhoneVal = editPhone.trim() ? `${cleanEditUser}|${editPhone.trim()}` : cleanEditUser;
-
       const { error: profileErr } = await supabase
         .from("profiles")
         .update({
           full_name: editFullName.trim(),
           phone: combinedPhoneVal,
         })
-        .eq("id", editingUser.id);
+        .eq("id", targetUserId);
       if (profileErr) throw profileErr;
 
-      toast.success("Modifications enregistrées.");
+      toast.success(
+        newPwd
+          ? `Profil et nouveau mot de passe enregistrés pour "${editFullName.trim()}" !`
+          : "Modifications enregistrées.",
+      );
       setEditingUser(null);
+      setEditPassword("");
       fetchUsers();
     } catch (err: any) {
       toast.error("Erreur de modification: " + err.message);
@@ -404,16 +492,27 @@ export default function ManageUsers() {
 
               <div className="space-y-1">
                 <Label htmlFor="password">Mot de passe</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Min. 6 caractères"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                  disabled={creating}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showCreatePwd ? "text" : "password"}
+                    placeholder="Min. 6 caractères"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={6}
+                    disabled={creating}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCreatePwd((v) => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    title={showCreatePwd ? "Masquer" : "Afficher"}
+                  >
+                    {showCreatePwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -545,6 +644,35 @@ export default function ManageUsers() {
                   onChange={(e) => setEditFullName(e.target.value)}
                   required
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="editPassword" className="flex items-center gap-1.5">
+                  <KeyRound className="h-3.5 w-3.5 text-primary" />
+                  Nouveau mot de passe (optionnel)
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="editPassword"
+                    type={showEditPwd ? "text" : "password"}
+                    placeholder="Laisser vide pour garder le mot de passe actuel"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    minLength={6}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPwd((v) => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    title={showEditPwd ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                  >
+                    {showEditPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  Si vous saisissez un nouveau mot de passe (min. 6 caractères), il remplacera l'ancien pour ce compte.
+                </p>
               </div>
 
               <div className="space-y-1.5">

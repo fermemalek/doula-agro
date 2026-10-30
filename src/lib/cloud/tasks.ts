@@ -129,17 +129,18 @@ export function useTaskActions() {
   return { create, markDone, reject, remove, update };
 }
 
-/** Liste des exécutants disponibles pour l'assignation. */
+/** Liste des exécutants disponibles pour l'assignation (basée uniquement sur les profils existants). */
 export function useExecutants() {
   return useQuery({
     queryKey: ["executants"],
     queryFn: async () => {
-      const { data: roles, error } = await supabase
-        .from("user_roles")
-        .select("user_id, role");
-      if (error) throw error;
-      const ids = (roles ?? []).map((r) => r.user_id);
-      if (ids.length === 0) {
+      const { data: profiles, error: pErr } = await supabase
+        .from("profiles")
+        .select("id, full_name, phone")
+        .order("created_at", { ascending: false });
+      if (pErr) throw pErr;
+
+      if (!profiles || profiles.length === 0) {
         return [] as {
           id: string;
           name: string;
@@ -148,12 +149,20 @@ export function useExecutants() {
           email: string | null;
         }[];
       }
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("id, full_name, phone")
-        .in("id", ids);
-      const map = new Map(
-        (profiles ?? []).map((p) => {
+
+      const { data: roles, error: rErr } = await supabase
+        .from("user_roles")
+        .select("user_id, role");
+      if (rErr) throw rErr;
+
+      const roleMap = new Map<string, string>();
+      (roles ?? []).forEach((r) => {
+        roleMap.set(r.user_id, r.role as string);
+      });
+
+      return profiles
+        .filter((p) => Boolean(p.full_name && p.full_name.trim()))
+        .map((p) => {
           const raw = (p.phone || "").trim();
           let email: string | null = null;
           let phone: string | null = null;
@@ -166,19 +175,14 @@ export function useExecutants() {
           } else if (raw) {
             phone = raw;
           }
-          return [p.id, { name: p.full_name, phone, email }];
-        }),
-      );
-      return (roles ?? []).map((r) => {
-        const info = map.get(r.user_id);
-        return {
-          id: r.user_id,
-          name: info?.name || "Sans nom",
-          role: r.role as string,
-          phone: info?.phone || null,
-          email: info?.email || null,
-        };
-      });
+          return {
+            id: p.id,
+            name: p.full_name!.trim(),
+            role: roleMap.get(p.id) || "executant",
+            phone,
+            email,
+          };
+        });
     },
   });
 }
