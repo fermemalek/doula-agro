@@ -1,4 +1,5 @@
-import { Outlet, useNavigate } from "@/lib/router-compat";
+import { Outlet } from "@/lib/router-compat";
+import { Navigate } from "react-router-dom";
 import { useEffect } from "react";
 import { BottomTabs } from "@/components/home/BottomTabs";
 import { useRole } from "@/lib/role";
@@ -8,7 +9,6 @@ import { PendingBanner } from "@/components/offline/PendingBanner";
 
 function TabsLayout() {
   const { session, loading } = useRole();
-  const navigate = useNavigate();
   const cfg = useConfig();
   const isAr = cfg.lang === "ar";
 
@@ -17,14 +17,6 @@ function TabsLayout() {
     document.documentElement.lang = isAr ? "ar" : "fr";
   }, [isAr]);
 
-  useEffect(() => {
-    if (loading) return;
-    if (!session) {
-      navigate({ to: "/login" });
-      return;
-    }
-  }, [session, loading, navigate]);
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -32,7 +24,9 @@ function TabsLayout() {
       </div>
     );
   }
-  if (!session) return null;
+  if (!session) {
+    return <Navigate to="/login" replace />;
+  }
 
   const bgStyle: React.CSSProperties = cfg.bgImage
     ? { backgroundImage: `url(${cfg.bgImage})`, backgroundSize: "cover", backgroundPosition: "center", backgroundAttachment: "fixed" }

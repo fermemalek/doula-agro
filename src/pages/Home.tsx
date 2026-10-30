@@ -69,10 +69,10 @@ function HomePage() {
   const tasksToDisplay = myTasks.length > 0 ? myTasks : adminAssignedTasks;
 
   // Notification sonore + bandeau toast à l'ouverture si l'admin a des tâches à réaliser
+  const tasksSig = tasksToDisplay.map((x) => x.id).sort().join(",");
   useEffect(() => {
-    if (role !== "admin" || tasksToDisplay.length === 0) return;
-    const sig = tasksToDisplay.map((x) => x.id).sort().join(",");
-    const key = `doula-admin-task-notif:${sig}`;
+    if (role !== "admin" || !tasksSig) return;
+    const key = `doula-admin-task-notif:${tasksSig}`;
     if (typeof window !== "undefined" && sessionStorage.getItem(key)) return;
     if (typeof window !== "undefined") sessionStorage.setItem(key, "1");
     playAdminAlertChime();
@@ -85,7 +85,8 @@ function HomePage() {
         duration: 6000,
       },
     );
-  }, [role, tasksToDisplay, matchedMemberName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, tasksSig, matchedMemberName]);
 
   if (role === "executant") return <TodayView />;
   if (role === "ingenieur") return <IngenieurHome />;
