@@ -71,20 +71,33 @@ function TachePage() {
     [executants],
   );
 
-  const tasks = useMemo(() => {
-    const seen = new Set<string>();
-    const list: CloudTask[] = [];
+  // Regroupe les lignes d'une même tâche assignée à plusieurs comptes en UNE seule carte
+  const { tasks, siblingsOf } = useMemo(() => {
+    const groups = new Map<string, CloudTask[]>();
     for (const t of rawTasks) {
       if (executants.length > 0 && t.assigned_to && !validExecIds.has(t.assigned_to)) {
         continue;
       }
-      const key = `${t.title.trim().toLowerCase()}|${(t.due_date || "").slice(0, 16)}|${t.parcel_id || ""}|${t.assigned_to || ""}|${t.status}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      list.push(t);
+      const key = `${t.title.trim().toLowerCase()}|${(t.due_date || "").slice(0, 16)}|${t.parcel_id || ""}|${t.kind}|${t.status}|${t.created_at.slice(0, 16)}`;
+      const arr = groups.get(key) ?? [];
+      arr.push(t);
+      groups.set(key, arr);
     }
-    return list;
+    const list: CloudTask[] = [];
+    const sib = new Map<string, CloudTask[]>();
+    for (const arr of groups.values()) {
+      // Représentant : de préférence la tâche qui contient des exécutants externes
+      const rep =
+        arr.find((x) => unpackTaskDescription(x.description).externalWorkers.length > 0) ?? arr[0];
+      list.push(rep);
+      sib.set(rep.id, arr);
+    }
+    return { tasks: list, siblingsOf: sib };
   }, [rawTasks, executants.length, validExecIds]);
+
+  const groupOf = (t: CloudTask): CloudTask[] => siblingsOf.get(t.id) ?? [t];
+  const groupAssigneeIds = (t: CloudTask) =>
+    groupOf(t).map((x) => x.assigned_to).filter((x): x is string => Boolean(x));
 
   // Nettoyer automatiquement en arrière-plan les doublons orphelins (👤 —)
   useEffect(() => {
@@ -232,19 +245,22 @@ function TachePage() {
       const newDueIso = editDueDate
         ? new Date(`${editDueDate}T${editDueTime || "12:00"}:00`).toISOString()
         : null;
-      await update.mutateAsync({
-        id: selectedTask.id,
-        patch: {
-          title: editTitle.trim(),
-          description: packedDesc,
-          due_date: newDueIso,
-          priority: editPriority,
-          kind: editKind,
-          status: editStatus,
-          parcel_id: editParcelId || null,
-          assigned_to: editAssignedTo || null,
-        },
-      });
+      for (const sib of groupOf(selectedTask)) {
+        const isMain = sib.id === selectedTask.id;
+        await update.mutateAsync({
+          id: sib.id,
+          patch: {
+            title: editTitle.trim(),
+            description: packedDesc,
+            due_date: newDueIso,
+            priority: editPriority,
+            kind: editKind,
+            status: editStatus,
+            parcel_id: editParcelId || null,
+            ...(isMain ? { assigned_to: editAssignedTo || null } : {}),
+          },
+        });
+      }
       toast.success("Tâche mise à jour avec succès !");
       setSelectedTask(null);
     } catch (e: any) {
@@ -1224,13 +1240,15 @@ function TachePage() {
                       )}
                       <span className="bg-muted px-1.5 py-0.5 rounded text-[10px] font-mono">{KIND_LABEL[t.kind]}</span>
                       {parcel && <span className="text-foreground/80">🌳 {parcel.name}</span>}
-                      {t.assigned_to && <span>👤 {exName(t.assigned_to)}</span>}
+                      {groupAssigneeIds(t).length > 0 && (
+                        <span>👤 {groupAssigneeIds(t).map((id) => exName(id)).join(", ")}</span>
+                      )}
                       {unpacked.externalWorkers.length > 0 && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
                           👷 {unpacked.externalWorkers.join(", ")}
                         </span>
                       )}
-                      {!t.assigned_to && unpacked.externalWorkers.length === 0 && (
+                      {groupAssigneeIds(t).length === 0 && unpacked.externalWorkers.length === 0 && (
                         <span>👤 —</span>
                       )}
                       <span className={`rounded px-1.5 py-0.2 text-[10px] font-bold ${
@@ -1278,7 +1296,7 @@ function TachePage() {
                         )}
                         {!isDone && t.status !== "annule" && (
                           <button
-                            onClick={() => markDone.mutate(t.id)}
+                            onClick={() => groupOf(t).forEach((x) => markDone.mutate(x.id))}
                             title="Marquer fait"
                             className="rounded p-1 text-emerald-700 hover:bg-emerald-500/10"
                           >
@@ -1286,7 +1304,7 @@ function TachePage() {
                           </button>
                         )}
                         <button
-                          onClick={() => remove.mutate(t.id)}
+                          onClick={() => groupOf(t).forEach((x) => remove.mutate(x.id))}
                           className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                           title="Supprimer"
                         >
@@ -1539,12 +1557,9 @@ function TachePage() {
                   className="border-emerald-500/40 text-emerald-700 hover:bg-emerald-500/10"
                   onClick={() => {
                     if (!selectedTask) return;
-                    markDone.mutate(selectedTask.id, {
-                      onSuccess: () => {
-                        toast.success("Tâche marquée comme réalisée !");
-                        setSelectedTask(null);
-                      },
-                    });
+                    groupOf(selectedTask).forEach((x) => markDone.mutate(x.id));
+                    toast.success("Tâche marquée comme réalisée !");
+                    setSelectedTask(null);
                   }}
                 >
                   <Check className="h-4 w-4 mr-1" /> Marquer Fait
@@ -1556,12 +1571,9 @@ function TachePage() {
                   variant="destructive"
                   onClick={() => {
                     if (!selectedTask) return;
-                    remove.mutate(selectedTask.id, {
-                      onSuccess: () => {
-                        toast.success("Tâche supprimée");
-                        setSelectedTask(null);
-                      },
-                    });
+                    groupOf(selectedTask).forEach((x) => remove.mutate(x.id));
+                    toast.success("Tâche supprimée");
+                    setSelectedTask(null);
                   }}
                 >
                   <Trash2 className="h-4 w-4 mr-1" /> Supprimer
