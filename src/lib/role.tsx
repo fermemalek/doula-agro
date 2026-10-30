@@ -49,35 +49,26 @@ function clearCachedRoles() {
   } catch { }
 }
 
-const MOCK_SESSION: Session = {
-  access_token: "mock-token",
-  token_type: "bearer",
-  expires_in: 3600,
-  refresh_token: "mock-refresh",
-  user: {
-    id: "00000000-0000-0000-0000-000000000000",
-    app_metadata: {},
-    user_metadata: { full_name: "Administrateur" },
-    aud: "authenticated",
-    created_at: new Date().toISOString(),
-    email: "agri@farmfriendy.local",
-    role: "authenticated",
-  } as any,
-  expires_at: Math.floor(Date.now() / 1000) + 3600,
-};
-
 export function RoleProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(MOCK_SESSION);
-  const [role, setRole] = useState<Role | null>("admin");
+  const [session, setSession] = useState<Session | null>(null);
+  const [role, setRole] = useState<Role | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s ?? MOCK_SESSION);
-      if (!s) {
-        setRole("admin");
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === "SIGNED_IN" && s && typeof window !== "undefined") {
+        sessionStorage.setItem("doula-session-active", "1");
+      }
+      const isTabActive =
+        typeof window !== "undefined" &&
+        sessionStorage.getItem("doula-session-active") === "1";
+
+      if (!s || !isTabActive) {
+        setSession(null);
+        setRole(null);
         setLoading(false);
       } else {
+        setSession(s);
         const cached = readCachedRole(s.user.id);
         if (cached) {
           setRole(cached);
@@ -87,8 +78,25 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session ?? MOCK_SESSION);
+    supabase.auth.getSession().then(async ({ data }) => {
+      const isTabActive =
+        typeof window !== "undefined" &&
+        sessionStorage.getItem("doula-session-active") === "1";
+
+      if (!isTabActive) {
+        // Toujours diriger vers la page de connexion par compte à l'ouverture d'une nouvelle session
+        if (data.session) {
+          try {
+            await supabase.auth.signOut();
+          } catch {}
+        }
+        setSession(null);
+        setRole(null);
+        setLoading(false);
+        return;
+      }
+
+      setSession(data.session ?? null);
       if (data.session) {
         const cached = readCachedRole(data.session.user.id);
         if (cached) {
@@ -97,7 +105,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         }
         fetchRole(data.session.user.id);
       } else {
-        setRole("admin");
+        setRole(null);
         setLoading(false);
       }
     });
@@ -133,12 +141,15 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   }
 
   const signOut = async () => {
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("doula-session-active");
+    }
     try {
       await supabase.auth.signOut();
     } catch { }
     clearCachedRoles();
-    setSession(MOCK_SESSION);
-    setRole("admin");
+    setSession(null);
+    setRole(null);
   };
 
   return (

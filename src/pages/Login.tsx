@@ -44,6 +44,9 @@ function LoginPage() {
     setBusy(true);
     setErrorMsg(null);
     try {
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("doula-session-active", "1");
+      }
       const cleanInput = email.trim().toLowerCase();
       const resolvedEmail = cleanInput.includes("@")
         ? cleanInput
@@ -123,10 +126,11 @@ function LoginPage() {
           throw lastError;
         }
       }
-      const cfgRaw = typeof window !== "undefined" ? localStorage.getItem("doula-config") : null;
-      const configured = cfgRaw ? !!JSON.parse(cfgRaw)?.configured : false;
-      navigate({ to: configured ? "/" : "/configuration" });
+      navigate({ to: "/" });
     } catch (err: any) {
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("doula-session-active");
+      }
       const msg = translateAuthError(err?.message);
       setErrorMsg(msg);
       toast.error(msg);
@@ -215,10 +219,6 @@ function LoginPage() {
           >
             {mode === "signin" ? "Créer un compte" : "Se connecter"}
           </button>
-        </p>
-
-        <p className="text-center text-xs text-muted-foreground">
-          <Link to="/" className="hover:underline">Retour à l'accueil</Link>
         </p>
       </Card>
     </main>

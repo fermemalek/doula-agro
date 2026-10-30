@@ -20,13 +20,10 @@ function TabsLayout() {
   useEffect(() => {
     if (loading) return;
     if (!session) {
-      // Stay on the app when offline so the user can keep working with cached data.
-      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
       navigate({ to: "/login" });
       return;
     }
-    if (!cfg.configured) navigate({ to: "/configuration" });
-  }, [session, loading, cfg.configured, navigate]);
+  }, [session, loading, navigate]);
 
   if (loading) {
     return (
