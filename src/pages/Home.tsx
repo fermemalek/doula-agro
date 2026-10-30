@@ -3,6 +3,7 @@ import { WeatherBlock } from "@/components/home/WeatherBlock";
 import { NextIrrigationBlock } from "@/components/home/NextIrrigationBlock";
 import { ParcelWheel } from "@/components/home/ParcelWheel";
 import { ExecutantWorkload } from "@/components/home/ExecutantWorkload";
+import { PendingPrograms } from "@/components/home/PendingPrograms";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { TodayView } from "@/components/executant/TodayView";
 import { IngenieurHome } from "@/components/ingenieur/IngenieurHome";
@@ -226,6 +227,7 @@ function HomePage() {
         </section>
       )}
       <ExecutantWorkload />
+      <PendingPrograms />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <WeatherBlock />
         <NextIrrigationBlock />

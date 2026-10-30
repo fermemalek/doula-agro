@@ -262,7 +262,7 @@ export function TodayView() {
   
   const { resolve, create: createCloudAlert } = useAlertActions();
   const parcels = useParcels();
-  const { session, userId } = useRole();
+  const { session, userId, isAdmin } = useRole();
   const today = todayKey();
 
   const activeReminders = reminders.filter(isDueToday);
@@ -505,6 +505,7 @@ export function TodayView() {
             </p>
           ) : (
             <ul className="space-y-2">
+              {isAdmin && (
               <li className="flex justify-end">
                 <button
                   onClick={deleteAllPrograms}
@@ -513,6 +514,7 @@ export function TodayView() {
                   <Trash2 className="h-3.5 w-3.5" /> Tout effacer ({programsCount})
                 </button>
               </li>
+              )}
               {[...overduePrograms, ...upcomingPrograms].map((p) => {
                 const meta = PROGRAM_META[p.kind] || {
                   label: p.kind || "Programme",
@@ -544,6 +546,7 @@ export function TodayView() {
                         <span>· {parcelName(p.parcel_id) || p.parcel_id}</span>
                       </div>
                     </div>
+                    {isAdmin && (
                     <button
                       onClick={() => {
                         if (window.confirm("Supprimer ce programme ?")) deleteProgram(p);
@@ -553,6 +556,7 @@ export function TodayView() {
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
+                    )}
                     {p.kind === "fertilisation" ? (
                       <button
                         onClick={() => setActiveFertProg(p)}
