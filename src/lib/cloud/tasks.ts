@@ -297,7 +297,8 @@ export function packTaskDescription(
     new Set(externalWorkers.map((w) => w.trim()).filter(Boolean)),
   );
   const workersTag = workers.length > 0 ? `[Exécutants: ${workers.join(", ")}] ` : "";
-  const combined = `${workersTag}${reminderPrefix}${cleanDescription.trim()}`.trim();
+  const prefix = reminderPrefix.trim() ? `${reminderPrefix.trim()} ` : "";
+  const combined = `${workersTag}${prefix}${cleanDescription.trim()}`.trim();
   return combined || null;
 }
 
@@ -307,8 +308,24 @@ export function packTaskDescription(
 export function unpackTaskDescription(rawDescription: string | null | undefined): {
   externalWorkers: string[];
   cleanDescription: string;
+  reminderPrefix: string;
 } {
-  const raw = (rawDescription || "").trim();
+  const full = (rawDescription || "").trim();
+  const workersMatch = full.match(/^(\[Ex[^\]:]*cutants:\s*[^\]]+\])\s*(.*)$/s);
+  const workersPart = workersMatch ? workersMatch[1] : "";
+  const rest = workersMatch ? workersMatch[2] : full;
+  const remMatch = rest.match(/^(\[Rappel:[^\]]*\])\s*(.*)$/s);
+  const reminderPrefix = remMatch ? remMatch[1] : "";
+  const raw = (workersPart ? workersPart + " " : "") + (remMatch ? remMatch[2] : rest);
+  const res = unpackWorkers(raw.trim());
+  return { ...res, reminderPrefix };
+}
+
+function unpackWorkers(rawDescription: string): {
+  externalWorkers: string[];
+  cleanDescription: string;
+} {
+  const raw = rawDescription.trim();
   const match = raw.match(/^\[Exécutants:\s*([^\]]+)\]\s*(.*)$/s);
   if (!match) {
     return { externalWorkers: [], cleanDescription: raw };
