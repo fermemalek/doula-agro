@@ -15,7 +15,17 @@ import {
   SprayCan,
   Bug,
   Wrench,
+  Trash2,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { useModuleActions } from "@/lib/modules-store";
 import { toast } from "sonner";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { WeatherBlock } from "@/components/home/WeatherBlock";
@@ -27,7 +37,7 @@ import {
   type Reminder,
 } from "@/lib/reminders-store";
 import { useTasks, useTaskActions, unpackTaskDescription, type CloudTask, type TaskPriority } from "@/lib/cloud/tasks";
-import { usePrograms, type ProgramKind } from "@/lib/cloud/programs";
+import { usePrograms, useProgramActions, type ProgramKind } from "@/lib/cloud/programs";
 import { useAlerts, useAlertActions, type CloudAlert } from "@/lib/cloud/alerts";
 import { useParcels } from "@/lib/parcel-store";
 import { useRole } from "@/lib/role";
@@ -81,12 +91,14 @@ function TaskCard({
   onComplete,
   tone = "default",
   loading,
+  onOpen,
 }: {
   t: CloudTask;
   parcelName?: string;
   onComplete: (id: string) => void;
   tone?: "default" | "danger" | "today";
   loading?: boolean;
+  onOpen?: (t: CloudTask) => void;
 }) {
   const unpacked = unpackTaskDescription(t.description);
   const ring =
@@ -96,7 +108,10 @@ function TaskCard({
         ? "border-primary/40 bg-primary/5"
         : "bg-card";
   return (
-    <li className={`flex items-start gap-3 rounded-2xl border p-3 shadow-sm ${ring}`}>
+    <li
+      onClick={() => onOpen?.(t)}
+      className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 shadow-sm transition hover:border-primary/50 ${ring}`}
+    >
       <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
         <ListTodo className="h-5 w-5" />
       </span>
@@ -131,7 +146,10 @@ function TaskCard({
         )}
       </div>
       <button
-        onClick={() => onComplete(t.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onComplete(t.id);
+        }}
         disabled={loading}
         className="h-10 shrink-0 rounded-xl bg-primary px-3 text-xs font-bold uppercase text-primary-foreground active:scale-95 disabled:opacity-50"
       >
@@ -307,6 +325,21 @@ export function TodayView() {
   const [activeFertProg, setActiveFertProg] = useState<any | null>(null);
   const [openPanel, setOpenPanel] = useState<null | "alerts" | "programs">(null);
   const [alertDetail, setAlertDetail] = useState<CloudAlert | null>(null);
+  const [taskDetail, setTaskDetail] = useState<CloudTask | null>(null);
+  const { remove: removeCloudProgram } = useProgramActions();
+  const { remove: removeLocalRecord } = useModuleActions();
+
+  const deleteProgram = (p: any) => {
+    removeLocalRecord(p.parcel_id || p.payload?.parcelId || "", p.kind, p.id);
+    removeCloudProgram.mutate(p.id);
+  };
+  const deleteAllPrograms = () => {
+    const all = [...overduePrograms, ...upcomingPrograms];
+    if (all.length === 0) return;
+    if (!window.confirm(`Supprimer définitivement les ${all.length} programme(s) planifié(s) ?`)) return;
+    all.forEach(deleteProgram);
+    toast.success(`${all.length} programme(s) supprimé(s)`);
+  };
 
   // Notification automatique admin pour les tâches qui basculent en retard (1x par tâche)
   useEffect(() => {
@@ -472,6 +505,14 @@ export function TodayView() {
             </p>
           ) : (
             <ul className="space-y-2">
+              <li className="flex justify-end">
+                <button
+                  onClick={deleteAllPrograms}
+                  className="inline-flex items-center gap-1 rounded-xl border border-destructive/40 px-3 py-1.5 text-xs font-bold text-destructive hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Tout effacer ({programsCount})
+                </button>
+              </li>
               {[...overduePrograms, ...upcomingPrograms].map((p) => {
                 const meta = PROGRAM_META[p.kind] || {
                   label: p.kind || "Programme",
@@ -503,6 +544,15 @@ export function TodayView() {
                         <span>· {parcelName(p.parcel_id) || p.parcel_id}</span>
                       </div>
                     </div>
+                    <button
+                      onClick={() => {
+                        if (window.confirm("Supprimer ce programme ?")) deleteProgram(p);
+                      }}
+                      title="Supprimer ce programme"
+                      className="h-10 shrink-0 rounded-xl border border-destructive/40 px-2.5 text-destructive hover:bg-destructive/10 active:scale-95"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                     {p.kind === "fertilisation" ? (
                       <button
                         onClick={() => setActiveFertProg(p)}
@@ -588,6 +638,7 @@ export function TodayView() {
                 t={t}
                 parcelName={parcelName(t.parcel_id)}
                 onComplete={onComplete}
+                onOpen={setTaskDetail}
                 tone="danger"
                 loading={markDone.isPending}
               />
@@ -612,6 +663,7 @@ export function TodayView() {
                 t={t}
                 parcelName={parcelName(t.parcel_id)}
                 onComplete={onComplete}
+                onOpen={setTaskDetail}
                 tone="today"
                 loading={markDone.isPending}
               />
@@ -632,6 +684,7 @@ export function TodayView() {
                 t={t}
                 parcelName={parcelName(t.parcel_id)}
                 onComplete={onComplete}
+                onOpen={setTaskDetail}
                 loading={markDone.isPending}
               />
             ))}
@@ -651,6 +704,7 @@ export function TodayView() {
                 t={t}
                 parcelName={parcelName(t.parcel_id)}
                 onComplete={onComplete}
+                onOpen={setTaskDetail}
                 loading={markDone.isPending}
               />
             ))}
@@ -658,6 +712,62 @@ export function TodayView() {
         </section>
       )}
 
+
+      <Dialog open={Boolean(taskDetail)} onOpenChange={(o) => !o && setTaskDetail(null)}>
+        <DialogContent className="sm:max-w-md">
+          {taskDetail && (() => {
+            const u = unpackTaskDescription(taskDetail.description);
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <ListTodo className="h-5 w-5 text-primary" /> {taskDetail.title}
+                  </DialogTitle>
+                  <DialogDescription>Détails de la tâche assignée</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2 text-sm">
+                  <p><span className="font-semibold">Priorité :</span> {taskDetail.priority}</p>
+                  <p><span className="font-semibold">Nature :</span> {taskDetail.kind}</p>
+                  {taskDetail.due_date && (
+                    <p><span className="font-semibold">Échéance :</span> {fmtDate(taskDetail.due_date)}</p>
+                  )}
+                  {parcelName(taskDetail.parcel_id) && (
+                    <p><span className="font-semibold">Parcelle :</span> {parcelName(taskDetail.parcel_id)}</p>
+                  )}
+                  {u.reminderPrefix && <p className="text-muted-foreground">{u.reminderPrefix}</p>}
+                  {u.cleanDescription && (
+                    <p className="whitespace-pre-wrap rounded-lg bg-muted/50 p-2">{u.cleanDescription}</p>
+                  )}
+                  {u.externalWorkers.length > 0 && (
+                    <p><span className="font-semibold">Autres exécutants :</span> 👷 {u.externalWorkers.join(", ")}</p>
+                  )}
+                  {taskDetail.reject_reason && (
+                    <p className="text-destructive">Renvoyé : {taskDetail.reject_reason}</p>
+                  )}
+                </div>
+                <DialogFooter className="gap-2">
+                  <button
+                    onClick={() => setTaskDetail(null)}
+                    className="h-10 rounded-xl border px-4 text-sm font-semibold"
+                  >
+                    Fermer
+                  </button>
+                  <button
+                    onClick={() => {
+                      const id = taskDetail.id;
+                      setTaskDetail(null);
+                      onComplete(id);
+                    }}
+                    className="h-10 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground"
+                  >
+                    Fait
+                  </button>
+                </DialogFooter>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       <TaskExecutionModal target={execTarget} onOpenChange={(o) => !o && setExecTarget(null)} />
       <AlertDetailDialog alert={alertDetail} onOpenChange={(o) => !o && setAlertDetail(null)} />
