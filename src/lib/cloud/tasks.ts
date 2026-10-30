@@ -139,12 +139,36 @@ export function useExecutants() {
         .select("user_id, role");
       if (error) throw error;
       const ids = (roles ?? []).map((r) => r.user_id);
-      if (ids.length === 0) return [] as { id: string; name: string; role: string; phone: string | null }[];
+      if (ids.length === 0) {
+        return [] as {
+          id: string;
+          name: string;
+          role: string;
+          phone: string | null;
+          email: string | null;
+        }[];
+      }
       const { data: profiles } = await supabase
         .from("profiles")
         .select("id, full_name, phone")
         .in("id", ids);
-      const map = new Map((profiles ?? []).map((p) => [p.id, { name: p.full_name, phone: p.phone }]));
+      const map = new Map(
+        (profiles ?? []).map((p) => {
+          const raw = (p.phone || "").trim();
+          let email: string | null = null;
+          let phone: string | null = null;
+          if (raw.includes("|")) {
+            const [first, second] = raw.split("|");
+            email = first?.trim() || null;
+            phone = second?.trim() || null;
+          } else if (raw.includes("@")) {
+            email = raw;
+          } else if (raw) {
+            phone = raw;
+          }
+          return [p.id, { name: p.full_name, phone, email }];
+        }),
+      );
       return (roles ?? []).map((r) => {
         const info = map.get(r.user_id);
         return {
@@ -152,6 +176,7 @@ export function useExecutants() {
           name: info?.name || "Sans nom",
           role: r.role as string,
           phone: info?.phone || null,
+          email: info?.email || null,
         };
       });
     },

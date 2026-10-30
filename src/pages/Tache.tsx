@@ -245,36 +245,64 @@ function TachePage() {
       toast.error("Veuillez activer au moins un canal de notification (WhatsApp ou E-mail) pour tester.");
       return;
     }
+
+    if (whatsappEnabled && !whatsappNumber.trim()) {
+      toast.error("Veuillez saisir un numéro de téléphone WhatsApp valide.");
+      return;
+    }
+
+    if (emailEnabled && !emailAddress.trim()) {
+      toast.error("Veuillez saisir une adresse e-mail valide.");
+      return;
+    }
+
     setSendingTest(true);
     playNotificationSound('info');
-    setTimeout(() => {
-      setSendingTest(false);
-      if (whatsappEnabled) {
-        if (!whatsappNumber.trim()) {
-          toast.error("Veuillez saisir un numéro de téléphone WhatsApp valide.");
-          return;
-        }
-        const cleanPhone = whatsappNumber.replace(/[\s\-\+]/g, '');
-        const finalPhone = cleanPhone.length <= 10 && cleanPhone.startsWith('0') 
-          ? `213${cleanPhone.slice(1)}` 
-          : cleanPhone;
-        const text = encodeURIComponent("Test de rappel Doula Agro : Votre système de notifications et d'alarmes fonctionne avec succès ! 🌱🔊");
-        const waUrl = `whatsapp://send?phone=${finalPhone}&text=${text}`;
-        window.location.href = waUrl;
-        toast.success(`Application WhatsApp lancée vers le ${whatsappNumber} !`);
+
+    if (whatsappEnabled) {
+      // Au cas où la chaîne contient encore un "|" (ex: email|tel), ne garder que la partie téléphone
+      const rawPhonePart = whatsappNumber.includes("|")
+        ? whatsappNumber.split("|")[1] || whatsappNumber
+        : whatsappNumber;
+      const digitsOnly = rawPhonePart.replace(/\D/g, "");
+      const finalPhone =
+        digitsOnly.length === 10 && digitsOnly.startsWith("0")
+          ? `213${digitsOnly.slice(1)}`
+          : digitsOnly;
+
+      if (!finalPhone) {
+        toast.error("Numéro de téléphone WhatsApp invalide.");
+        setSendingTest(false);
+        return;
       }
-      if (emailEnabled) {
-        if (!emailAddress.trim()) {
-          toast.error("Veuillez saisir une adresse e-mail valide.");
-          return;
-        }
-        const subject = encodeURIComponent("Test de rappel - Doula Agro");
-        const body = encodeURIComponent("Bonjour,\n\nCeci est un test de liaison de votre système de notifications et de rappels de la ferme Doula Agro.\n\nCordialement,\nL'équipe Doula Agro 🌱");
-        const mailUrl = `mailto:${emailAddress}?subject=${subject}&body=${body}`;
-        window.location.href = mailUrl;
-        toast.success(`Ouverture de votre messagerie pour envoyer un email à ${emailAddress} !`);
+
+      const text = encodeURIComponent(
+        "Test de rappel Doula Agro : Votre système de notifications et d'alarmes fonctionne avec succès ! 🌱🔊",
+      );
+      const waUrl = `https://wa.me/${finalPhone}?text=${text}`;
+      window.open(waUrl, "_blank", "noopener,noreferrer");
+      toast.success(`WhatsApp ouvert vers le ${rawPhonePart.trim()} !`);
+    }
+
+    if (emailEnabled) {
+      const cleanEmail = (
+        emailAddress.includes("|") ? emailAddress.split("|")[0] : emailAddress
+      ).trim();
+      const subject = encodeURIComponent("Test de rappel - Doula Agro");
+      const body = encodeURIComponent(
+        "Bonjour,\n\nCeci est un test de liaison de votre système de notifications et de rappels de la ferme Doula Agro.\n\nCordialement,\nL'équipe Doula Agro 🌱",
+      );
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.location.href = `mailto:${cleanEmail}?subject=${subject}&body=${body}`;
+      } else {
+        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(cleanEmail)}&su=${subject}&body=${body}`;
+        window.open(gmailUrl, "_blank", "noopener,noreferrer");
       }
-    }, 1200);
+      toast.success(`Messagerie e-mail ouverte pour ${cleanEmail} !`);
+    }
+
+    setTimeout(() => setSendingTest(false), 600);
   };
 
   return (
@@ -508,14 +536,20 @@ function TachePage() {
                     if (exec.phone) {
                       setWhatsappNumber(exec.phone);
                       setWhatsappEnabled(true);
-                      toast.success(`Téléphone de ${exec.name} chargé (${exec.phone}) !`);
+                      toast.success(`Numéro WhatsApp de ${exec.name} chargé (${exec.phone}) !`);
                     } else {
                       setWhatsappNumber("");
+                      setWhatsappEnabled(false);
                       toast.info(`${exec.name} n'a pas de numéro de téléphone configuré.`);
                     }
-                    const mockEmail = exec.name.toLowerCase().replace(/\s+/g, '') + "@gmail.com";
-                    setEmailAddress(mockEmail);
-                    setEmailEnabled(true);
+
+                    if (exec.email) {
+                      setEmailAddress(exec.email);
+                      setEmailEnabled(true);
+                    } else {
+                      setEmailAddress("");
+                      setEmailEnabled(false);
+                    }
                   }
                 }}
                 className="w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
@@ -523,7 +557,9 @@ function TachePage() {
                 <option value="">— Choisir un membre de l'équipe —</option>
                 {executants.map((ex) => (
                   <option key={ex.id} value={ex.id}>
-                    {ex.name} ({ex.role}) {ex.phone ? `· ${ex.phone}` : "· (Sans téléphone)"}
+                    {ex.name} ({ex.role})
+                    {ex.phone ? ` · 📞 ${ex.phone}` : " · (Sans téléphone)"}
+                    {ex.email ? ` · ✉️ ${ex.email}` : ""}
                   </option>
                 ))}
               </select>
