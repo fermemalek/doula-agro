@@ -99,6 +99,19 @@ function TachePage() {
   const groupAssigneeIds = (t: CloudTask) =>
     groupOf(t).map((x) => x.assigned_to).filter((x): x is string => Boolean(x));
 
+  // Supprime la tâche uniquement pour le compte connecté ; si d'autres comptes
+  // y sont encore assignés, ils la conservent. Sinon la tâche est supprimée.
+  function deleteTaskForMe(t: CloudTask): string {
+    const group = groupOf(t);
+    const mine = group.filter((x) => x.assigned_to && matchedIds.has(x.assigned_to));
+    if (mine.length > 0 && mine.length < group.length) {
+      mine.forEach((x) => remove.mutate(x.id));
+      return "Tâche retirée de votre compte (conservée pour les autres)";
+    }
+    group.forEach((x) => remove.mutate(x.id));
+    return "Tâche supprimée";
+  }
+
   // Nettoyer automatiquement en arrière-plan les doublons orphelins (👤 —)
   useEffect(() => {
     if (!isAdmin || executants.length === 0) return;
@@ -1304,7 +1317,7 @@ function TachePage() {
                           </button>
                         )}
                         <button
-                          onClick={() => groupOf(t).forEach((x) => remove.mutate(x.id))}
+                          onClick={() => toast.success(deleteTaskForMe(t))}
                           className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                           title="Supprimer"
                         >
@@ -1571,8 +1584,7 @@ function TachePage() {
                   variant="destructive"
                   onClick={() => {
                     if (!selectedTask) return;
-                    groupOf(selectedTask).forEach((x) => remove.mutate(x.id));
-                    toast.success("Tâche supprimée");
+                    toast.success(deleteTaskForMe(selectedTask));
                     setSelectedTask(null);
                   }}
                 >
