@@ -168,13 +168,7 @@ export function RecommendationForm({
   const [createdAtDate, setCreatedAtDate] = useState(new Date().toISOString().slice(0, 10));
   const [appDate, setAppDate] = useState("");
 
-  useEffect(() => {
-    if (appDate) {
-      setFertPrograms(prev => prev.map((p, i) => i === 0 && !p.date ? { ...p, date: appDate } : p));
-      setPulvPassages(prev => prev.map((p, i) => i === 0 && !p.date ? { ...p, date: appDate } : p));
-      setPhyPassages(prev => prev.map((p, i) => i === 0 && !p.date ? { ...p, date: appDate } : p));
-    }
-  }, [appDate]);
+  // Une seule date globale d'application (appDate) pour toute la recommandation
 
   // Product Creation Modal States
   const [newProductDialogOpen, setNewProductDialogOpen] = useState(false);
@@ -190,8 +184,7 @@ export function RecommendationForm({
   interface FertProgramItem {
     id: string;
     label: string; // Ex: "Programme A1", "Programme A2"
-    date: string;
-    time: string;
+    period: "matin" | "soir";
     frequency: string;
     irrigationTime: string;
     injectionTime: number;
@@ -200,11 +193,10 @@ export function RecommendationForm({
     entries: { bac: "A" | "B" | "C" | "D"; items: any[] }[];
   }
 
-  const createDefaultFertProgram = (id: string, label: string, date: string = ""): FertProgramItem => ({
+  const createDefaultFertProgram = (id: string, label: string): FertProgramItem => ({
     id,
     label,
-    date,
-    time: "08:00",
+    period: "matin",
     frequency: "1",
     irrigationTime: "1h30",
     injectionTime: 45,
@@ -276,17 +268,15 @@ export function RecommendationForm({
   interface PulvPassageItem {
     id: string;
     label: string; // Ex: "Passage 1", "Passage 2"
-    date: string;
-    time: string;
+    period: "matin" | "soir";
     waterVolume: string; // Ex: 1000 L
     items: { name: string; qty: string; unit: string; price: string }[];
   }
 
-  const createDefaultPulvPassage = (id: string, label: string, date: string = ""): PulvPassageItem => ({
+  const createDefaultPulvPassage = (id: string, label: string): PulvPassageItem => ({
     id,
     label,
-    date,
-    time: "07:00",
+    period: "matin",
     waterVolume: "1000",
     items: [{ name: "", qty: "", unit: "kg", price: "" }],
   });
@@ -314,16 +304,14 @@ export function RecommendationForm({
   interface PhytoPassageItem {
     id: string;
     label: string; // Ex: "Traitement 1", "Traitement 2"
-    date: string;
-    time: string;
-    products: { product: string; cible: string; dosage: string; volume: string; price: string; dar: string }[];
+    period: "matin" | "soir";
+    products: { product: "", cible: "", dosage: "", volume: "1000", price: "", dar: "" }[];
   }
 
-  const createDefaultPhytoPassage = (id: string, label: string, date: string = ""): PhytoPassageItem => ({
+  const createDefaultPhytoPassage = (id: string, label: string): PhytoPassageItem => ({
     id,
     label,
-    date,
-    time: "17:00",
+    period: "soir",
     products: [{ product: "", cible: "", dosage: "", volume: "1000", price: "", dar: "" }],
   });
 
@@ -529,23 +517,21 @@ export function RecommendationForm({
         let currentTitle = autoBaseTitle;
 
         if (presc === "fert_irrigation") {
-          if (!fertDate) {
-            setSubmitting(false);
-            return toast.error(t("reco.form.errorFertDateRequired"));
-          }
           const activeEntries = fertEntries.filter(e => e.items.length > 0);
           if (activeEntries.length === 0) {
             setSubmitting(false);
             return toast.error(t("reco.form.errorNoFertilizerAdded"));
           }
           currentKind = "fertilisation";
-          currentTitle = `${autoBaseTitle} (Irrigation)`;
+          currentTitle = `${autoBaseTitle} (${currentFertProg.label || "Irrigation"})`;
           currentPayload = {
             method: "irrigation",
             crop_group: cropGroups,
             program: {
               kind: "fertilisation",
-              date: fertDate,
+              date: appDate,
+              period: currentFertProg.period || "matin",
+              label: currentFertProg.label,
               frequency: parseFloat(fertFrequency) || 1,
               irrigationTime: fertIrrigationTime,
               injectionTime: fertInjectionTime,
@@ -556,23 +542,22 @@ export function RecommendationForm({
             }
           };
         } else if (presc === "fert_pulverisation") {
-          if (!pulvDate) {
-            setSubmitting(false);
-            return toast.error(t("reco.form.errorPulvDateRequired"));
-          }
           const activeItems = pulvItems.filter(it => it.name && it.qty);
           if (activeItems.length === 0) {
             setSubmitting(false);
             return toast.error(t("reco.form.errorNoPulvElement"));
           }
           currentKind = "fertilisation";
-          currentTitle = `${autoBaseTitle} (Foliaire)`;
+          currentTitle = `${autoBaseTitle} (${currentPulvPassage.label || "Foliaire"})`;
           currentPayload = {
             method: "pulverisation",
             crop_group: cropGroups,
             program: {
               kind: "pulverisation",
-              date: pulvDate,
+              date: appDate,
+              period: currentPulvPassage.period || "matin",
+              label: currentPulvPassage.label,
+              waterVolume: currentPulvPassage.waterVolume,
               items: activeItems,
               total: activeItems.reduce((s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0),
               weatherOk: true,
@@ -580,23 +565,21 @@ export function RecommendationForm({
             }
           };
         } else if (presc === "phytosanitaire") {
-          if (!phyDate) {
-            setSubmitting(false);
-            return toast.error(t("reco.form.errorPhyDateRequired"));
-          }
           const activeProducts = phyProducts.filter(p => p.product);
           if (activeProducts.length === 0) {
             setSubmitting(false);
             return toast.error(t("reco.form.errorNoPhytoProduct"));
           }
           currentKind = "phytosanitaire";
-          currentTitle = `${autoBaseTitle} (Phyto)`;
+          currentTitle = `${autoBaseTitle} (${currentPhyPassage.label || "Phyto"})`;
           currentPayload = {
             method: "pulverisation",
             crop_group: cropGroups,
             program: {
               kind: "phytosanitaire",
-              date: phyDate,
+              date: appDate,
+              period: currentPhyPassage.period || "soir",
+              label: currentPhyPassage.label,
               products: activeProducts,
               total: activeProducts.reduce((s, p) => s + (parseFloat((p.price || "").replace(",", ".")) || 0), 0),
               weatherOk: true,
@@ -615,99 +598,116 @@ export function RecommendationForm({
         });
         toast.success(t("reco.form.successModified"));
       } else {
+        const cropNames = cropGroups.map((g) => t(`crop.${g}`)).join(", ");
+        const autoBaseTitle = title.trim() || `${cropNames} - ${appDate}`;
+
         for (const presc of selectedPrescriptions) {
-          let currentKind: RecoKind = "fertilisation";
-          let currentPayload: any = null;
-          const cropNames = cropGroups.map((g) => t(`crop.${g}`)).join(", ");
-          const autoBaseTitle = title.trim() || `${cropNames} - ${appDate}`;
-          let currentTitle = autoBaseTitle;
-
           if (presc === "fert_irrigation") {
-            if (!fertDate) {
-              setSubmitting(false);
-              return toast.error(t("reco.form.errorFertDateRequired"));
-            }
-            const activeEntries = fertEntries.filter(e => e.items.length > 0);
-            if (activeEntries.length === 0) {
-              setSubmitting(false);
-              return toast.error(t("reco.form.errorNoFertilizerAdded"));
-            }
-            currentKind = "fertilisation";
-            currentTitle = `${title.trim()} (Irrigation)`;
-            currentPayload = {
-              method: "irrigation",
-              crop_group: cropGroups,
-              program: {
-                kind: "fertilisation",
-                date: fertDate,
-                frequency: parseFloat(fertFrequency) || 1,
-                irrigationTime: fertIrrigationTime,
-                injectionTime: fertInjectionTime,
-                rinsingTime: fertRinsingTime,
-                wettingTime: wettingMin,
-                entries: activeEntries,
-                total: 0
-              }
-            };
-          } else if (presc === "fert_pulverisation") {
-            if (!pulvDate) {
-              setSubmitting(false);
-              return toast.error(t("reco.form.errorPulvDateRequired"));
-            }
-            const activeItems = pulvItems.filter(it => it.name && it.qty);
-            if (activeItems.length === 0) {
-              setSubmitting(false);
-              return toast.error(t("reco.form.errorNoPulvElement"));
-            }
-            currentKind = "fertilisation";
-            currentTitle = `${title.trim()} (Foliaire)`;
-            currentPayload = {
-              method: "pulverisation",
-              crop_group: cropGroups,
-              program: {
-                kind: "pulverisation",
-                date: pulvDate,
-                items: activeItems,
-                total: activeItems.reduce((s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0),
-                weatherOk: true,
-                weatherNote: "Validé par l'Ingénieur"
-              }
-            };
-          } else if (presc === "phytosanitaire") {
-            if (!phyDate) {
-              setSubmitting(false);
-              return toast.error(t("reco.form.errorPhyDateRequired"));
-            }
-            const activeProducts = phyProducts.filter(p => p.product);
-            if (activeProducts.length === 0) {
-              setSubmitting(false);
-              return toast.error(t("reco.form.errorNoPhytoProduct"));
-            }
-            currentKind = "phytosanitaire";
-            currentTitle = `${title.trim()} (Phyto)`;
-            currentPayload = {
-              method: "pulverisation",
-              crop_group: cropGroups,
-              program: {
-                kind: "phytosanitaire",
-                date: phyDate,
-                products: activeProducts,
-                total: activeProducts.reduce((s, p) => s + (parseFloat((p.price || "").replace(",", ".")) || 0), 0),
-                weatherOk: true,
-                weatherNote: "Validé par l'Ingénieur"
-              }
-            };
-          }
+            for (const progItem of fertPrograms) {
+              const activeEntries = progItem.entries.filter(e => e.items.length > 0);
+              if (activeEntries.length === 0) continue;
 
-          await create.mutateAsync({
-            kind: currentKind,
-            title: currentTitle,
-            comment: comment.trim() || `Recommandation agronomique pour les groupes ${cropGroups.join(", ")}`,
-            parcel_ids: [],
-            payload: currentPayload,
-            photo_urls,
-            created_at: createdAtIso,
-          });
+              const totM =
+                progItem.irrigationTime === "1h" ? 60
+                : progItem.irrigationTime === "1h30" ? 90
+                : progItem.irrigationTime === "2h" ? 120
+                : progItem.irrigationTime === "2h30" ? 150
+                : progItem.irrigationTime === "3h" ? 180 : 90;
+              const wMin = Math.max(0, totM - progItem.injectionTime - progItem.rinsingTime);
+
+              const currentTitle = `${autoBaseTitle} (${progItem.label || "Irrigation"})`;
+              const currentPayload = {
+                method: "irrigation",
+                crop_group: cropGroups,
+                program: {
+                  kind: "fertilisation",
+                  date: appDate,
+                  period: progItem.period || "matin",
+                  label: progItem.label,
+                  frequency: parseFloat(progItem.frequency) || 1,
+                  irrigationTime: progItem.irrigationTime,
+                  injectionTime: progItem.injectionTime,
+                  rinsingTime: progItem.rinsingTime,
+                  wettingTime: wMin,
+                  entries: activeEntries,
+                  total: 0
+                }
+              };
+
+              await create.mutateAsync({
+                kind: "fertilisation",
+                title: currentTitle,
+                comment: comment.trim() || `Recommandation agronomique pour les groupes ${cropGroups.join(", ")}`,
+                parcel_ids: [],
+                payload: currentPayload,
+                photo_urls,
+                created_at: createdAtIso,
+              });
+            }
+          } else if (presc === "fert_pulverisation") {
+            for (const passItem of pulvPassages) {
+              const activeItems = passItem.items.filter(it => it.name && it.qty);
+              if (activeItems.length === 0) continue;
+
+              const currentTitle = `${autoBaseTitle} (${passItem.label || "Foliaire"})`;
+              const currentPayload = {
+                method: "pulverisation",
+                crop_group: cropGroups,
+                program: {
+                  kind: "pulverisation",
+                  date: appDate,
+                  period: passItem.period || "matin",
+                  label: passItem.label,
+                  waterVolume: passItem.waterVolume,
+                  items: activeItems,
+                  total: activeItems.reduce((s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0),
+                  weatherOk: true,
+                  weatherNote: "Validé par l'Ingénieur"
+                }
+              };
+
+              await create.mutateAsync({
+                kind: "fertilisation",
+                title: currentTitle,
+                comment: comment.trim() || `Recommandation agronomique pour les groupes ${cropGroups.join(", ")}`,
+                parcel_ids: [],
+                payload: currentPayload,
+                photo_urls,
+                created_at: createdAtIso,
+              });
+            }
+          } else if (presc === "phytosanitaire") {
+            for (const traitItem of phyPassages) {
+              const activeProducts = traitItem.products.filter(p => p.product);
+              if (activeProducts.length === 0) continue;
+
+              const currentTitle = `${autoBaseTitle} (${traitItem.label || "Phyto"})`;
+              const currentPayload = {
+                method: "pulverisation",
+                crop_group: cropGroups,
+                program: {
+                  kind: "phytosanitaire",
+                  date: appDate,
+                  period: traitItem.period || "soir",
+                  label: traitItem.label,
+                  products: activeProducts,
+                  total: activeProducts.reduce((s, p) => s + (parseFloat((p.price || "").replace(",", ".")) || 0), 0),
+                  weatherOk: true,
+                  weatherNote: "Validé par l'Ingénieur"
+                }
+              };
+
+              await create.mutateAsync({
+                kind: "phytosanitaire",
+                title: currentTitle,
+                comment: comment.trim() || `Recommandation agronomique pour les groupes ${cropGroups.join(", ")}`,
+                parcel_ids: [],
+                payload: currentPayload,
+                photo_urls,
+                created_at: createdAtIso,
+              });
+            }
+          }
         }
         toast.success(t("reco.form.successSubmitted"));
       }
@@ -892,17 +892,39 @@ export function RecommendationForm({
                               placeholder="Ex: Programme A1"
                             />
                           </label>
+                          <div className="block">
+                            <span className="font-bold text-muted-foreground text-xs block mb-1">Période d'application</span>
+                            <div className="flex gap-1.5 mt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFertPrograms(prev => prev.map((p, i) => i === activeFertProgIndex ? { ...p, period: "matin" } : p));
+                                }}
+                                className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                                  (currentFertProg.period || "matin") === "matin"
+                                    ? "bg-amber-500/20 border-amber-500 text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <span>🌅</span> Matin / صباحاً
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setFertPrograms(prev => prev.map((p, i) => i === activeFertProgIndex ? { ...p, period: "soir" } : p));
+                                }}
+                                className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                                  currentFertProg.period === "soir"
+                                    ? "bg-indigo-500/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <span>🌙</span> Soir / مساءً
+                              </button>
+                            </div>
+                          </div>
                           <label className="block">
-                            <span className="font-bold text-muted-foreground text-xs">Date d'application</span>
-                            <input
-                              type="date"
-                              value={currentFertProg.date || appDate}
-                              onChange={(e) => setFertDate(e.target.value)}
-                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="font-bold text-muted-foreground">{t("reco.form.frequency")}</span>
+                            <span className="font-bold text-muted-foreground text-xs">{t("reco.form.frequency")}</span>
                             <select
                               value={fertFrequency}
                               onChange={(e) => setFertFrequency(e.target.value)}
@@ -1108,7 +1130,7 @@ export function RecommendationForm({
                       </div>
 
                       <div className="space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <label className="block">
                             <span className="font-bold text-muted-foreground text-xs">Nom du passage</span>
                             <input
@@ -1122,27 +1144,37 @@ export function RecommendationForm({
                               placeholder="Ex: Passage 1"
                             />
                           </label>
-                          <label className="block">
-                            <span className="font-bold text-muted-foreground text-xs">Date d'application</span>
-                            <input
-                              type="date"
-                              value={currentPulvPassage.date || appDate}
-                              onChange={(e) => setPulvDate(e.target.value)}
-                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="font-bold text-muted-foreground text-xs">Heure de passage</span>
-                            <input
-                              type="time"
-                              value={currentPulvPassage.time}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setPulvPassages(prev => prev.map((p, i) => i === activePulvIndex ? { ...p, time: val } : p));
-                              }}
-                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
-                            />
-                          </label>
+                          <div className="block">
+                            <span className="font-bold text-muted-foreground text-xs block mb-1">Période de passage</span>
+                            <div className="flex gap-1.5 mt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPulvPassages(prev => prev.map((p, i) => i === activePulvIndex ? { ...p, period: "matin" } : p));
+                                }}
+                                className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                                  (currentPulvPassage.period || "matin") === "matin"
+                                    ? "bg-amber-500/20 border-amber-500 text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <span>🌅</span> Matin / صباحاً
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPulvPassages(prev => prev.map((p, i) => i === activePulvIndex ? { ...p, period: "soir" } : p));
+                                }}
+                                className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                                  currentPulvPassage.period === "soir"
+                                    ? "bg-indigo-500/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <span>🌙</span> Soir / مساءً
+                              </button>
+                            </div>
+                          </div>
                         </div>
  
                         <div className="space-y-2">
@@ -1288,7 +1320,7 @@ export function RecommendationForm({
                       </div>
 
                       <div className="space-y-3">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <label className="block">
                             <span className="font-bold text-muted-foreground text-xs">Nom du traitement</span>
                             <input
@@ -1302,27 +1334,37 @@ export function RecommendationForm({
                               placeholder="Ex: Traitement 1"
                             />
                           </label>
-                          <label className="block">
-                            <span className="font-bold text-muted-foreground text-xs">Date d'application</span>
-                            <input
-                              type="date"
-                              value={currentPhyPassage.date || appDate}
-                              onChange={(e) => setPhyDate(e.target.value)}
-                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
-                            />
-                          </label>
-                          <label className="block">
-                            <span className="font-bold text-muted-foreground text-xs">Heure de traitement</span>
-                            <input
-                              type="time"
-                              value={currentPhyPassage.time}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setPhyPassages(prev => prev.map((p, i) => i === activePhyIndex ? { ...p, time: val } : p));
-                              }}
-                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
-                            />
-                          </label>
+                          <div className="block">
+                            <span className="font-bold text-muted-foreground text-xs block mb-1">Période de traitement</span>
+                            <div className="flex gap-1.5 mt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPhyPassages(prev => prev.map((p, i) => i === activePhyIndex ? { ...p, period: "matin" } : p));
+                                }}
+                                className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                                  currentPhyPassage.period === "matin"
+                                    ? "bg-amber-500/20 border-amber-500 text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <span>🌅</span> Matin / صباحاً
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPhyPassages(prev => prev.map((p, i) => i === activePhyIndex ? { ...p, period: "soir" } : p));
+                                }}
+                                className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${
+                                  (currentPhyPassage.period || "soir") === "soir"
+                                    ? "bg-indigo-500/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                }`}
+                              >
+                                <span>🌙</span> Soir / مساءً
+                              </button>
+                            </div>
+                          </div>
                         </div>
  
                         <div className="space-y-3">

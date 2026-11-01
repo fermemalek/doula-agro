@@ -323,6 +323,30 @@ export function RecommendationDetailDialog({
                     <span className="text-muted-foreground">Date</span>
                     <span className="font-medium">{String(program.date ?? "—")}</span>
                   </div>
+                  {Boolean((program as any).period) && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Période</span>
+                      <span className="font-semibold text-primary">
+                        {(program as any).period === "soir" ? "🌙 Soir (مساءً)" : "🌅 Matin (صباحاً)"}
+                      </span>
+                    </div>
+                  )}
+                  {Boolean((program as any).period) && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Période</span>
+                      <span className="font-semibold text-primary">
+                        {(program as any).period === "soir" ? "🌙 Soir (مساءً)" : "🌅 Matin (صباحاً)"}
+                      </span>
+                    </div>
+                  )}
+                  {Boolean((program as any).period) && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Période</span>
+                      <span className="font-semibold text-primary">
+                        {(program as any).period === "soir" ? "🌙 Soir (مساءً)" : "🌅 Matin (صباحاً)"}
+                      </span>
+                    </div>
+                  )}
                   <ul className="space-y-0.5">
                     {Array.isArray(program.items) &&
                       (program.items as Array<{ name: string; qty: string; unit: string; price: string }>)
