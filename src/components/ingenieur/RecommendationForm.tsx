@@ -119,7 +119,8 @@ export function RecommendationForm({
   const { create, update } = useRecommendationActions();
   const products = useProducts();
   const { add: addProduct } = useProductActions();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  const isAr = lang === "ar";
 
   const foliarProducts = useMemo(() => {
     return products.filter((p) =>
@@ -323,7 +324,6 @@ export function RecommendationForm({
 
   const [activePhyIndex, setActivePhyIndex] = useState(0);
   const [phytoHistoryOpen, setPhytoHistoryOpen] = useState(false);
-  const isAr = lang === "ar";
   const currentPhyPassage = phyPassages[activePhyIndex] || phyPassages[0];
   const phyDate = currentPhyPassage.date;
   const setPhyDate = (val: string) => {
