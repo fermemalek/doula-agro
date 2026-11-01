@@ -17,6 +17,8 @@ import { FERTILIZER_DATABASE } from "@/data/fertilizers";
 import { useProducts, useProductActions } from "@/lib/products-store";
 import { PHYTO_DATABASE } from "@/data/phytosanitaires";
 import { useTranslation } from "@/lib/i18n";
+import { PhytoHistoryModal } from "@/components/ingenieur/PhytoHistoryModal";
+import { History } from "lucide-react";
 
 const getPhytoProductDetails = (pName: string, products: any[]) => {
   const staticPhyto = PHYTO_DATABASE.find(x => x.name === pName);
@@ -320,6 +322,8 @@ export function RecommendationForm({
   ]);
 
   const [activePhyIndex, setActivePhyIndex] = useState(0);
+  const [phytoHistoryOpen, setPhytoHistoryOpen] = useState(false);
+  const isAr = lang === "ar";
   const currentPhyPassage = phyPassages[activePhyIndex] || phyPassages[0];
   const phyDate = currentPhyPassage.date;
   const setPhyDate = (val: string) => {
@@ -838,7 +842,7 @@ export function RecommendationForm({
                           }}
                           className="bg-primary hover:bg-primary/90 text-primary-foreground px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 shadow-xs transition"
                         >
-                          <Plus className="h-3.5 w-3.5" /> + Ajouter un sous-programme (A{fertPrograms.length + 1})
+                          <Plus className="h-3.5 w-3.5" /> {t("reco.sub.addFert", "+ Ajouter un sous-programme")} (A{fertPrograms.length + 1})
                         </button>
                       </div>
 
@@ -863,7 +867,7 @@ export function RecommendationForm({
                             {fertPrograms.length > 1 && (
                               <button
                                 type="button"
-                                title="Supprimer ce sous-programme"
+                                title={t("reco.sub.deleteProgConfirm", "Supprimer ce sous-programme")}
                                 onClick={() => {
                                   setFertPrograms(prev => prev.filter((_, i) => i !== idx));
                                   setActiveFertProgIndex(0);
@@ -880,7 +884,7 @@ export function RecommendationForm({
                       <div className="space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <label className="block">
-                            <span className="font-bold text-muted-foreground text-xs">Nom du sous-programme</span>
+                            <span className="font-bold text-muted-foreground text-xs">{t("reco.sub.fertProgName", "Nom du sous-programme")}</span>
                             <input
                               type="text"
                               value={currentFertProg.label}
@@ -889,11 +893,11 @@ export function RecommendationForm({
                                 setFertPrograms(prev => prev.map((p, i) => i === activeFertProgIndex ? { ...p, label: val } : p));
                               }}
                               className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
-                              placeholder="Ex: Programme A1"
+                              placeholder={isAr ? "مثال: برنامج A1" : "Ex: Programme A1"}
                             />
                           </label>
                           <div className="block">
-                            <span className="font-bold text-muted-foreground text-xs block mb-1">Période d'application</span>
+                            <span className="font-bold text-muted-foreground text-xs block mb-1">{t("reco.sub.appPeriod", "Période d'application")}</span>
                             <div className="flex gap-1.5 mt-1">
                               <button
                                 type="button"
@@ -1090,7 +1094,7 @@ export function RecommendationForm({
                           }}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 shadow-xs transition"
                         >
-                          <Plus className="h-3.5 w-3.5" /> + Ajouter un sous-programme (Passage {pulvPassages.length + 1})
+                          <Plus className="h-3.5 w-3.5" /> {t("reco.sub.addPulv", "+ Ajouter un passage")} ({pulvPassages.length + 1})
                         </button>
                       </div>
 
@@ -1115,7 +1119,7 @@ export function RecommendationForm({
                             {pulvPassages.length > 1 && (
                               <button
                                 type="button"
-                                title="Supprimer ce passage"
+                                title={t("reco.sub.deletePassConfirm", "Supprimer ce passage")}
                                 onClick={() => {
                                   setPulvPassages(prev => prev.filter((_, i) => i !== idx));
                                   setActivePulvIndex(0);
@@ -1132,7 +1136,7 @@ export function RecommendationForm({
                       <div className="space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <label className="block">
-                            <span className="font-bold text-muted-foreground text-xs">Nom du passage</span>
+                            <span className="font-bold text-muted-foreground text-xs">{t("reco.sub.pulvPassName", "Nom du passage")}</span>
                             <input
                               type="text"
                               value={currentPulvPassage.label}
@@ -1141,11 +1145,11 @@ export function RecommendationForm({
                                 setPulvPassages(prev => prev.map((p, i) => i === activePulvIndex ? { ...p, label: val } : p));
                               }}
                               className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
-                              placeholder="Ex: Passage 1"
+                              placeholder={isAr ? "مثال: رشة 1" : "Ex: Passage 1"}
                             />
                           </label>
                           <div className="block">
-                            <span className="font-bold text-muted-foreground text-xs block mb-1">Période de passage</span>
+                            <span className="font-bold text-muted-foreground text-xs block mb-1">{t("reco.sub.passPeriod", "Période de passage")}</span>
                             <div className="flex gap-1.5 mt-1">
                               <button
                                 type="button"
@@ -1261,27 +1265,37 @@ export function RecommendationForm({
                 if (presc === "phytosanitaire") {
                   return (
                     <div key={presc} className="border rounded-2xl p-4 bg-muted/30 space-y-3">
-                      <div className="flex justify-between items-center border-b pb-1">
+                      <div className="flex flex-wrap justify-between items-center gap-2 border-b pb-1.5">
                         <h4 className="font-black text-xs text-primary uppercase flex items-center gap-1.5">
                           <FlaskConical className="h-4 w-4 text-violet-600" />
                           <span>{t("reco.form.phytosanitaire")}</span>
                         </h4>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const nextIndex = phyPassages.length + 1;
-                            const newPass = createDefaultPhytoPassage(
-                              `phy_${Date.now()}`,
-                              `Traitement ${nextIndex}`,
-                              appDate
-                            );
-                            setPhyPassages(prev => [...prev, newPass]);
-                            setActivePhyIndex(phyPassages.length);
-                          }}
-                          className="bg-violet-600 hover:bg-violet-700 text-white px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 shadow-xs transition"
-                        >
-                          <Plus className="h-3.5 w-3.5" /> + Ajouter un sous-programme (Traitement {phyPassages.length + 1})
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPhytoHistoryOpen(true)}
+                            className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs transition"
+                          >
+                            <History className="h-3.5 w-3.5" />
+                            <span>{t("reco.phyto.historyBtn", "Historique des traitements")}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextIndex = phyPassages.length + 1;
+                              const defaultLbl = isAr ? `معاملة ${nextIndex}` : `Traitement ${nextIndex}`;
+                              const newPass = createDefaultPhytoPassage(
+                                `phy_${Date.now()}`,
+                                defaultLbl
+                              );
+                              setPhyPassages(prev => [...prev, newPass]);
+                              setActivePhyIndex(phyPassages.length);
+                            }}
+                            className="bg-violet-600 hover:bg-violet-700 text-white px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 shadow-xs transition"
+                          >
+                            <Plus className="h-3.5 w-3.5" /> {t("reco.sub.addPhyto", "+ Ajouter un traitement")} ({phyPassages.length + 1})
+                          </button>
+                        </div>
                       </div>
 
                       {/* Sélecteur de sous-programmes Phytosanitaire */}
@@ -1305,7 +1319,7 @@ export function RecommendationForm({
                             {phyPassages.length > 1 && (
                               <button
                                 type="button"
-                                title="Supprimer ce traitement"
+                                title={t("reco.sub.deleteTraitConfirm", "Supprimer ce traitement")}
                                 onClick={() => {
                                   setPhyPassages(prev => prev.filter((_, i) => i !== idx));
                                   setActivePhyIndex(0);
@@ -1322,7 +1336,7 @@ export function RecommendationForm({
                       <div className="space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <label className="block">
-                            <span className="font-bold text-muted-foreground text-xs">Nom du traitement</span>
+                            <span className="font-bold text-muted-foreground text-xs">{t("reco.sub.phyTraitName", "Nom du traitement")}</span>
                             <input
                               type="text"
                               value={currentPhyPassage.label}
@@ -1331,11 +1345,11 @@ export function RecommendationForm({
                                 setPhyPassages(prev => prev.map((p, i) => i === activePhyIndex ? { ...p, label: val } : p));
                               }}
                               className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
-                              placeholder="Ex: Traitement 1"
+                              placeholder={isAr ? "مثال: معاملة 1" : "Ex: Traitement 1"}
                             />
                           </label>
                           <div className="block">
-                            <span className="font-bold text-muted-foreground text-xs block mb-1">Période de traitement</span>
+                            <span className="font-bold text-muted-foreground text-xs block mb-1">{t("reco.sub.traitPeriod", "Période de traitement")}</span>
                             <div className="flex gap-1.5 mt-1">
                               <button
                                 type="button"
