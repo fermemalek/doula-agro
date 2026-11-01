@@ -1,6 +1,6 @@
 import { useNavigate } from "@/lib/router-compat";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Plus, Sprout, FlaskConical } from "lucide-react";
+import { ArrowLeft, Plus, Sprout, FlaskConical, AlertTriangle } from "lucide-react";
 import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
 import { useRole } from "@/lib/role";
 import { useDisplayRole } from "@/lib/display-role";
@@ -10,6 +10,9 @@ import { RecommendationDetailDialog } from "@/components/RecommendationDetailDia
 import seededRecos from "@/data/seeded_recommendations.json";
 import { toast } from "sonner";
 import { useAllModuleRecords } from "@/lib/modules-store";
+import { useSuppliers } from "@/lib/suppliers-store";
+import { useParcels } from "@/lib/parcel-store";
+import { checkRecoStock } from "@/lib/stock-alerts";
 
 const STATUS_TONE: Record<Recommendation["status"], string> = {
   envoyee: "border-blue-500/30 bg-blue-500/5 text-blue-700",
@@ -30,6 +33,8 @@ function RecommandationsPage() {
   const displayRole = useDisplayRole();
   const { data: recos = [] } = useRecommendations();
   const { data: profiles = {} } = useProfilesMap();
+  const suppliers = useSuppliers();
+  const parcels = useParcels();
   const [formOpen, setFormOpen] = useState(false);
   const [detail, setDetail] = useState<Recommendation | null>(null);
   const [editingReco, setEditingReco] = useState<Recommendation | null>(null);
@@ -184,6 +189,7 @@ function RecommandationsPage() {
             const Icon = r.kind === "fertilisation" ? Sprout : FlaskConical;
             const author = profiles[r.created_by] || "Ingénieur";
             const statusInfo = getRecoStatusInfo(r);
+            const stockReport = checkRecoStock(r, suppliers, parcels);
             return (
               <li
                 key={r.id}
@@ -201,7 +207,14 @@ function RecommandationsPage() {
                   <Icon className="h-5 w-5" />
                 </span>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold leading-tight">{r.title}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold leading-tight">{r.title}</p>
+                    {stockReport.hasMissingStock && (
+                      <span className="shrink-0 rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-600 px-2 py-0.5 text-[9px] font-black flex items-center gap-1">
+                        <AlertTriangle className="h-2.5 w-2.5" /> Achat requis
+                      </span>
+                    )}
+                  </div>
                   <p className="truncate text-xs opacity-80">
                     {r.kind === "fertilisation" ? "Fertilisation" : "Phytosanitaire"}
                     {" · "}

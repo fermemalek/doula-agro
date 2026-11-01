@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Droplet, Sprout, FlaskConical, Check, X, MapPin, Calendar, User } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { Droplet, Sprout, FlaskConical, Check, X, MapPin, Calendar, User, ShoppingCart, AlertTriangle, Repeat, CalendarDays, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "@/lib/router-compat";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -12,8 +12,9 @@ import { signedPhotoUrl } from "@/lib/cloud/alerts";
 import { useParcels, useParcelActions } from "@/lib/parcel-store";
 import { useRole } from "@/lib/role";
 import { useModuleActions, useAllModuleRecords } from "@/lib/modules-store";
-import { debitProductStock, useSuppliers } from "@/lib/suppliers-store";
+import { debitProductStock, useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useTranslation } from "@/lib/i18n";
+import { checkRecoStock, computeScheduledDates, getTargetParcelsForReco, type RecoProductStockItem } from "@/lib/stock-alerts";
 
 const KIND_LABEL: Record<Recommendation["kind"], string> = {
   fertilisation: "Fertilisation",
@@ -180,17 +181,55 @@ export function RecommendationDetailDialog({
   const parcels = useParcels();
   const { lang } = useTranslation();
   const suppliers = useSuppliers();
+  const { addPurchase } = useSupplierActions();
   const [showPlanningPreview, setShowPlanningPreview] = useState(false);
   const [selectedDate, setSelectedDate] = useState("");
+  const [repeatWeeks, setRepeatWeeks] = useState<number>(4);
+  const [weeklyFrequency, setWeeklyFrequency] = useState<number>(1);
+  const [secondDayOffset, setSecondDayOffset] = useState<number>(4);
 
   useEffect(() => {
     if (reco) {
       const payload = (reco.payload ?? {}) as any;
       const prog = payload.program ?? {};
       setSelectedDate(prog.date || new Date().toISOString().slice(0, 10));
+      const freq = parseFloat(String(prog.frequency)) || 1;
+      setWeeklyFrequency(freq >= 2 ? 2 : 1);
+      setRepeatWeeks(4);
       setShowPlanningPreview(false);
     }
   }, [reco]);
+
+  const scheduledDates = useMemo(() => {
+    return computeScheduledDates(selectedDate, repeatWeeks, weeklyFrequency, secondDayOffset);
+  }, [selectedDate, repeatWeeks, weeklyFrequency, secondDayOffset]);
+
+  const stockReport = useMemo(() => {
+    if (!reco) return { hasMissingStock: false, items: [], missingItems: [], totalEstimatedMissingCost: 0 };
+    return checkRecoStock(reco, suppliers, parcels, scheduledDates.length);
+  }, [reco, suppliers, parcels, scheduledDates.length]);
+
+  const handleAutoCreatePurchases = () => {
+    if (stockReport.missingItems.length === 0) {
+      toast.info("Tous les produits sont déjà disponibles en stock !");
+      return;
+    }
+    for (const item of stockReport.missingItems) {
+      addPurchase({
+        supplierName: "Fournisseur à désigner",
+        productName: item.name,
+        purchaseDate: new Date().toISOString().slice(0, 10),
+        quantity: item.missing,
+        unit: item.unit,
+        pricePerUnit: item.price || 0,
+        totalCost: parseFloat((item.missing * (item.price || 0)).toFixed(2)),
+        paidAmount: 0,
+      });
+    }
+    toast.success(
+      `🛒 ${stockReport.missingItems.length} bon(s) d'achat créé(s) pour réapprovisionner le stock ! Suivi dans Programmes > Achats.`
+    );
+  };
 
   const { data: profiles = {} } = useProfilesMap();
   const { accept, reject } = useRecommendationActions();
@@ -512,16 +551,91 @@ export function RecommendationDetailDialog({
                     </button>
                   </div>
 
-                  {/* 1. Date Picker */}
-                  <label className="block">
-                    <span className="font-bold text-muted-foreground uppercase text-[10px]">Date d'application</span>
-                    <input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground"
-                    />
-                  </label>
+                  {/* 1. Date Picker & Répétition */}
+                  <div className="space-y-2.5">
+                    <label className="block">
+                      <span className="font-bold text-muted-foreground uppercase text-[10px]">Date du 1er passage (Démarrage)</span>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground font-semibold"
+                      />
+                    </label>
+
+                    {/* Bloc Répétition & Fréquence */}
+                    <div className="space-y-2 bg-background/80 p-3 rounded-xl border border-primary/20">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
+                          <Repeat className="h-4 w-4 text-primary" />
+                          <span>Répétition & Fréquence du programme</span>
+                        </div>
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                          {scheduledDates.length} passage{scheduledDates.length > 1 ? "s" : ""} au total
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-[10px] font-semibold text-muted-foreground block mb-1">Fréquence par semaine</span>
+                          <div className="flex rounded-lg border bg-muted p-0.5">
+                            <button
+                              type="button"
+                              onClick={() => setWeeklyFrequency(1)}
+                              className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${
+                                weeklyFrequency === 1 ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
+                              }`}
+                            >
+                              1 fois / sem
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setWeeklyFrequency(2)}
+                              className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${
+                                weeklyFrequency === 2 ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
+                              }`}
+                            >
+                              2 fois / sem
+                            </button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] font-semibold text-muted-foreground block mb-1">Répéter pendant</span>
+                          <select
+                            value={repeatWeeks}
+                            onChange={(e) => setRepeatWeeks(Number(e.target.value))}
+                            className="w-full rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-semibold text-foreground h-8"
+                          >
+                            <option value={1}>1 passage (Pas de répétition)</option>
+                            <option value={2}>2 semaines</option>
+                            <option value={3}>3 semaines</option>
+                            <option value={4}>4 semaines (1 mois — Recommandé)</option>
+                            <option value={6}>6 semaines</option>
+                            <option value={8}>8 semaines (2 mois)</option>
+                            <option value={12}>12 semaines (3 mois)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Aperçu des dates générées */}
+                      <div className="pt-2 border-t">
+                        <span className="text-[10px] font-bold text-muted-foreground block mb-1">
+                          Calendrier des {scheduledDates.length} passages programmés :
+                        </span>
+                        <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                          {scheduledDates.map((dStr, idx) => (
+                            <span
+                              key={dStr}
+                              className="px-2 py-0.5 rounded-md bg-muted text-[10px] font-semibold text-foreground border flex items-center gap-1"
+                            >
+                              <span className="text-primary font-bold">#{idx + 1}</span> {dStr}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
                   {/* Friday Warning */}
                   {(() => {
@@ -635,150 +749,102 @@ export function RecommendationDetailDialog({
                     }
                   })()}
 
-                  {/* 4. Stocks Table */}
-                  {(() => {
-                    const targetParcels = parcels.filter((p) => {
-                      const groups = Array.isArray(payload.crop_group)
-                        ? payload.crop_group
-                        : payload.crop_group
-                        ? [payload.crop_group]
-                        : [];
-
-                      const parcelMatchesCropGroup = (parcelItem: typeof p, group: string) => {
-                        if (group === "oliviers") return parcelItem.type === "olivier";
-                        if (group === "pommiers") return parcelItem.type === "pommier";
-                        if (group === "nectarinier") return parcelItem.type === "nectarine";
-                        if (group === "redix25") return parcelItem.id === "redix25";
-                        if (group === "nablara") return parcelItem.id === "nablara";
-                        if (group === "casuarina") return parcelItem.name.toUpperCase().includes("CASUARINA") || parcelItem.id === "brisevent";
-                        if (group === "p9") return parcelItem.id === "p9";
-                        if (group === "p10") return parcelItem.id === "p10";
-                        if (group === "p11") return parcelItem.id === "p11";
-                        if (group === "p12") return parcelItem.id === "p12";
-                        return false;
-                      };
-
-                      return groups.some((group) => parcelMatchesCropGroup(p, group));
-                    });
-
-                    const reqProds = (() => {
-                      const req: { name: string; qty: number; unit: string }[] = [];
-                      const safeParseFloat = (val: any): number => {
-                        if (val === null || val === undefined) return 0;
-                        if (typeof val === "number") return val;
-                        return parseFloat(String(val).trim().replace(",", ".")) || 0;
-                      };
-
-                      if (reco.kind === "fertilisation") {
-                        if (payload.method === "irrigation") {
-                          if (Array.isArray(program.entries)) {
-                            for (const entry of program.entries) {
-                              if (Array.isArray(entry.items)) {
-                                for (const it of entry.items) {
-                                  let totalQty = 0;
-                                  for (const parcel of targetParcels) {
-                                    const surface = safeParseFloat(parcel.info?.surface) || 1;
-                                    totalQty += safeParseFloat(it.qty) * surface;
-                                  }
-                                  const existing = req.find(x => x.name === it.name);
-                                  if (existing) {
-                                    existing.qty += totalQty;
-                                  } else {
-                                    req.push({ name: it.name, qty: totalQty, unit: it.unit || "kg" });
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        } else {
-                          if (Array.isArray(program.items)) {
-                            for (const it of program.items) {
-                              const existing = req.find(x => x.name === it.name);
-                              if (existing) {
-                                existing.qty += safeParseFloat(it.qty);
-                              } else {
-                                req.push({ name: it.name, qty: safeParseFloat(it.qty), unit: it.unit || "kg" });
-                              }
-                            }
-                          }
-                        }
-                      } else if (reco.kind === "phytosanitaire") {
-                        if (Array.isArray(program.products)) {
-                          for (const p of program.products) {
-                            const qty = safeParseFloat(p.volume) || safeParseFloat(p.dosage) || 0;
-                            const existing = req.find(x => x.name === p.product);
-                            if (existing) {
-                              existing.qty += qty;
-                            } else {
-                              req.push({ name: p.product, qty: qty, unit: "kg" });
-                            }
-                          }
-                        }
-                      }
-                      return req.map(x => ({ ...x, qty: parseFloat(x.qty.toFixed(2)) }));
-                    })();
-
-                    if (reqProds.length === 0) return null;
-
-                    const getProductStock = (prodName: string) => {
-                      const norm = prodName.trim().toLowerCase();
-                      return suppliers
-                        .filter(p => p.productName.trim().toLowerCase() === norm)
-                        .reduce((sum, p) => sum + (p.quantity - p.consumed), 0);
-                    };
-
-                    return (
-                      <div className="space-y-1.5 border-t pt-2 mt-2">
-                        <p className="font-extrabold uppercase text-[10px] text-muted-foreground">Validation des stocks</p>
-                        <div className="space-y-1">
-                          {reqProds.map((it, idx) => {
-                            const av = getProductStock(it.name);
-                            const hasEnough = av >= it.qty;
-                            return (
-                              <div key={idx} className="flex justify-between items-center text-[11px] py-0.5">
-                                <span className="font-medium truncate max-w-[150px]">{it.name}</span>
-                                <div className="space-x-3">
-                                  <span>Requis : <strong>{it.qty} {it.unit}</strong></span>
-                                  <span>Dispo : <strong className={hasEnough ? "text-emerald-600" : "text-destructive"}>{av.toFixed(1)} {it.unit}</strong></span>
-                                  <span className={`font-bold ${hasEnough ? "text-emerald-600" : "text-destructive"}`}>
-                                    {hasEnough ? "✓ OK" : "⚠️ Insuffisant"}
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                  {/* 4. Stocks Table & Alerte Achats */}
+                  {stockReport.items.length > 0 && (
+                    <div className="space-y-2 border-t pt-2.5 mt-2">
+                      <div className="flex items-center justify-between">
+                        <p className="font-extrabold uppercase text-[10px] text-muted-foreground">
+                          Besoins en Stock pour les {scheduledDates.length} passage{scheduledDates.length > 1 ? "s" : ""}
+                        </p>
+                        {stockReport.hasMissingStock ? (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 border border-rose-500/30 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" /> Achat requis
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/30 flex items-center gap-1">
+                            ✓ Stock disponible
+                          </span>
+                        )}
                       </div>
-                    );
-                  })()}
+
+                      {/* Alerte si des produits manquent */}
+                      {stockReport.hasMissingStock && (
+                        <div className="rounded-2xl border-2 border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-black text-xs text-amber-800 dark:text-amber-200">
+                                ⚠️ Alerte Rupture de Stock : Achats à effectuer
+                              </p>
+                              <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-0.5">
+                                Vous n'avez pas suffisamment de stock pour assurer l'ensemble des {scheduledDates.length} passages prévus. Vous devez approvisionner les quantités manquantes :
+                              </p>
+                            </div>
+                          </div>
+
+                          <ul className="space-y-1 text-xs">
+                            {stockReport.missingItems.map((m, i) => (
+                              <li key={i} className="flex justify-between items-center bg-background/80 px-2.5 py-1.5 rounded-xl border border-amber-500/20">
+                                <span className="font-bold text-foreground">{m.name}</span>
+                                <div className="text-right">
+                                  <span className="text-[11px] text-muted-foreground mr-2">Dispo: {m.available} / {m.needed} {m.unit}</span>
+                                  <span className="text-xs font-black text-destructive">Manque : {m.missing} {m.unit}</span>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-500/20">
+                            <span className="text-[10px] font-bold text-muted-foreground">
+                              Coût estimé : ~{stockReport.totalEstimatedMissingCost.toFixed(2)} DA
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleAutoCreatePurchases}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition"
+                            >
+                              <ShoppingCart className="h-3.5 w-3.5" />
+                              <span>Créer les bons d'achat manquants</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tableau de synthèse des produits */}
+                      <div className="space-y-1">
+                        {stockReport.items.map((it, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-[11px] py-1 px-2.5 rounded-xl bg-background border">
+                            <span className="font-medium truncate max-w-[150px]">{it.name}</span>
+                            <div className="space-x-2 text-[10px]">
+                              <span>Requis : <strong>{it.needed} {it.unit}</strong></span>
+                              <span>Dispo : <strong className={!it.isMissing ? "text-emerald-600" : "text-destructive"}>{it.available} {it.unit}</strong></span>
+                              <span className={`font-bold ${!it.isMissing ? "text-emerald-600" : "text-destructive"}`}>
+                                {!it.isMissing ? "✓ OK" : `⚠️ -${it.missing}`}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Confirm Button */}
                   <button
                     onClick={async () => {
                       try {
-                        const targetParcels = parcels.filter((p) => {
-                          const groups = Array.isArray(payload.crop_group)
-                            ? payload.crop_group
-                            : payload.crop_group
-                            ? [payload.crop_group]
-                            : [];
+                        const targetParcels = getTargetParcelsForReco(reco, parcels);
 
-                          const parcelMatchesCropGroup = (parcelItem: typeof p, group: string) => {
-                            if (group === "oliviers") return parcelItem.type === "olivier";
-                            if (group === "pommiers") return parcelItem.type === "pommier";
-                            if (group === "nectarinier") return parcelItem.type === "nectarine";
-                            if (group === "redix25") return parcelItem.id === "redix25";
-                            if (group === "nablara") return parcelItem.id === "nablara";
-                            if (group === "casuarina") return parcelItem.name.toUpperCase().includes("CASUARINA") || parcelItem.id === "brisevent";
-                            if (group === "p9") return parcelItem.id === "p9";
-                            if (group === "p10") return parcelItem.id === "p10";
-                            if (group === "p11") return parcelItem.id === "p11";
-                            if (group === "p12") return parcelItem.id === "p12";
-                            return false;
-                          };
+                        if (targetParcels.length === 0) {
+                          return toast.error("Aucune parcelle ciblée pour cette recommandation.");
+                        }
 
-                          return groups.some((group) => parcelMatchesCropGroup(p, group));
-                        });
+                        if (stockReport.hasMissingStock) {
+                          const missingNames = stockReport.missingItems.map(x => x.name).join(", ");
+                          const confirmPlan = window.confirm(
+                            `⚠️ Attention : Les stocks disponibles sont insuffisants pour (${missingNames}).\n\nSouhaitez-vous quand même enregistrer la planification répétée (${scheduledDates.length} passages) pour l'exécutant ?`
+                          );
+                          if (!confirmPlan) return;
+                        }
 
                         await accept.mutateAsync(reco.id);
 
@@ -790,92 +856,94 @@ export function RecommendationDetailDialog({
 
                         let clonedCount = 0;
                         if (program) {
-                          if (reco.kind === "fertilisation") {
-                            if (payload.method === "irrigation") {
-                              const sw = getSeasonalWindow(selectedDate);
-                              const groups = groupParcelsForIrrigation(targetParcels);
-                              let currentStart = sw.startHour;
-                              const durationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
+                          // Répéter pour chaque date calculée (selon la fréquence et la durée)
+                          for (const dateItem of scheduledDates) {
+                            if (reco.kind === "fertilisation") {
+                              if (payload.method === "irrigation") {
+                                const sw = getSeasonalWindow(dateItem);
+                                const groups = groupParcelsForIrrigation(targetParcels);
+                                let currentStart = sw.startHour;
+                                const durationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
 
-                              for (const group of groups) {
-                                const groupStart = currentStart;
-                                const groupEnd = addMinutesToTime(groupStart, durationMinutes);
+                                for (const group of groups) {
+                                  const groupStart = currentStart;
+                                  const groupEnd = addMinutesToTime(groupStart, durationMinutes);
 
-                                for (const parcel of group) {
-                                  const surface = safeParseFloat(parcel.info?.surface) || 1;
-                                  clonedCount++;
+                                  for (const parcel of group) {
+                                    const surface = safeParseFloat(parcel.info?.surface) || 1;
+                                    clonedCount++;
 
-                                  let totalCost = 0;
-                                  if (Array.isArray(program.entries)) {
-                                    for (const entry of program.entries) {
-                                      if (Array.isArray(entry.items)) {
-                                        for (const it of entry.items) {
-                                          const doseHa = safeParseFloat(it.qty);
-                                          const doseTotale = parseFloat((doseHa * surface).toFixed(2));
-                                          const priceUnit = safeParseFloat(it.price);
-                                          totalCost += doseTotale * priceUnit;
-                                          debitProductStock(it.name, doseTotale);
+                                    let totalCost = 0;
+                                    if (Array.isArray(program.entries)) {
+                                      for (const entry of program.entries) {
+                                        if (Array.isArray(entry.items)) {
+                                          for (const it of entry.items) {
+                                            const doseHa = safeParseFloat(it.qty);
+                                            const doseTotale = parseFloat((doseHa * surface).toFixed(2));
+                                            const priceUnit = safeParseFloat(it.price);
+                                            totalCost += doseTotale * priceUnit;
+                                            debitProductStock(it.name, doseTotale);
+                                          }
                                         }
                                       }
                                     }
+
+                                    const adjustedProgram = {
+                                      ...program,
+                                      hectares: surface,
+                                      total: totalCost,
+                                      reco_id: reco.id,
+                                      date: dateItem,
+                                    };
+                                    addModuleRecord(parcel.id, "fertilisation", adjustedProgram);
+
+                                    const durationHours = (durationMinutes / 60).toString();
+                                    const irrigationPayload = {
+                                      mode: "date",
+                                      date: dateItem,
+                                      duration: durationHours,
+                                      dateStartHour: groupStart,
+                                      wettingTime: program.wettingTime,
+                                      injectionTime: program.injectionTime,
+                                      rinsingTime: program.rinsingTime,
+                                      irrigationTime: program.irrigationTime,
+                                      reco_id: reco.id,
+                                    };
+                                    addModuleRecord(parcel.id, "irrigation", irrigationPayload);
                                   }
 
-                                  const frequency = safeParseFloat(program.frequency) || 1;
-                                  const adjustedProgram = {
-                                    ...program,
-                                    hectares: surface,
-                                    total: totalCost * frequency,
-                                    reco_id: reco.id,
-                                    date: selectedDate,
-                                  };
-                                  addModuleRecord(parcel.id, "fertilisation", adjustedProgram);
-
-                                  const durationHours = (durationMinutes / 60).toString();
-                                  const irrigationPayload = {
-                                    mode: "date",
-                                    date: selectedDate,
-                                    duration: durationHours,
-                                    dateStartHour: groupStart,
-                                    wettingTime: program.wettingTime,
-                                    injectionTime: program.injectionTime,
-                                    rinsingTime: program.rinsingTime,
-                                    irrigationTime: program.irrigationTime,
-                                    reco_id: reco.id,
-                                  };
-                                  addModuleRecord(parcel.id, "irrigation", irrigationPayload);
+                                  currentStart = addMinutesToTime(groupEnd, 5);
                                 }
-
-                                currentStart = addMinutesToTime(groupEnd, 5);
+                              } else {
+                                for (const parcel of targetParcels) {
+                                  clonedCount++;
+                                  if (Array.isArray(program.items)) {
+                                    for (const it of program.items) {
+                                      const qty = safeParseFloat(it.qty);
+                                      debitProductStock(it.name, qty);
+                                    }
+                                  }
+                                  addModuleRecord(parcel.id, "pulverisation", { ...program, reco_id: reco.id, date: dateItem });
+                                }
                               }
-                            } else {
+                            } else if (reco.kind === "phytosanitaire") {
                               for (const parcel of targetParcels) {
                                 clonedCount++;
-                                if (Array.isArray(program.items)) {
-                                  for (const it of program.items) {
-                                    const qty = safeParseFloat(it.qty);
-                                    debitProductStock(it.name, qty);
+                                if (Array.isArray(program.products)) {
+                                  for (const p of program.products) {
+                                    const qty = safeParseFloat(p.volume) || safeParseFloat(p.dosage) || 0;
+                                    debitProductStock(p.product, qty);
                                   }
                                 }
-                                addModuleRecord(parcel.id, "pulverisation", { ...program, reco_id: reco.id, date: selectedDate });
+                                addModuleRecord(parcel.id, "phytosanitaire", { ...program, reco_id: reco.id, date: dateItem });
+                                setStatus(parcel.id, "alerte");
                               }
-                            }
-                          } else if (reco.kind === "phytosanitaire") {
-                            for (const parcel of targetParcels) {
-                              clonedCount++;
-                              if (Array.isArray(program.products)) {
-                                for (const p of program.products) {
-                                  const qty = safeParseFloat(p.volume) || safeParseFloat(p.dosage) || 0;
-                                  debitProductStock(p.product, qty);
-                                }
-                              }
-                              addModuleRecord(parcel.id, "phytosanitaire", { ...program, reco_id: reco.id, date: selectedDate });
-                              setStatus(parcel.id, "alerte");
                             }
                           }
                         }
 
                         if (clonedCount > 0) {
-                          toast.success(`Planification effectuée avec succès ! Tâches générées pour ${clonedCount} parcelles.`);
+                          toast.success(`Planification répétée validée avec succès ! ${scheduledDates.length} passages programmés (${clonedCount} tâches créées).`);
                         } else {
                           toast.success("Recommandation planifiée.");
                         }
@@ -887,7 +955,7 @@ export function RecommendationDetailDialog({
                     disabled={accept.isPending || reject.isPending}
                     className="w-full inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold uppercase text-primary-foreground active:scale-95 shadow-md mt-2"
                   >
-                    <Check className="h-4 w-4" /> Confirmer la planification
+                    <Check className="h-4 w-4" /> Confirmer la planification ({scheduledDates.length} passage{scheduledDates.length > 1 ? "s" : ""})
                   </button>
                 </div>
               )}

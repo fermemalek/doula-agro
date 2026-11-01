@@ -46,6 +46,7 @@ import {
 import { useDisplayRole } from "@/lib/display-role";
 import { useProducts, useProductActions } from "@/lib/products-store";
 import { useSuppliers, useSupplierActions, type SupplierPurchase, debitProductStock } from "@/lib/suppliers-store";
+import { checkRecoStock } from "@/lib/stock-alerts";
 import { SPECIES_SUMMARIES } from "@/data/extra_farm_data";
 import { type FertilizerProduct } from "@/data/fertilizers";
 import { toast } from "sonner";
@@ -298,9 +299,14 @@ function ProgrammesPage() {
 
   const purchaseRecos = useMemo(() => {
     return recos
-      .filter((r) => r.status === "rejetee")
+      .filter((r) => {
+        if (r.status === "rejetee") return true;
+        // Détecter automatiquement toute recommandation dont les produits manquent en stock
+        const report = checkRecoStock(r, suppliers, parcels);
+        return report.hasMissingStock;
+      })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  }, [recos]);
+  }, [recos, suppliers, parcels]);
 
   // Tab 1: Archive Filtering
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");

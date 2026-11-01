@@ -19,6 +19,8 @@ import { PHYTO_DATABASE } from "@/data/phytosanitaires";
 import { useTranslation } from "@/lib/i18n";
 import { PhytoHistoryModal } from "@/components/ingenieur/PhytoHistoryModal";
 import { History } from "lucide-react";
+import { useSuppliers } from "@/lib/suppliers-store";
+import { matchProductName } from "@/lib/stock-alerts";
 
 const getPhytoProductDetails = (pName: string, products: any[]) => {
   const staticPhyto = PHYTO_DATABASE.find(x => x.name === pName);
@@ -118,9 +120,17 @@ export function RecommendationForm({
 }) {
   const { create, update } = useRecommendationActions();
   const products = useProducts();
+  const suppliers = useSuppliers();
   const { add: addProduct } = useProductActions();
   const { t, lang } = useTranslation();
   const isAr = lang === "ar";
+
+  const getLiveStock = (prodName: string): number => {
+    if (!prodName) return 0;
+    return suppliers
+      .filter((p) => matchProductName(p.productName, prodName))
+      .reduce((sum, p) => sum + Math.max(0, p.quantity - (p.consumed || 0)), 0);
+  };
 
   const foliarProducts = useMemo(() => {
     return products.filter((p) =>
@@ -1032,16 +1042,24 @@ export function RecommendationForm({
                             <div className="space-y-2">
                               {currentBacEntry.items.map((it: any, idx: number) => (
                                 <div key={idx} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
-                                  {/* Product dropdown */}
-                                  <select
-                                    value={it.name}
-                                    onChange={(e) => handleFertProductChange(idx, e.target.value)}
-                                    className="col-span-6 rounded border bg-background px-2 py-1 text-xs"
-                                  >
-                                    {getProductsForBac(fertBac).map(p => (
-                                      <option key={p.name} value={p.name}>{p.name}</option>
-                                    ))}
-                                  </select>
+                                  <div className="col-span-6 space-y-0.5">
+                                    <select
+                                      value={it.name}
+                                      onChange={(e) => handleFertProductChange(idx, e.target.value)}
+                                      className="w-full rounded border bg-background px-2 py-1 text-xs"
+                                    >
+                                      {getProductsForBac(fertBac).map(p => (
+                                        <option key={p.name} value={p.name}>{p.name}</option>
+                                      ))}
+                                    </select>
+                                    {it.name && (
+                                      <span className={`text-[10px] block font-semibold ${getLiveStock(it.name) > 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                                        {getLiveStock(it.name) > 0 
+                                          ? `📦 Stock : ${getLiveStock(it.name).toFixed(1)} ${it.unit || "kg"}`
+                                          : `⚠️ Rupture (0 kg) — Achat requis`}
+                                      </span>
+                                    )}
+                                  </div>
 
                                   {/* Dose / Ha */}
                                   <input
@@ -1415,26 +1433,35 @@ export function RecommendationForm({
                               <span className="font-bold text-muted-foreground">{t("reco.form.activeName")} {idx + 1}</span>
  
                               <div className="grid grid-cols-2 gap-2">
-                                <select
-                                  value={p.product}
-                                  onChange={(e) => {
-                                    const pName = e.target.value;
-                                    const details = getPhytoProductDetails(pName, products);
-                                    updatePhyItem(idx, {
-                                      product: pName,
-                                      price: details ? details.price : "0",
-                                      dar: details ? details.dar : "",
-                                      cible: details ? details.cible : "",
-                                      dosage: details ? details.dosage : "",
-                                    });
-                                  }}
-                                  className="rounded border bg-background px-2 py-1 text-xs col-span-2 font-semibold"
-                                >
-                                  <option value="">{t("reco.form.chooseActive")}</option>
-                                  {phytoDropdownOptions.map(pr => (
-                                    <option key={pr.name} value={pr.name}>{pr.name}</option>
-                                  ))}
-                                </select>
+                                <div className="col-span-2 space-y-0.5">
+                                  <select
+                                    value={p.product}
+                                    onChange={(e) => {
+                                      const pName = e.target.value;
+                                      const details = getPhytoProductDetails(pName, products);
+                                      updatePhyItem(idx, {
+                                        product: pName,
+                                        price: details ? details.price : "0",
+                                        dar: details ? details.dar : "",
+                                        cible: details ? details.cible : "",
+                                        dosage: details ? details.dosage : "",
+                                      });
+                                    }}
+                                    className="w-full rounded border bg-background px-2 py-1 text-xs font-semibold"
+                                  >
+                                    <option value="">{t("reco.form.chooseActive")}</option>
+                                    {phytoDropdownOptions.map(pr => (
+                                      <option key={pr.name} value={pr.name}>{pr.name}</option>
+                                    ))}
+                                  </select>
+                                  {p.product && (
+                                    <span className={`text-[10px] block font-semibold ${getLiveStock(p.product) > 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                                      {getLiveStock(p.product) > 0 
+                                        ? `📦 Stock dispo : ${getLiveStock(p.product).toFixed(1)} L`
+                                        : `⚠️ Rupture (0 L) — Achat requis`}
+                                    </span>
+                                  )}
+                                </div>
                                 <input
                                   placeholder={t("reco.form.cible")}
                                   value={p.cible}
