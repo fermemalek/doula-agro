@@ -14,6 +14,7 @@ export const translations = {
     "tabs.history": "Historique",
     "tabs.reminders": "Rappels",
     "tabs.anomalies": "Anomalies",
+    "tabs.weather": "Météo",
     // Engineer space
     "eng.title": "Espace ingénieur",
     "eng.pending": "En attente",
@@ -188,6 +189,7 @@ export const translations = {
     "tabs.history": "السجل",
     "tabs.reminders": "التذكيرات",
     "tabs.anomalies": "الأعطال",
+    "tabs.weather": "الطقس",
     // Engineer space
     "eng.title": "فضاء المهندس",
     "eng.pending": "قيد الانتظار",

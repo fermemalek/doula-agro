@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Droplet, FlaskConical, Sprout } from "lucide-react";
+import { Plus, Droplet, FlaskConical, Sprout, CloudSun, ArrowRight } from "lucide-react";
 import { useNavigate } from "@/lib/router-compat";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { useRecommendations, type Recommendation } from "@/lib/cloud/recommendations";
@@ -124,6 +124,37 @@ export function IngenieurHome() {
           <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wide mt-0.5">{t("eng.accepted", "Acceptés (Exécutés)")}</p>
         </div>
       </div>
+
+      {/* Raccourci Météo & Climat */}
+      <button
+        type="button"
+        onClick={() => navigate({ to: "/meteo" })}
+        className="mt-3 w-full flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-sky-500/10 via-amber-500/10 to-emerald-500/10 border border-sky-500/30 hover:border-sky-500/60 transition shadow-xs group text-left"
+      >
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-sky-500/15 text-sky-600 flex items-center justify-center shrink-0">
+            <CloudSun className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-bold text-foreground">
+                {currentLang === "ar" ? "أحوال الطقس والمناخ الفلاحي" : "Météo agricole & Climat"}
+              </p>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-sky-500/20 text-sky-700">
+                {currentLang === "ar" ? "عين وسارة" : "Ain Oussera"}
+              </span>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {currentLang === "ar"
+                ? "توقعات حية، الدليل الشهري، وتنبيه درجات الحرارة القصوى"
+                : "Prévisions directes, guide 12 mois & alerte température max"}
+            </p>
+          </div>
+        </div>
+        <div className="text-muted-foreground group-hover:text-foreground group-hover:translate-x-0.5 transition-transform rtl:rotate-180">
+          <ArrowRight className="h-4 w-4" />
+        </div>
+      </button>
 
       <button
         onClick={() => {

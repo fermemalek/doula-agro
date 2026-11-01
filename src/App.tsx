@@ -19,6 +19,7 @@ import Configuration from "@/pages/Configuration";
 import NotFound from "@/pages/NotFound";
 import DonneesEnAttente from "@/pages/DonneesEnAttente";
 import ManageUsers from "@/pages/ManageUsers";
+import Meteo from "@/pages/Meteo";
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
         <Route path="rappels" element={<Rappels />} />
         <Route path="donnees-en-attente" element={<DonneesEnAttente />} />
         <Route path="utilisateurs" element={<ManageUsers />} />
+        <Route path="meteo" element={<Meteo />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

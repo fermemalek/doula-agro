@@ -1,5 +1,5 @@
 import { Link } from "@/lib/router-compat";
-import { Home, Map, Plus, History, BellRing, User, ListTodo, Wrench, Lightbulb, CalendarRange } from "lucide-react";
+import { Home, Map, Plus, History, BellRing, User, ListTodo, Wrench, Lightbulb, CalendarRange, CloudSun } from "lucide-react";
 import { useDisplayRole } from "@/lib/display-role";
 import { useTranslation } from "@/lib/i18n";
 import { useMyAssignedTasks, useTasks } from "@/lib/cloud/tasks";
@@ -45,6 +45,7 @@ export function BottomTabs() {
   const INGE_TABS = [
     { to: "/", label: t("tabs.home", "Accueil"), icon: Home },
     { to: "/recommandations", label: t("tabs.recos", "Recos"), icon: Lightbulb },
+    { to: "/meteo", label: t("tabs.weather", "Météo"), icon: CloudSun },
     { to: "/profil", label: t("tabs.profile", "Profil"), icon: User },
   ] as const;
 
