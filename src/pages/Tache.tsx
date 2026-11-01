@@ -38,6 +38,7 @@ import {
   useFilters,
   useYearsFromDates,
 } from "@/components/programs/ProgramFiltersBar";
+import { ExecutantWorkload } from "@/components/home/ExecutantWorkload";
 
 const PRIORITY_LABEL: Record<TaskPriority, string> = {
   basse: "Basse",
@@ -768,6 +769,13 @@ function TachePage() {
           </button>
         </div>
       </div>
+
+      {/* Tableau de disponibilité des exécutants (réservé aux admins) */}
+      {isAdmin && (
+        <div className="mb-6">
+          <ExecutantWorkload />
+        </div>
+      )}
 
       {/* External Notifications & Alerts settings panel */}
       {showSettings && (
