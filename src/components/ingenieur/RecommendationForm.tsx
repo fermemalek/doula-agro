@@ -170,9 +170,9 @@ export function RecommendationForm({
 
   useEffect(() => {
     if (appDate) {
-      setFertDate(appDate);
-      setPulvDate(appDate);
-      setPhyDate(appDate);
+      setFertPrograms(prev => prev.map((p, i) => i === 0 && !p.date ? { ...p, date: appDate } : p));
+      setPulvPassages(prev => prev.map((p, i) => i === 0 && !p.date ? { ...p, date: appDate } : p));
+      setPhyPassages(prev => prev.map((p, i) => i === 0 && !p.date ? { ...p, date: appDate } : p));
     }
   }, [appDate]);
 
@@ -186,19 +186,77 @@ export function RecommendationForm({
   const [newProductDosage, setNewProductDosage] = useState("");
   const [newProductDar, setNewProductDar] = useState("");
 
-  // Sub-Form 1: Fertilisation par Irrigation
-  const [fertDate, setFertDate] = useState("");
-  const [fertFrequency, setFertFrequency] = useState("1");
-  const [fertBac, setFertBac] = useState<"A" | "B" | "C" | "D">("A");
-  const [fertEntries, setFertEntries] = useState<any[]>([
-    { bac: "A", items: [] },
-    { bac: "B", items: [] },
-    { bac: "C", items: [] },
-    { bac: "D", items: [] },
+  // Sub-Form 1: Fertilisation par Irrigation (Multi-programmes A1, A2...)
+  interface FertProgramItem {
+    id: string;
+    label: string; // Ex: "Programme A1", "Programme A2"
+    date: string;
+    time: string;
+    frequency: string;
+    irrigationTime: string;
+    injectionTime: number;
+    rinsingTime: number;
+    activeBac: "A" | "B" | "C" | "D";
+    entries: { bac: "A" | "B" | "C" | "D"; items: any[] }[];
+  }
+
+  const createDefaultFertProgram = (id: string, label: string, date: string = ""): FertProgramItem => ({
+    id,
+    label,
+    date,
+    time: "08:00",
+    frequency: "1",
+    irrigationTime: "1h30",
+    injectionTime: 45,
+    rinsingTime: 10,
+    activeBac: "A",
+    entries: [
+      { bac: "A", items: [] },
+      { bac: "B", items: [] },
+      { bac: "C", items: [] },
+      { bac: "D", items: [] },
+    ],
+  });
+
+  const [fertPrograms, setFertPrograms] = useState<FertProgramItem[]>([
+    createDefaultFertProgram("fert_1", "Programme A1"),
   ]);
-  const [fertIrrigationTime, setFertIrrigationTime] = useState("1h30");
-  const [fertInjectionTime, setFertInjectionTime] = useState(45);
-  const [fertRinsingTime, setFertRinsingTime] = useState(10);
+
+  // Backward compatibility state pointers
+  const [activeFertProgIndex, setActiveFertProgIndex] = useState(0);
+  const currentFertProg = fertPrograms[activeFertProgIndex] || fertPrograms[0];
+  const fertBac = currentFertProg.activeBac;
+  const setFertBac = (b: "A" | "B" | "C" | "D") => {
+    setFertPrograms(prev => prev.map((fp, i) => i === activeFertProgIndex ? { ...fp, activeBac: b } : fp));
+  };
+  const fertEntries = currentFertProg.entries;
+  const setFertEntries = (fnOrVal: any) => {
+    setFertPrograms(prev => prev.map((fp, i) => {
+      if (i !== activeFertProgIndex) return fp;
+      const nextEntries = typeof fnOrVal === "function" ? fnOrVal(fp.entries) : fnOrVal;
+      return { ...fp, entries: nextEntries };
+    }));
+  };
+  const fertIrrigationTime = currentFertProg.irrigationTime;
+  const setFertIrrigationTime = (val: string) => {
+    setFertPrograms(prev => prev.map((fp, i) => i === activeFertProgIndex ? { ...fp, irrigationTime: val } : fp));
+  };
+  const fertInjectionTime = currentFertProg.injectionTime;
+  const setFertInjectionTime = (val: number) => {
+    setFertPrograms(prev => prev.map((fp, i) => i === activeFertProgIndex ? { ...fp, injectionTime: val } : fp));
+  };
+  const fertRinsingTime = currentFertProg.rinsingTime;
+  const setFertRinsingTime = (val: number) => {
+    setFertPrograms(prev => prev.map((fp, i) => i === activeFertProgIndex ? { ...fp, rinsingTime: val } : fp));
+  };
+  const fertFrequency = currentFertProg.frequency;
+  const setFertFrequency = (val: string) => {
+    setFertPrograms(prev => prev.map((fp, i) => i === activeFertProgIndex ? { ...fp, frequency: val } : fp));
+  };
+  const fertDate = currentFertProg.date;
+  const setFertDate = (val: string) => {
+    setFertPrograms(prev => prev.map((fp, i) => i === activeFertProgIndex ? { ...fp, date: val } : fp));
+  };
 
   const totalMin =
     fertIrrigationTime === "1h"
@@ -214,17 +272,79 @@ export function RecommendationForm({
               : 90;
   const wettingMin = Math.max(0, totalMin - fertInjectionTime - fertRinsingTime);
 
-  // Sub-Form 2: Fertilisation par Pulvérisation
-  const [pulvDate, setPulvDate] = useState("");
-  const [pulvItems, setPulvItems] = useState<any[]>([
-    { name: "", qty: "", unit: "kg", price: "" }
+  // Sub-Form 2: Fertilisation par Pulvérisation (Multi-passages 1, 2...)
+  interface PulvPassageItem {
+    id: string;
+    label: string; // Ex: "Passage 1", "Passage 2"
+    date: string;
+    time: string;
+    waterVolume: string; // Ex: 1000 L
+    items: { name: string; qty: string; unit: string; price: string }[];
+  }
+
+  const createDefaultPulvPassage = (id: string, label: string, date: string = ""): PulvPassageItem => ({
+    id,
+    label,
+    date,
+    time: "07:00",
+    waterVolume: "1000",
+    items: [{ name: "", qty: "", unit: "kg", price: "" }],
+  });
+
+  const [pulvPassages, setPulvPassages] = useState<PulvPassageItem[]>([
+    createDefaultPulvPassage("pulv_1", "Passage 1"),
   ]);
 
-  // Sub-Form 3: Phytosanitaire
-  const [phyDate, setPhyDate] = useState("");
-  const [phyProducts, setPhyProducts] = useState<any[]>([
-    { product: "", cible: "", dosage: "", volume: "1000", price: "", dar: "" }
+  const [activePulvIndex, setActivePulvIndex] = useState(0);
+  const currentPulvPassage = pulvPassages[activePulvIndex] || pulvPassages[0];
+  const pulvDate = currentPulvPassage.date;
+  const setPulvDate = (val: string) => {
+    setPulvPassages(prev => prev.map((p, i) => i === activePulvIndex ? { ...p, date: val } : p));
+  };
+  const pulvItems = currentPulvPassage.items;
+  const setPulvItems = (fnOrVal: any) => {
+    setPulvPassages(prev => prev.map((p, i) => {
+      if (i !== activePulvIndex) return p;
+      const nextItems = typeof fnOrVal === "function" ? fnOrVal(p.items) : fnOrVal;
+      return { ...p, items: nextItems };
+    }));
+  };
+
+  // Sub-Form 3: Phytosanitaire (Multi-traitements 1, 2...)
+  interface PhytoPassageItem {
+    id: string;
+    label: string; // Ex: "Traitement 1", "Traitement 2"
+    date: string;
+    time: string;
+    products: { product: string; cible: string; dosage: string; volume: string; price: string; dar: string }[];
+  }
+
+  const createDefaultPhytoPassage = (id: string, label: string, date: string = ""): PhytoPassageItem => ({
+    id,
+    label,
+    date,
+    time: "17:00",
+    products: [{ product: "", cible: "", dosage: "", volume: "1000", price: "", dar: "" }],
+  });
+
+  const [phyPassages, setPhyPassages] = useState<PhytoPassageItem[]>([
+    createDefaultPhytoPassage("phy_1", "Traitement 1"),
   ]);
+
+  const [activePhyIndex, setActivePhyIndex] = useState(0);
+  const currentPhyPassage = phyPassages[activePhyIndex] || phyPassages[0];
+  const phyDate = currentPhyPassage.date;
+  const setPhyDate = (val: string) => {
+    setPhyPassages(prev => prev.map((p, i) => i === activePhyIndex ? { ...p, date: val } : p));
+  };
+  const phyProducts = currentPhyPassage.products;
+  const setPhyProducts = (fnOrVal: any) => {
+    setPhyPassages(prev => prev.map((p, i) => {
+      if (i !== activePhyIndex) return p;
+      const nextProds = typeof fnOrVal === "function" ? fnOrVal(p.products) : fnOrVal;
+      return { ...p, products: nextProds };
+    }));
+  };
 
   useEffect(() => {
     if (open && recoToEdit) {
@@ -386,7 +506,7 @@ export function RecommendationForm({
   }
 
   async function submit() {
-    if (!title.trim()) return toast.error(t("reco.form.errorTitleRequired"));
+    if (!appDate) return toast.error("Date d'application requise");
     if (cropGroups.length === 0) return toast.error(t("reco.form.errorCropRequired"));
     if (selectedPrescriptions.length === 0) return toast.error(t("reco.form.errorPrescriptionRequired"));
 
@@ -404,7 +524,9 @@ export function RecommendationForm({
         const presc = selectedPrescriptions[0];
         let currentKind: RecoKind = "fertilisation";
         let currentPayload: any = null;
-        let currentTitle = title.trim();
+        const cropNames = cropGroups.map((g) => t(`crop.${g}`)).join(", ");
+        const autoBaseTitle = title.trim() || `${cropNames} - ${appDate}`;
+        let currentTitle = autoBaseTitle;
 
         if (presc === "fert_irrigation") {
           if (!fertDate) {
@@ -417,7 +539,7 @@ export function RecommendationForm({
             return toast.error(t("reco.form.errorNoFertilizerAdded"));
           }
           currentKind = "fertilisation";
-          currentTitle = `${title.trim()} (Irrigation)`;
+          currentTitle = `${autoBaseTitle} (Irrigation)`;
           currentPayload = {
             method: "irrigation",
             crop_group: cropGroups,
@@ -444,7 +566,7 @@ export function RecommendationForm({
             return toast.error(t("reco.form.errorNoPulvElement"));
           }
           currentKind = "fertilisation";
-          currentTitle = `${title.trim()} (Foliaire)`;
+          currentTitle = `${autoBaseTitle} (Foliaire)`;
           currentPayload = {
             method: "pulverisation",
             crop_group: cropGroups,
@@ -468,7 +590,7 @@ export function RecommendationForm({
             return toast.error(t("reco.form.errorNoPhytoProduct"));
           }
           currentKind = "phytosanitaire";
-          currentTitle = `${title.trim()} (Phyto)`;
+          currentTitle = `${autoBaseTitle} (Phyto)`;
           currentPayload = {
             method: "pulverisation",
             crop_group: cropGroups,
@@ -496,7 +618,9 @@ export function RecommendationForm({
         for (const presc of selectedPrescriptions) {
           let currentKind: RecoKind = "fertilisation";
           let currentPayload: any = null;
-          let currentTitle = title.trim();
+          const cropNames = cropGroups.map((g) => t(`crop.${g}`)).join(", ");
+          const autoBaseTitle = title.trim() || `${cropNames} - ${appDate}`;
+          let currentTitle = autoBaseTitle;
 
           if (presc === "fert_irrigation") {
             if (!fertDate) {
@@ -671,33 +795,17 @@ export function RecommendationForm({
             </div>
           </div>
 
-          {/* Title & Comment */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Date d'application uniquement */}
+          <div className="rounded-2xl border border-primary/30 bg-primary/[0.03] p-3.5 shadow-xs">
             <label className="block">
-              <span className="font-bold uppercase text-muted-foreground">{t("reco.form.title")}</span>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder={t("reco.form.titlePlaceholder")}
-                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="font-bold uppercase text-muted-foreground">{t("reco.form.creationDate")}</span>
-              <input
-                type="date"
-                value={createdAtDate}
-                onChange={(e) => setCreatedAtDate(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block">
-              <span className="font-bold uppercase text-muted-foreground">{t("reco.form.globalAppDate")}</span>
+              <span className="font-extrabold uppercase text-primary text-xs flex items-center gap-1.5">
+                📅 {t("reco.form.globalAppDate")} *
+              </span>
               <input
                 type="date"
                 value={appDate}
                 onChange={(e) => setAppDate(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                className="mt-1.5 w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm font-bold shadow-xs focus:ring-2 focus:ring-primary/20"
               />
             </label>
           </div>
@@ -711,18 +819,88 @@ export function RecommendationForm({
                 if (presc === "fert_irrigation") {
                   return (
                     <div key={presc} className="border rounded-2xl p-4 bg-muted/30 space-y-3">
-                      <h4 className="font-black text-xs text-primary uppercase border-b pb-1 flex items-center gap-1.5">
-                        <Droplet className="h-4 w-4 text-sky-600" />
-                        <span>{t("reco.form.fertilizerIrrigation")}</span>
-                      </h4>
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="block">
-                            <span className="font-bold text-muted-foreground">{t("reco.form.appDate")}</span>
-                            <div className="mt-1 w-full rounded border border-input bg-muted/40 px-3 py-1.5 font-bold text-muted-foreground text-center">
-                              {appDate || t("gen.undefined")}
-                            </div>
+                      <div className="flex justify-between items-center border-b pb-1">
+                        <h4 className="font-black text-xs text-primary uppercase flex items-center gap-1.5">
+                          <Droplet className="h-4 w-4 text-sky-600" />
+                          <span>{t("reco.form.fertilizerIrrigation")}</span>
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextIndex = fertPrograms.length + 1;
+                            const newProg = createDefaultFertProgram(
+                              `fert_${Date.now()}`,
+                              `Programme A${nextIndex}`,
+                              appDate
+                            );
+                            setFertPrograms(prev => [...prev, newProg]);
+                            setActiveFertProgIndex(fertPrograms.length);
+                          }}
+                          className="bg-primary hover:bg-primary/90 text-primary-foreground px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 shadow-xs transition"
+                        >
+                          <Plus className="h-3.5 w-3.5" /> + Ajouter un sous-programme (A{fertPrograms.length + 1})
+                        </button>
+                      </div>
+
+                      {/* Sélecteur d'onglets des sous-programmes Fertigation */}
+                      <div className="flex flex-wrap gap-1.5 p-1 bg-background/60 rounded-xl border">
+                        {fertPrograms.map((fp, idx) => (
+                          <div key={fp.id} className="flex items-center">
+                            <button
+                              type="button"
+                              onClick={() => setActiveFertProgIndex(idx)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
+                                activeFertProgIndex === idx
+                                  ? "bg-primary text-primary-foreground shadow-xs"
+                                  : "text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              <span>{fp.label}</span>
+                              {fp.entries.some(e => e.items.length > 0) && (
+                                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                              )}
+                            </button>
+                            {fertPrograms.length > 1 && (
+                              <button
+                                type="button"
+                                title="Supprimer ce sous-programme"
+                                onClick={() => {
+                                  setFertPrograms(prev => prev.filter((_, i) => i !== idx));
+                                  setActiveFertProgIndex(0);
+                                }}
+                                className="text-muted-foreground hover:text-destructive p-1"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
                           </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <label className="block">
+                            <span className="font-bold text-muted-foreground text-xs">Nom du sous-programme</span>
+                            <input
+                              type="text"
+                              value={currentFertProg.label}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setFertPrograms(prev => prev.map((p, i) => i === activeFertProgIndex ? { ...p, label: val } : p));
+                              }}
+                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
+                              placeholder="Ex: Programme A1"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="font-bold text-muted-foreground text-xs">Date d'application</span>
+                            <input
+                              type="date"
+                              value={currentFertProg.date || appDate}
+                              onChange={(e) => setFertDate(e.target.value)}
+                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
+                            />
+                          </label>
                           <label className="block">
                             <span className="font-bold text-muted-foreground">{t("reco.form.frequency")}</span>
                             <select
@@ -871,16 +1049,100 @@ export function RecommendationForm({
                 if (presc === "fert_pulverisation") {
                   return (
                     <div key={presc} className="border rounded-2xl p-4 bg-muted/30 space-y-3">
-                      <h4 className="font-black text-xs text-primary uppercase border-b pb-1 flex items-center gap-1.5">
-                        <SprayCan className="h-4 w-4 text-emerald-600" />
-                        <span>{t("reco.form.fertilizerFoliar")}</span>
-                      </h4>
-                      <div className="space-y-3">
-                        <div className="block max-w-xs">
-                          <span className="font-bold text-muted-foreground">{t("reco.form.appDate")}</span>
-                          <div className="mt-1 w-full rounded border border-input bg-muted/40 px-3 py-1.5 font-bold text-muted-foreground text-center">
-                            {appDate || t("gen.undefined")}
+                      <div className="flex justify-between items-center border-b pb-1">
+                        <h4 className="font-black text-xs text-primary uppercase flex items-center gap-1.5">
+                          <SprayCan className="h-4 w-4 text-emerald-600" />
+                          <span>{t("reco.form.fertilizerFoliar")}</span>
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextIndex = pulvPassages.length + 1;
+                            const newPass = createDefaultPulvPassage(
+                              `pulv_${Date.now()}`,
+                              `Passage ${nextIndex}`,
+                              appDate
+                            );
+                            setPulvPassages(prev => [...prev, newPass]);
+                            setActivePulvIndex(pulvPassages.length);
+                          }}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 shadow-xs transition"
+                        >
+                          <Plus className="h-3.5 w-3.5" /> + Ajouter un sous-programme (Passage {pulvPassages.length + 1})
+                        </button>
+                      </div>
+
+                      {/* Sélecteur de passages Pulvérisation */}
+                      <div className="flex flex-wrap gap-1.5 p-1 bg-background/60 rounded-xl border">
+                        {pulvPassages.map((pp, idx) => (
+                          <div key={pp.id} className="flex items-center">
+                            <button
+                              type="button"
+                              onClick={() => setActivePulvIndex(idx)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
+                                activePulvIndex === idx
+                                  ? "bg-emerald-600 text-white shadow-xs"
+                                  : "text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              <span>{pp.label}</span>
+                              {pp.items.some(it => it.name && it.qty) && (
+                                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                              )}
+                            </button>
+                            {pulvPassages.length > 1 && (
+                              <button
+                                type="button"
+                                title="Supprimer ce passage"
+                                onClick={() => {
+                                  setPulvPassages(prev => prev.filter((_, i) => i !== idx));
+                                  setActivePulvIndex(0);
+                                }}
+                                className="text-muted-foreground hover:text-destructive p-1"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
                           </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <label className="block">
+                            <span className="font-bold text-muted-foreground text-xs">Nom du passage</span>
+                            <input
+                              type="text"
+                              value={currentPulvPassage.label}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPulvPassages(prev => prev.map((p, i) => i === activePulvIndex ? { ...p, label: val } : p));
+                              }}
+                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
+                              placeholder="Ex: Passage 1"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="font-bold text-muted-foreground text-xs">Date d'application</span>
+                            <input
+                              type="date"
+                              value={currentPulvPassage.date || appDate}
+                              onChange={(e) => setPulvDate(e.target.value)}
+                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="font-bold text-muted-foreground text-xs">Heure de passage</span>
+                            <input
+                              type="time"
+                              value={currentPulvPassage.time}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPulvPassages(prev => prev.map((p, i) => i === activePulvIndex ? { ...p, time: val } : p));
+                              }}
+                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
+                            />
+                          </label>
                         </div>
  
                         <div className="space-y-2">
@@ -967,16 +1229,100 @@ export function RecommendationForm({
                 if (presc === "phytosanitaire") {
                   return (
                     <div key={presc} className="border rounded-2xl p-4 bg-muted/30 space-y-3">
-                      <h4 className="font-black text-xs text-primary uppercase border-b pb-1 flex items-center gap-1.5">
-                        <FlaskConical className="h-4 w-4 text-emerald-600" />
-                        <span>{t("reco.form.phytosanitaire")}</span>
-                      </h4>
-                      <div className="space-y-3">
-                        <div className="block max-w-xs">
-                          <span className="font-bold text-muted-foreground">{t("reco.form.appDate")}</span>
-                          <div className="mt-1 w-full rounded border border-input bg-muted/40 px-3 py-1.5 font-bold text-muted-foreground text-center">
-                            {appDate || t("gen.undefined")}
+                      <div className="flex justify-between items-center border-b pb-1">
+                        <h4 className="font-black text-xs text-primary uppercase flex items-center gap-1.5">
+                          <FlaskConical className="h-4 w-4 text-violet-600" />
+                          <span>{t("reco.form.phytosanitaire")}</span>
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextIndex = phyPassages.length + 1;
+                            const newPass = createDefaultPhytoPassage(
+                              `phy_${Date.now()}`,
+                              `Traitement ${nextIndex}`,
+                              appDate
+                            );
+                            setPhyPassages(prev => [...prev, newPass]);
+                            setActivePhyIndex(phyPassages.length);
+                          }}
+                          className="bg-violet-600 hover:bg-violet-700 text-white px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 shadow-xs transition"
+                        >
+                          <Plus className="h-3.5 w-3.5" /> + Ajouter un sous-programme (Traitement {phyPassages.length + 1})
+                        </button>
+                      </div>
+
+                      {/* Sélecteur de sous-programmes Phytosanitaire */}
+                      <div className="flex flex-wrap gap-1.5 p-1 bg-background/60 rounded-xl border">
+                        {phyPassages.map((ph, idx) => (
+                          <div key={ph.id} className="flex items-center">
+                            <button
+                              type="button"
+                              onClick={() => setActivePhyIndex(idx)}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${
+                                activePhyIndex === idx
+                                  ? "bg-violet-600 text-white shadow-xs"
+                                  : "text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              <span>{ph.label}</span>
+                              {ph.products.some(p => p.product) && (
+                                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                              )}
+                            </button>
+                            {phyPassages.length > 1 && (
+                              <button
+                                type="button"
+                                title="Supprimer ce traitement"
+                                onClick={() => {
+                                  setPhyPassages(prev => prev.filter((_, i) => i !== idx));
+                                  setActivePhyIndex(0);
+                                }}
+                                className="text-muted-foreground hover:text-destructive p-1"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            )}
                           </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <label className="block">
+                            <span className="font-bold text-muted-foreground text-xs">Nom du traitement</span>
+                            <input
+                              type="text"
+                              value={currentPhyPassage.label}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPhyPassages(prev => prev.map((p, i) => i === activePhyIndex ? { ...p, label: val } : p));
+                              }}
+                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
+                              placeholder="Ex: Traitement 1"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="font-bold text-muted-foreground text-xs">Date d'application</span>
+                            <input
+                              type="date"
+                              value={currentPhyPassage.date || appDate}
+                              onChange={(e) => setPhyDate(e.target.value)}
+                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="font-bold text-muted-foreground text-xs">Heure de traitement</span>
+                            <input
+                              type="time"
+                              value={currentPhyPassage.time}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPhyPassages(prev => prev.map((p, i) => i === activePhyIndex ? { ...p, time: val } : p));
+                              }}
+                              className="mt-1 w-full rounded border border-input bg-background px-2.5 py-1.5 text-xs font-bold"
+                            />
+                          </label>
                         </div>
  
                         <div className="space-y-3">
