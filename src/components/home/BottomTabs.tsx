@@ -53,10 +53,8 @@ export function BottomTabs() {
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
         <ul className="mx-auto flex max-w-3xl">
           {ADMIN_TABS.map(({ to, label, icon: Icon }) => {
-            const showBadge =
-              (to === "/tache" && badgeCount > 0) ||
-              (to === "/" && hasPersonalTasks);
-            const count = to === "/" ? myTasks.length : badgeCount;
+            const showBadge = to === "/tache" && badgeCount > 0;
+            const count = badgeCount;
             return (
               <li key={to} className="flex-1">
                 <Link
@@ -72,9 +70,8 @@ export function BottomTabs() {
                     <Icon className="h-5 w-5" />
                     {showBadge && (
                       <span
-                        className={`absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white shadow ${
-                          hasPersonalTasks ? "bg-destructive animate-pulse" : "bg-amber-500"
-                        }`}
+                        className={`absolute -top-1.5 -right-2.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white shadow ${hasPersonalTasks ? "bg-destructive animate-pulse" : "bg-amber-500"
+                          }`}
                       >
                         {count}
                       </span>

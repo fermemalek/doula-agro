@@ -33,7 +33,7 @@ export function ExecutantWorkload() {
   const { data: executants = [] } = useExecutants();
   const parcels = useParcels();
   const navigate = useNavigate();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const people = useMemo<Person[]>(() => {

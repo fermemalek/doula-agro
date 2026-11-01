@@ -134,7 +134,7 @@ function TachePage() {
 
   const [filters, setFilters] = useFilters();
   const [selectedSpecies, setSelectedSpecies] = useState<'all' | 'olivier' | 'pommier' | 'nectarine'>('all');
-  
+
   // Notification states
   const [whatsappEnabled, setWhatsappEnabled] = useState(false);
   const [whatsappNumber, setWhatsappNumber] = useState('');
@@ -577,6 +577,26 @@ function TachePage() {
 
   return (
     <ListPageShell title="Tâches">
+      {/* 1. Bandeau des tâches assignées personnellement (tout en haut, cliquable pour descendre vers les tâches) */}
+      {!showArchived && myTasks.length > 0 && (
+        <a
+          href="#liste-taches"
+          className="mb-4 flex items-center justify-between gap-2 rounded-2xl border-2 border-amber-500/50 bg-amber-500/10 p-3 text-xs font-semibold text-foreground shadow-xs transition hover:bg-amber-500/20 active:scale-[0.99] cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <Bell className="h-4 w-4 shrink-0 text-amber-600 animate-bounce" />
+            <span>
+              {matchedMemberName
+                ? `${matchedMemberName}, vous avez ${myTasks.length} tâche(s) qui vous sont personnellement assignées à réaliser.`
+                : `Vous avez ${myTasks.length} tâche(s) qui vous sont personnellement assignées à réaliser.`}
+            </span>
+          </div>
+          <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white shrink-0">
+            {myTasks.length}
+          </span>
+        </a>
+      )}
+
       {/* Premium Species Buttons Interface */}
       <div className="space-y-3 mb-6">
         <div className="flex items-center justify-between">
@@ -584,39 +604,7 @@ function TachePage() {
             🌱 Gestionnaire par Espèce & Secteur
           </h2>
           <div className="flex items-center gap-2">
-            {/* Audio alarm controller */}
-            <button
-              onClick={() => {
-                const newActive = !audioAlertsActive;
-                setAudioAlertsActive(newActive);
-                if (newActive) {
-                  playNotificationSound('info');
-                  toast.success("Alarmes sonores activées 🔊");
-                } else {
-                  toast.success("Alarmes sonores désactivées 🔇");
-                }
-              }}
-              className={`flex items-center gap-1 text-xs px-2.5 py-1 rounded-full border transition-all ${
-                audioAlertsActive
-                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
-                  : "bg-muted border-muted-foreground/20 text-muted-foreground hover:bg-muted/80"
-              }`}
-              title="Activer/Désactiver les alertes sonores de rappel"
-            >
-              {audioAlertsActive ? (
-                <>
-                  <Volume2 className="h-3.5 w-3.5 text-emerald-500 animate-bounce" />
-                  <span>Son Actif</span>
-                </>
-              ) : (
-                <>
-                  <VolumeX className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>Son Muet</span>
-                </>
-              )}
-            </button>
-
-            {/* Notification settings toggle */}
+            {/* Bouton unique Config pour les alarmes sonores et rappels externes */}
             <Button
               variant="outline"
               size="sm"
@@ -624,12 +612,11 @@ function TachePage() {
                 setShowSettings(!showSettings);
                 playNotificationSound('info');
               }}
-              className={`h-7 px-2.5 rounded-full text-xs transition-all ${
-                showSettings ? "bg-primary text-primary-foreground border-primary" : ""
-              }`}
+              className={`h-7 px-2.5 rounded-full text-xs transition-all ${showSettings ? "bg-primary text-primary-foreground border-primary" : ""
+                }`}
             >
               <Settings className="h-3.5 w-3.5 mr-1" />
-              Rappels Externes
+              Config
             </Button>
           </div>
         </div>
@@ -642,16 +629,14 @@ function TachePage() {
               setSelectedSpecies('all');
               playNotificationSound('info');
             }}
-            className={`flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all duration-300 transform hover:-translate-y-0.5 ${
-              selectedSpecies === 'all'
+            className={`flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all duration-300 transform hover:-translate-y-0.5 ${selectedSpecies === 'all'
                 ? "border-primary bg-primary/5 shadow-[0_4px_20px_rgba(99,102,241,0.15)] ring-1 ring-primary/20"
                 : "border-border bg-card hover:bg-muted/40"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-xl transition-all duration-300 ${
-                selectedSpecies === 'all' ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-              }`}>
+              <div className={`p-2.5 rounded-xl transition-all duration-300 ${selectedSpecies === 'all' ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                }`}>
                 <Home className="h-5 w-5" />
               </div>
               <div>
@@ -663,9 +648,8 @@ function TachePage() {
               {countAll > 0 && selectedSpecies === 'all' && (
                 <span className="h-2 w-2 rounded-full bg-primary animate-ping" />
               )}
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                selectedSpecies === 'all' ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
-              }`}>{countAll}</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${selectedSpecies === 'all' ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                }`}>{countAll}</span>
             </div>
           </button>
 
@@ -675,16 +659,14 @@ function TachePage() {
               setSelectedSpecies('olivier');
               playNotificationSound('info');
             }}
-            className={`flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all duration-300 transform hover:-translate-y-0.5 ${
-              selectedSpecies === 'olivier'
+            className={`flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all duration-300 transform hover:-translate-y-0.5 ${selectedSpecies === 'olivier'
                 ? "border-lime-600 bg-lime-500/5 shadow-[0_4px_20px_rgba(132,204,22,0.15)] ring-1 ring-lime-500/20"
                 : "border-border bg-card hover:bg-muted/40"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-xl transition-all duration-300 ${
-                selectedSpecies === 'olivier' ? "bg-lime-500/20 text-lime-600 dark:text-lime-400" : "bg-muted text-muted-foreground"
-              }`}>
+              <div className={`p-2.5 rounded-xl transition-all duration-300 ${selectedSpecies === 'olivier' ? "bg-lime-500/20 text-lime-600 dark:text-lime-400" : "bg-muted text-muted-foreground"
+                }`}>
                 <Leaf className="h-5 w-5" />
               </div>
               <div>
@@ -696,9 +678,8 @@ function TachePage() {
               {countOlivier > 0 && selectedSpecies === 'olivier' && (
                 <span className="h-2 w-2 rounded-full bg-lime-500 animate-ping" />
               )}
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                selectedSpecies === 'olivier' ? "bg-lime-500/20 text-lime-700 dark:text-lime-300" : "bg-muted text-muted-foreground"
-              }`}>{countOlivier}</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${selectedSpecies === 'olivier' ? "bg-lime-500/20 text-lime-700 dark:text-lime-300" : "bg-muted text-muted-foreground"
+                }`}>{countOlivier}</span>
             </div>
           </button>
 
@@ -708,16 +689,14 @@ function TachePage() {
               setSelectedSpecies('pommier');
               playNotificationSound('info');
             }}
-            className={`flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all duration-300 transform hover:-translate-y-0.5 ${
-              selectedSpecies === 'pommier'
+            className={`flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all duration-300 transform hover:-translate-y-0.5 ${selectedSpecies === 'pommier'
                 ? "border-rose-600 bg-rose-500/5 shadow-[0_4px_20px_rgba(244,63,94,0.15)] ring-1 ring-rose-500/20"
                 : "border-border bg-card hover:bg-muted/40"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-xl transition-all duration-300 ${
-                selectedSpecies === 'pommier' ? "bg-rose-500/20 text-rose-600 dark:text-rose-400" : "bg-muted text-muted-foreground"
-              }`}>
+              <div className={`p-2.5 rounded-xl transition-all duration-300 ${selectedSpecies === 'pommier' ? "bg-rose-500/20 text-rose-600 dark:text-rose-400" : "bg-muted text-muted-foreground"
+                }`}>
                 <Apple className="h-5 w-5" />
               </div>
               <div>
@@ -729,9 +708,8 @@ function TachePage() {
               {countPommier > 0 && selectedSpecies === 'pommier' && (
                 <span className="h-2 w-2 rounded-full bg-rose-500 animate-ping" />
               )}
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                selectedSpecies === 'pommier' ? "bg-rose-500/20 text-rose-700 dark:text-rose-300" : "bg-muted text-muted-foreground"
-              }`}>{countPommier}</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${selectedSpecies === 'pommier' ? "bg-rose-500/20 text-rose-700 dark:text-rose-300" : "bg-muted text-muted-foreground"
+                }`}>{countPommier}</span>
             </div>
           </button>
 
@@ -741,16 +719,14 @@ function TachePage() {
               setSelectedSpecies('nectarine');
               playNotificationSound('info');
             }}
-            className={`flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all duration-300 transform hover:-translate-y-0.5 ${
-              selectedSpecies === 'nectarine'
+            className={`flex items-center justify-between p-3.5 rounded-2xl border text-left transition-all duration-300 transform hover:-translate-y-0.5 ${selectedSpecies === 'nectarine'
                 ? "border-amber-600 bg-amber-500/5 shadow-[0_4px_20px_rgba(245,158,11,0.15)] ring-1 ring-amber-500/20"
                 : "border-border bg-card hover:bg-muted/40"
-            }`}
+              }`}
           >
             <div className="flex items-center gap-3">
-              <div className={`p-2.5 rounded-xl transition-all duration-300 ${
-                selectedSpecies === 'nectarine' ? "bg-amber-500/20 text-amber-600 dark:text-amber-400" : "bg-muted text-muted-foreground"
-              }`}>
+              <div className={`p-2.5 rounded-xl transition-all duration-300 ${selectedSpecies === 'nectarine' ? "bg-amber-500/20 text-amber-600 dark:text-amber-400" : "bg-muted text-muted-foreground"
+                }`}>
                 <Leaf className="h-5 w-5 rotate-90 text-amber-500" />
               </div>
               <div>
@@ -762,9 +738,8 @@ function TachePage() {
               {countNectarine > 0 && selectedSpecies === 'nectarine' && (
                 <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
               )}
-              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                selectedSpecies === 'nectarine' ? "bg-amber-500/20 text-amber-700 dark:text-amber-300" : "bg-muted text-muted-foreground"
-              }`}>{countNectarine}</span>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${selectedSpecies === 'nectarine' ? "bg-amber-500/20 text-amber-700 dark:text-amber-300" : "bg-muted text-muted-foreground"
+                }`}>{countNectarine}</span>
             </div>
           </button>
         </div>
@@ -783,11 +758,11 @@ function TachePage() {
           <div className="flex justify-between items-start">
             <div>
               <h3 className="font-bold text-sm text-primary flex items-center gap-2">
-                <Bell className="h-4 w-4 text-primary animate-pulse" />
-                Rappels de Secours (WhatsApp & E-mail)
+                <Settings className="h-4 w-4 text-primary" />
+                Configuration des Alertes & Rappels
               </h3>
               <p className="text-xs text-muted-foreground mt-1">
-                Configurez la réception de notifications externes. Utile si l'application est fermée ou en cas de dysfonctionnement du navigateur.
+                Gérez le signal sonore et configurez les notifications de secours (WhatsApp & E-mail).
               </p>
             </div>
             <button
@@ -795,6 +770,41 @@ function TachePage() {
               className="text-muted-foreground hover:text-foreground rounded p-1 hover:bg-muted"
             >
               <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Section Son Actif / Muet */}
+          <div className="flex items-center justify-between p-3.5 rounded-xl border bg-card">
+            <div className="flex items-center gap-2.5">
+              <div className={`p-2 rounded-xl ${audioAlertsActive ? "bg-emerald-500/20 text-emerald-600" : "bg-muted text-muted-foreground"}`}>
+                {audioAlertsActive ? <Volume2 className="h-4 w-4 animate-bounce" /> : <VolumeX className="h-4 w-4" />}
+              </div>
+              <div>
+                <p className="text-xs font-bold text-foreground">
+                  Alarmes sonores automatiques : {audioAlertsActive ? "Activées" : "Désactivées (Muet)"}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  Émet un signal sonore de rappel lorsque des tâches urgentes approchent de l'échéance.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const newActive = !audioAlertsActive;
+                setAudioAlertsActive(newActive);
+                if (newActive) {
+                  playNotificationSound('info');
+                  toast.success("Alarmes sonores activées 🔊");
+                } else {
+                  toast.success("Alarmes sonores désactivées 🔇");
+                }
+              }}
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-xl border font-bold transition-all ${audioAlertsActive
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+                  : "bg-muted border-muted-foreground/20 text-muted-foreground hover:bg-muted/80"
+                }`}
+            >
+              {audioAlertsActive ? "Désactiver le son" : "Activer le son"}
             </button>
           </div>
 
@@ -920,17 +930,15 @@ function TachePage() {
         <div className="flex gap-1 rounded-md bg-muted p-0.5">
           <button
             onClick={() => setShowArchived(false)}
-            className={`rounded px-3 py-1 text-xs font-medium ${
-              !showArchived ? "bg-background shadow text-foreground" : "text-muted-foreground"
-            }`}
+            className={`rounded px-3 py-1 text-xs font-medium ${!showArchived ? "bg-background shadow text-foreground" : "text-muted-foreground"
+              }`}
           >
             En cours
           </button>
           <button
             onClick={() => setShowArchived(true)}
-            className={`rounded px-3 py-1 text-xs font-medium ${
-              showArchived ? "bg-background shadow text-foreground" : "text-muted-foreground"
-            }`}
+            className={`rounded px-3 py-1 text-xs font-medium ${showArchived ? "bg-background shadow text-foreground" : "text-muted-foreground"
+              }`}
           >
             Archivées
           </button>
@@ -1043,11 +1051,10 @@ function TachePage() {
                       return (
                         <div
                           key={workerName}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                            active
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${active
                               ? "border-primary bg-primary text-primary-foreground shadow-xs"
                               : "border-border bg-background text-foreground hover:bg-muted"
-                          }`}
+                            }`}
                         >
                           <label className="flex cursor-pointer items-center gap-1.5">
                             <input
@@ -1062,9 +1069,8 @@ function TachePage() {
                             type="button"
                             onClick={() => removeSavedWorker(workerName)}
                             title="Retirer de la liste mémorisée"
-                            className={`ml-0.5 rounded-full p-0.5 hover:bg-black/10 ${
-                              active ? "text-primary-foreground/80" : "text-muted-foreground"
-                            }`}
+                            className={`ml-0.5 rounded-full p-0.5 hover:bg-black/10 ${active ? "text-primary-foreground/80" : "text-muted-foreground"
+                              }`}
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -1150,28 +1156,12 @@ function TachePage() {
 
       <ProgramFiltersBar value={filters} onChange={setFilters} years={years} />
 
-      {!showArchived && myTasks.length > 0 && (
-        <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl border-2 border-amber-500/50 bg-amber-500/10 p-3 text-xs font-semibold text-foreground shadow-xs">
-          <div className="flex items-center gap-2">
-            <Bell className="h-4 w-4 shrink-0 text-amber-600 animate-bounce" />
-            <span>
-              {matchedMemberName
-                ? `${matchedMemberName}, vous avez ${myTasks.length} tâche(s) qui vous sont personnellement assignées à réaliser.`
-                : `Vous avez ${myTasks.length} tâche(s) qui vous sont personnellement assignées à réaliser.`}
-            </span>
-          </div>
-          <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">
-            {myTasks.length}
-          </span>
-        </div>
-      )}
-
       {filtered.length === 0 ? (
-        <Card className="p-6 text-center text-sm text-muted-foreground">
+        <Card id="liste-taches" className="p-6 text-center text-sm text-muted-foreground scroll-mt-20">
           {showArchived ? "Aucune tâche archivée." : "Aucune tâche en cours."}
         </Card>
       ) : (
-        <ul className="space-y-2">
+        <ul id="liste-taches" className="space-y-2 scroll-mt-20">
           {filtered.map((t) => {
             const parcel = parcels.find((p) => p.id === t.parcel_id);
             const isDone = t.status === "fait";
@@ -1197,17 +1187,15 @@ function TachePage() {
               <li key={t.id} className="relative group">
                 <Card
                   onClick={() => openTaskModal(t)}
-                  className={`p-3.5 flex items-start gap-3 cursor-pointer transition-all duration-300 ${
-                  isDone ? "opacity-70 bg-muted/20" 
-                  : statusInfo.overdue ? "border-destructive/60 bg-destructive/[0.02] shadow-[0_0_12px_rgba(239,68,68,0.12)] ring-1 ring-destructive/20"
-                  : statusInfo.urgent ? "border-amber-500/60 bg-amber-500/[0.02] shadow-[0_0_12px_rgba(245,158,11,0.12)] ring-1 ring-amber-500/20"
-                  : "hover:border-primary/40"
-                }`}>
-                  <div className={`rounded-xl p-2 mt-0.5 transition-all ${
-                    statusInfo.overdue ? "bg-destructive/15 text-destructive animate-pulse"
-                    : statusInfo.urgent ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 animate-bounce"
-                    : "bg-primary/10 text-primary"
-                  }`}>
+                  className={`p-3.5 flex items-start gap-3 cursor-pointer transition-all duration-300 ${isDone ? "opacity-70 bg-muted/20"
+                      : statusInfo.overdue ? "border-destructive/60 bg-destructive/[0.02] shadow-[0_0_12px_rgba(239,68,68,0.12)] ring-1 ring-destructive/20"
+                        : statusInfo.urgent ? "border-amber-500/60 bg-amber-500/[0.02] shadow-[0_0_12px_rgba(245,158,11,0.12)] ring-1 ring-amber-500/20"
+                          : "hover:border-primary/40"
+                    }`}>
+                  <div className={`rounded-xl p-2 mt-0.5 transition-all ${statusInfo.overdue ? "bg-destructive/15 text-destructive animate-pulse"
+                      : statusInfo.urgent ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 animate-bounce"
+                        : "bg-primary/10 text-primary"
+                    }`}>
                     <ListTodo className="h-4.5 w-4.5" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -1218,11 +1206,10 @@ function TachePage() {
                         </span>
                         {/* Species badge indicator */}
                         {parcel && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                            parcel.type === 'olivier' ? 'bg-lime-500/15 text-lime-700 dark:text-lime-400'
-                            : parcel.type === 'pommier' ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400'
-                            : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
-                          }`}>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${parcel.type === 'olivier' ? 'bg-lime-500/15 text-lime-700 dark:text-lime-400'
+                              : parcel.type === 'pommier' ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400'
+                                : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                            }`}>
                             {parcel.type === 'olivier' ? 'Olivier' : parcel.type === 'pommier' ? 'Pommier' : 'Nectarinier'}
                           </span>
                         )}
@@ -1232,22 +1219,20 @@ function TachePage() {
                           </span>
                         )}
                       </div>
-                      
+
                       <div className="flex items-center gap-1.5">
                         {statusInfo.urgent && !isDone && (
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse ${
-                            statusInfo.overdue ? "bg-destructive text-destructive-foreground" : "bg-amber-500 text-amber-950"
-                          }`}>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 animate-pulse ${statusInfo.overdue ? "bg-destructive text-destructive-foreground" : "bg-amber-500 text-amber-950"
+                            }`}>
                             <Bell className="h-3 w-3 animate-bounce" />
                             {statusInfo.message}
                           </span>
                         )}
-                        <span className={`text-[10px] uppercase font-bold rounded px-1.5 py-0.5 ${
-                          t.priority === "urgente" ? "bg-destructive/20 text-destructive border border-destructive/30"
-                          : t.priority === "haute" ? "bg-destructive/10 text-destructive"
-                          : t.priority === "normale" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
-                          : "bg-muted text-muted-foreground"
-                        }`}>{PRIORITY_LABEL[t.priority]}</span>
+                        <span className={`text-[10px] uppercase font-bold rounded px-1.5 py-0.5 ${t.priority === "urgente" ? "bg-destructive/20 text-destructive border border-destructive/30"
+                            : t.priority === "haute" ? "bg-destructive/10 text-destructive"
+                              : t.priority === "normale" ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                                : "bg-muted text-muted-foreground"
+                          }`}>{PRIORITY_LABEL[t.priority]}</span>
                       </div>
                     </div>
                     {displayDesc && (
@@ -1272,11 +1257,10 @@ function TachePage() {
                       {groupAssigneeIds(t).length === 0 && unpacked.externalWorkers.length === 0 && (
                         <span>👤 —</span>
                       )}
-                      <span className={`rounded px-1.5 py-0.2 text-[10px] font-bold ${
-                        t.status === "fait" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                        : t.status === "en_cours" ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
-                        : "bg-muted text-muted-foreground"
-                      }`}>{t.status === 'a_faire' ? 'À faire' : t.status === 'en_cours' ? 'En cours' : t.status}</span>
+                      <span className={`rounded px-1.5 py-0.2 text-[10px] font-bold ${t.status === "fait" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                          : t.status === "en_cours" ? "bg-sky-500/15 text-sky-700 dark:text-sky-300"
+                            : "bg-muted text-muted-foreground"
+                        }`}>{t.status === 'a_faire' ? 'À faire' : t.status === 'en_cours' ? 'En cours' : t.status}</span>
 
                       {/* Manual sound trigger for demo/test purposes */}
                       {statusInfo.urgent && !isDone && (
@@ -1462,11 +1446,10 @@ function TachePage() {
                       return (
                         <div
                           key={workerName}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
-                            active
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${active
                               ? "border-primary bg-primary text-primary-foreground shadow-xs"
                               : "border-border bg-background text-foreground hover:bg-muted"
-                          }`}
+                            }`}
                         >
                           <label className="flex cursor-pointer items-center gap-1.5">
                             <input
@@ -1483,9 +1466,8 @@ function TachePage() {
                               type="button"
                               onClick={() => removeSavedWorker(workerName)}
                               title="Retirer de la liste mémorisée"
-                              className={`ml-0.5 rounded-full p-0.5 hover:bg-black/10 ${
-                                active ? "text-primary-foreground/80" : "text-muted-foreground"
-                              }`}
+                              className={`ml-0.5 rounded-full p-0.5 hover:bg-black/10 ${active ? "text-primary-foreground/80" : "text-muted-foreground"
+                                }`}
                             >
                               <X className="h-3 w-3" />
                             </button>
