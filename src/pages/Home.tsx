@@ -11,6 +11,7 @@ import { saveConfig } from "@/lib/config-store";
 import { useNavigate } from "@/lib/router-compat";
 import { Droplet, Sprout, TrendingUp } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
+import { useMyAssignedTasks } from "@/lib/cloud/tasks";
 
 function HomePage() {
   const role = useDisplayRole();

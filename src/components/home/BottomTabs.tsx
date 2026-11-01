@@ -10,10 +10,20 @@ export function BottomTabs() {
   const { data: allTasks = [] } = useTasks();
   const { myTasks } = useMyAssignedTasks();
 
-  const activeTasksCount = allTasks.filter(
-    (task) => task.status === "a_faire" || task.status === "en_cours",
-  ).length;
-  const badgeCount = myTasks.length > 0 ? myTasks.length : activeTasksCount;
+  // Nombre de tâches groupées (cartes visibles)
+  const groupCount = (() => {
+    const active = allTasks.filter(
+      (task) => task.status === "a_faire" || task.status === "en_cours",
+    );
+    const seen = new Set<string>();
+    for (const t of active) {
+      const key = `${t.title.trim().toLowerCase()}|${(t.due_date || "").slice(0, 16)}|${t.parcel_id || ""}|${t.kind}|${t.status}|${t.created_at.slice(0, 16)}`;
+      seen.add(key);
+    }
+    return seen.size;
+  })();
+
+  const badgeCount = myTasks.length > 0 ? myTasks.length : groupCount;
   const hasPersonalTasks = myTasks.length > 0;
 
   const ADMIN_TABS = [
