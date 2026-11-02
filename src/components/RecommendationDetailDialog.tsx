@@ -14,7 +14,7 @@ import { useRole } from "@/lib/role";
 import { useModuleActions, useAllModuleRecords } from "@/lib/modules-store";
 import { debitProductStock, useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useTranslation } from "@/lib/i18n";
-import { checkRecoStock, computeScheduledDates, getTargetParcelsForReco, type RecoProductStockItem } from "@/lib/stock-alerts";
+import { checkRecoStock, computeScheduledDates, computePureIrrigationDates, getTargetParcelsForReco, type RecoProductStockItem } from "@/lib/stock-alerts";
 
 const KIND_LABEL: Record<Recommendation["kind"], string> = {
   fertilisation: "Fertilisation",
@@ -185,7 +185,9 @@ export function RecommendationDetailDialog({
   const [showPlanningPreview, setShowPlanningPreview] = useState(false);
   const [selectedDate, setSelectedDate] = useState("");
   const [repeatWeeks, setRepeatWeeks] = useState<number>(4);
-  const [weeklyFrequency, setWeeklyFrequency] = useState<number>(1);
+  const [weeklyFrequency, setWeeklyFrequency] = useState<number>(2);
+  const [pureWeeklyFrequency, setPureWeeklyFrequency] = useState<number>(1);
+  const [pureIrrigationDuration, setPureIrrigationDuration] = useState<string>("1h30");
   const [secondDayOffset, setSecondDayOffset] = useState<number>(4);
   const [selectedParcelIds, setSelectedParcelIds] = useState<string[]>([]);
 
@@ -201,6 +203,9 @@ export function RecommendationDetailDialog({
       setSelectedDate(prog.date || new Date().toISOString().slice(0, 10));
       const freq = parseFloat(String(prog.frequency)) || 1;
       setWeeklyFrequency(freq >= 2 ? 2 : 1);
+      const pureFreq = parseFloat(String(prog.pureIrrigationFrequency));
+      setPureWeeklyFrequency(isNaN(pureFreq) ? 1 : pureFreq);
+      setPureIrrigationDuration(prog.pureIrrigationTime || "1h30");
       setRepeatWeeks(4);
       setShowPlanningPreview(false);
 
@@ -216,6 +221,14 @@ export function RecommendationDetailDialog({
   const scheduledDates = useMemo(() => {
     return computeScheduledDates(selectedDate, repeatWeeks, weeklyFrequency, secondDayOffset);
   }, [selectedDate, repeatWeeks, weeklyFrequency, secondDayOffset]);
+
+  const pureScheduledDates = useMemo(() => {
+    const payload = (reco?.payload ?? {}) as any;
+    if (reco?.kind !== "fertilisation" || payload.method !== "irrigation") {
+      return [];
+    }
+    return computePureIrrigationDates(selectedDate, repeatWeeks, pureWeeklyFrequency, weeklyFrequency, secondDayOffset);
+  }, [reco, selectedDate, repeatWeeks, pureWeeklyFrequency, weeklyFrequency, secondDayOffset]);
 
   const stockReport = useMemo(() => {
     if (!reco) return { hasMissingStock: false, items: [], missingItems: [], totalEstimatedMissingCost: 0 };
@@ -425,18 +438,34 @@ export function RecommendationDetailDialog({
                     <span className="font-medium">{String(program.date ?? "—")}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Fréquence</span>
-                    <span className="font-medium">
+                    <span className="text-muted-foreground">{lang === "ar" ? "الري مع التسميد" : "Irrigation avec fertilisation"}</span>
+                    <span className="font-semibold text-foreground">
                       {(() => {
                         const freqVal = parseFloat(String(program.frequency));
                         if (freqVal === 7) return lang === "ar" ? "كل يوم" : "Chaque jour";
                         if (freqVal === 3.5) return lang === "ar" ? "يوما بعد يوم" : "Un jour sur deux";
                         if (freqVal === 2.3) return lang === "ar" ? "كل ثلاثة أيام" : "Un jour sur trois";
-                        if (freqVal === 1) return lang === "ar" ? "مرة في الأسبوع" : "Une fois par semaine";
+                        if (freqVal === 2) return lang === "ar" ? "مرتان في الأسبوع" : "2 fois par semaine";
+                        if (freqVal === 1) return lang === "ar" ? "مرة في الأسبوع" : "1 fois par semaine";
                         return lang === "ar" ? `${program.frequency} مرات/أسبوع` : `${program.frequency} passages/semaine`;
-                      })()}
+                      })()} ({String(program.irrigationTime || "1h30")})
                     </span>
                   </div>
+                  {payload.method === "irrigation" && (
+                    <div className="flex justify-between items-center text-blue-700 dark:text-blue-300 bg-blue-500/10 p-1.5 rounded-lg border border-blue-500/20">
+                      <span className="font-medium flex items-center gap-1">
+                        <span>💧</span> {lang === "ar" ? "الري المنفرد (بدون تسميد)" : "Irrigation seule (sans fert.)"}
+                      </span>
+                      <span className="font-bold">
+                        {(() => {
+                          const pFreq = parseFloat(String((program as any).pureIrrigationFrequency));
+                          if (isNaN(pFreq) || pFreq === 0) return lang === "ar" ? "لا يوجد" : "Aucune";
+                          if (pFreq === 1) return `${lang === "ar" ? "مرة واحدة/أسبوع" : "1 fois/sem"} (${(program as any).pureIrrigationTime || "1h30"})`;
+                          return `${pFreq} ${lang === "ar" ? "مرات/أسبوع" : "fois/sem"} (${(program as any).pureIrrigationTime || "1h30"})`;
+                        })()}
+                      </span>
+                    </div>
+                  )}
                   <div className="mt-2 space-y-2">
                     {Array.isArray(program.entries) &&
                       (program.entries as Array<{ bac: string; items: Array<{ name: string; qty: string; unit: string; price: string }> }>)
@@ -588,64 +617,131 @@ export function RecommendationDetailDialog({
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-[10px] font-semibold text-muted-foreground block mb-1">Fréquence par semaine</span>
-                          <div className="flex rounded-lg border bg-muted p-0.5">
-                            <button
-                              type="button"
-                              onClick={() => setWeeklyFrequency(1)}
-                              className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${
-                                weeklyFrequency === 1 ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
-                              }`}
+                      <div className="space-y-2.5">
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>
+                            <span className="text-[10px] font-semibold text-muted-foreground block mb-1">
+                              {reco.kind === "fertilisation" ? "Fertilisation / sem" : "Fréquence par semaine"}
+                            </span>
+                            <div className="flex rounded-lg border bg-muted p-0.5">
+                              <button
+                                type="button"
+                                onClick={() => setWeeklyFrequency(1)}
+                                className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${
+                                  weeklyFrequency === 1 ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
+                                }`}
+                              >
+                                1 fois / sem
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setWeeklyFrequency(2)}
+                                className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${
+                                  weeklyFrequency === 2 ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
+                                }`}
+                              >
+                                2 fois / sem
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <span className="text-[10px] font-semibold text-muted-foreground block mb-1">Répéter pendant</span>
+                            <select
+                              value={repeatWeeks}
+                              onChange={(e) => setRepeatWeeks(Number(e.target.value))}
+                              className="w-full rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-semibold text-foreground h-8"
                             >
-                              1 fois / sem
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setWeeklyFrequency(2)}
-                              className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${
-                                weeklyFrequency === 2 ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
-                              }`}
-                            >
-                              2 fois / sem
-                            </button>
+                              <option value={1}>1 passage (Pas de répétition)</option>
+                              <option value={2}>2 semaines</option>
+                              <option value={3}>3 semaines</option>
+                              <option value={4}>4 semaines (1 mois — Recommandé)</option>
+                              <option value={6}>6 semaines</option>
+                              <option value={8}>8 semaines (2 mois)</option>
+                              <option value={12}>12 semaines (3 mois)</option>
+                            </select>
                           </div>
                         </div>
 
-                        <div>
-                          <span className="text-[10px] font-semibold text-muted-foreground block mb-1">Répéter pendant</span>
-                          <select
-                            value={repeatWeeks}
-                            onChange={(e) => setRepeatWeeks(Number(e.target.value))}
-                            className="w-full rounded-lg border border-input bg-background px-2.5 py-1 text-xs font-semibold text-foreground h-8"
-                          >
-                            <option value={1}>1 passage (Pas de répétition)</option>
-                            <option value={2}>2 semaines</option>
-                            <option value={3}>3 semaines</option>
-                            <option value={4}>4 semaines (1 mois — Recommandé)</option>
-                            <option value={6}>6 semaines</option>
-                            <option value={8}>8 semaines (2 mois)</option>
-                            <option value={12}>12 semaines (3 mois)</option>
-                          </select>
-                        </div>
+                        {/* Irrigation seule (eau claire) si fertilisation par irrigation */}
+                        {reco.kind === "fertilisation" && payload.method === "irrigation" && (
+                          <div className="grid grid-cols-2 gap-2 text-xs bg-blue-500/10 p-2 rounded-lg border border-blue-500/20">
+                            <div>
+                              <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 block mb-1">
+                                💧 Irrigation seule / sem
+                              </span>
+                              <div className="flex rounded-lg border bg-background p-0.5">
+                                {[0, 1, 2].map((cnt) => (
+                                  <button
+                                    key={cnt}
+                                    type="button"
+                                    onClick={() => setPureWeeklyFrequency(cnt)}
+                                    className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${
+                                      pureWeeklyFrequency === cnt ? "bg-primary text-primary-foreground shadow-xs" : "text-muted-foreground"
+                                    }`}
+                                  >
+                                    {cnt === 0 ? "0" : `${cnt}x/sem`}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            {pureWeeklyFrequency > 0 && (
+                              <div>
+                                <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 block mb-1">
+                                  ⏱️ Durée irr. seule
+                                </span>
+                                <select
+                                  value={pureIrrigationDuration}
+                                  onChange={(e) => setPureIrrigationDuration(e.target.value)}
+                                  className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs font-semibold text-foreground h-8"
+                                >
+                                  <option value="1h">1h</option>
+                                  <option value="1h30">1h30</option>
+                                  <option value="2h">2h</option>
+                                  <option value="2h30">2h30</option>
+                                  <option value="3h">3h</option>
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Aperçu des dates générées */}
-                      <div className="pt-2 border-t">
-                        <span className="text-[10px] font-bold text-muted-foreground block mb-1">
-                          Calendrier des {scheduledDates.length} passages programmés :
-                        </span>
-                        <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
-                          {scheduledDates.map((dStr, idx) => (
-                            <span
-                              key={dStr}
-                              className="px-2 py-0.5 rounded-md bg-muted text-[10px] font-semibold text-foreground border flex items-center gap-1"
-                            >
-                              <span className="text-primary font-bold">#{idx + 1}</span> {dStr}
-                            </span>
-                          ))}
+                      <div className="pt-2 border-t space-y-2">
+                        <div>
+                          <span className="text-[10px] font-bold text-muted-foreground block mb-1 flex items-center justify-between">
+                            <span>🌱 Dates de Fertilisation ({scheduledDates.length} passages) :</span>
+                          </span>
+                          <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
+                            {scheduledDates.map((dStr, idx) => (
+                              <span
+                                key={dStr}
+                                className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 text-[10px] font-semibold border border-emerald-500/30 flex items-center gap-1"
+                              >
+                                <span className="text-emerald-600 font-bold">#{idx + 1}</span> {dStr}
+                              </span>
+                            ))}
+                          </div>
                         </div>
+
+                        {pureScheduledDates.length > 0 && (
+                          <div>
+                            <span className="text-[10px] font-bold text-blue-700 dark:text-blue-300 block mb-1">
+                              💧 Dates d'Irrigation seule ({pureScheduledDates.length} passages eau claire) :
+                            </span>
+                            <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
+                              {pureScheduledDates.map((dStr, idx) => (
+                                <span
+                                  key={dStr}
+                                  className="px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-800 dark:text-blue-300 text-[10px] font-semibold border border-blue-500/30 flex items-center gap-1"
+                                >
+                                  <span className="text-blue-600 font-bold">#{idx + 1}</span> {dStr}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -885,8 +981,6 @@ export function RecommendationDetailDialog({
                   <button
                     onClick={async () => {
                       try {
-                        const targetParcels = getTargetParcelsForReco(reco, parcels);
-
                         if (targetParcels.length === 0) {
                           return toast.error("Aucune parcelle ciblée pour cette recommandation.");
                         }
@@ -909,7 +1003,7 @@ export function RecommendationDetailDialog({
 
                         let clonedCount = 0;
                         if (program) {
-                          // Répéter pour chaque date calculée (selon la fréquence et la durée)
+                          // 1. Répéter pour chaque date de fertilisation calculée
                           for (const dateItem of scheduledDates) {
                             if (reco.kind === "fertilisation") {
                               if (payload.method === "irrigation") {
@@ -990,10 +1084,53 @@ export function RecommendationDetailDialog({
                               }
                             }
                           }
+
+                          // 2. Génération des passages d'irrigation seule (eau claire)
+                          if (reco.kind === "fertilisation" && payload.method === "irrigation" && pureScheduledDates.length > 0) {
+                            const pureDurationMinutes = parseDurationToMinutes(pureIrrigationDuration || "1h30");
+                            const pureDurationHours = (pureDurationMinutes / 60).toString();
+
+                            for (const pureDateItem of pureScheduledDates) {
+                              const sw = getSeasonalWindow(pureDateItem);
+                              const groups = groupParcelsForIrrigation(targetParcels);
+                              let currentStart = sw.startHour;
+
+                              for (const group of groups) {
+                                const groupStart = currentStart;
+                                const groupEnd = addMinutesToTime(groupStart, pureDurationMinutes);
+
+                                for (const parcel of group) {
+                                  const surface = safeParseFloat(parcel.info?.surface) || 1;
+                                  clonedCount++;
+
+                                  const pureIrrigationRecord = {
+                                    kind: "irrigation",
+                                    method: "irrigation",
+                                    mode: "date",
+                                    label: `${program.label || "Irrigation"} - Eau claire (Sans fertilisation)`,
+                                    title: `Irrigation seule (${parcel.name})`,
+                                    reco_id: reco.id,
+                                    date: pureDateItem,
+                                    dateStartHour: groupStart,
+                                    duration: pureDurationHours,
+                                    durationMinutes: pureDurationMinutes,
+                                    hectares: surface,
+                                    total: 0,
+                                    isPureIrrigation: true,
+                                    status: "planifie",
+                                  };
+                                  addModuleRecord(parcel.id, "irrigation", pureIrrigationRecord);
+                                }
+
+                                currentStart = addMinutesToTime(groupEnd, 5);
+                              }
+                            }
+                          }
                         }
 
+                        const totalPassages = scheduledDates.length + pureScheduledDates.length;
                         if (clonedCount > 0) {
-                          toast.success(`Planification répétée validée avec succès ! ${scheduledDates.length} passages programmés (${clonedCount} tâches créées).`);
+                          toast.success(`Planification validée avec succès ! ${scheduledDates.length} fert. + ${pureScheduledDates.length} irr. seule (${clonedCount} tâches créées).`);
                         } else {
                           toast.success("Recommandation planifiée.");
                         }
@@ -1005,7 +1142,7 @@ export function RecommendationDetailDialog({
                     disabled={accept.isPending || reject.isPending}
                     className="w-full inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold uppercase text-primary-foreground active:scale-95 shadow-md mt-2"
                   >
-                    <Check className="h-4 w-4" /> Confirmer la planification ({scheduledDates.length} passage{scheduledDates.length > 1 ? "s" : ""})
+                    <Check className="h-4 w-4" /> Confirmer la planification ({scheduledDates.length + pureScheduledDates.length} passages{pureScheduledDates.length > 0 ? ` : ${scheduledDates.length} fert. + ${pureScheduledDates.length} irr. seule` : ""})
                   </button>
                 </div>
               )}

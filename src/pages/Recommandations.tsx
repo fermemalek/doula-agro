@@ -92,8 +92,8 @@ function RecommandationsPage() {
       for (const reco of seededRecos) {
         const progDate = reco.payload?.program?.date;
         const timePart = new Date().toTimeString().split(" ")[0];
-        const createdAtIso = progDate 
-          ? new Date(`${progDate}T${timePart}`).toISOString() 
+        const createdAtIso = progDate
+          ? new Date(`${progDate}T${timePart}`).toISOString()
           : new Date().toISOString();
 
         await create.mutateAsync({

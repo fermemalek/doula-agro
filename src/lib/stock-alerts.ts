@@ -271,3 +271,57 @@ export function computeScheduledDates(
   return dates.sort();
 }
 
+/**
+ * Calcule les dates d'irrigation seule (eau claire / sans fertilisation) par semaine.
+ * Ex: Si fertigation Mardi (J0) et Samedi (J4), l'irrigation seule se place idéalement le Jeudi (J2).
+ */
+export function computePureIrrigationDates(
+  startDateStr: string,
+  weeks: number = 1,
+  purePassagesPerWeek: number = 1,
+  fertPassagesPerWeek: number = 1,
+  secondDayOffset: number = 4
+): string[] {
+  if (purePassagesPerWeek <= 0) return [];
+  const dates: string[] = [];
+  const cleanDate = startDateStr ? startDateStr.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const [y, m, d] = cleanDate.split("-").map(Number);
+  const start = new Date(y, m - 1, d);
+
+  if (isNaN(start.getTime())) {
+    return [];
+  }
+
+  const effectiveWeeks = Math.max(1, weeks);
+
+  // Déterminer les jours d'irrigation seule dans la semaine (offsets en jours par rapport à start)
+  let offsets: number[] = [];
+  if (purePassagesPerWeek === 1) {
+    if (fertPassagesPerWeek >= 2) {
+      // Si fertigation à J0 et J4 (ex: Mardi et Samedi), irrigation seule à J2 (Jeudi)
+      offsets = [Math.floor(secondDayOffset / 2) || 2];
+    } else {
+      // Si fertigation 1x/semaine à J0, irrigation seule à J3 (ex: Vendredi si Mardi)
+      offsets = [3];
+    }
+  } else if (purePassagesPerWeek === 2) {
+    offsets = fertPassagesPerWeek >= 2 ? [2, 6] : [2, 4];
+  } else if (purePassagesPerWeek >= 3) {
+    offsets = [1, 3, 5];
+  }
+
+  for (let w = 0; w < effectiveWeeks; w++) {
+    for (const offset of offsets) {
+      const dt = new Date(start);
+      dt.setDate(start.getDate() + w * 7 + offset);
+      const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+      if (!dates.includes(iso)) {
+        dates.push(iso);
+      }
+    }
+  }
+
+  return dates.sort();
+}
+
+

@@ -59,6 +59,8 @@ export function PendingPrograms() {
                 <p className="font-semibold capitalize text-foreground flex items-center gap-1.5">
                   {p.kind === "fertilisation" && ((p.payload as any)?.method === "irrigation" || (p.payload as any)?.irrigationTime) ? (
                     <span className="text-emerald-700 dark:text-emerald-400 font-bold">💧🌱 Irrigation & Fertilisation</span>
+                  ) : p.kind === "irrigation" ? (
+                    <span className="text-blue-600 dark:text-blue-400 font-bold">💧 Irrigation seule (Eau claire)</span>
                   ) : (
                     <span>{p.kind}</span>
                   )}

@@ -199,6 +199,8 @@ export function RecommendationForm({
     label: string; // Ex: "Programme A1", "Programme A2"
     period: "matin" | "soir";
     frequency: string;
+    pureIrrigationFrequency: string; // Fréquence d'irrigation seule sans fertilisation (0, 1, 2, 3...)
+    pureIrrigationTime: string; // Durée irrigation seule (ex: "1h30")
     irrigationTime: string;
     injectionTime: number;
     rinsingTime: number;
@@ -210,7 +212,9 @@ export function RecommendationForm({
     id,
     label,
     period: "matin",
-    frequency: "1",
+    frequency: "2",
+    pureIrrigationFrequency: "1",
+    pureIrrigationTime: "1h30",
     irrigationTime: "1h30",
     injectionTime: 45,
     rinsingTime: 10,
@@ -257,6 +261,14 @@ export function RecommendationForm({
   const fertFrequency = currentFertProg.frequency;
   const setFertFrequency = (val: string) => {
     setFertPrograms(prev => prev.map((fp, i) => i === activeFertProgIndex ? { ...fp, frequency: val } : fp));
+  };
+  const pureIrrFreq = currentFertProg.pureIrrigationFrequency ?? "1";
+  const setPureIrrFreq = (val: string) => {
+    setFertPrograms(prev => prev.map((fp, i) => i === activeFertProgIndex ? { ...fp, pureIrrigationFrequency: val } : fp));
+  };
+  const pureIrrTime = currentFertProg.pureIrrigationTime ?? "1h30";
+  const setPureIrrTime = (val: string) => {
+    setFertPrograms(prev => prev.map((fp, i) => i === activeFertProgIndex ? { ...fp, pureIrrigationTime: val } : fp));
   };
   const fertDate = currentFertProg.date;
   const setFertDate = (val: string) => {
@@ -375,7 +387,9 @@ export function RecommendationForm({
           const prog = payload.program || {};
           setFertDate(prog.date || "");
           setAppDate(prog.date || "");
-          setFertFrequency(String(prog.frequency || "1"));
+          setFertFrequency(String(prog.frequency || "2"));
+          setPureIrrFreq(String(prog.pureIrrigationFrequency ?? "1"));
+          setPureIrrTime(prog.pureIrrigationTime || "1h30");
           setFertIrrigationTime(prog.irrigationTime || "1h30");
           setFertInjectionTime(prog.injectionTime || 45);
           setFertRinsingTime(prog.rinsingTime || 10);
@@ -546,7 +560,9 @@ export function RecommendationForm({
               date: appDate,
               period: currentFertProg.period || "matin",
               label: currentFertProg.label,
-              frequency: parseFloat(fertFrequency) || 1,
+              frequency: parseFloat(fertFrequency) || 2,
+              pureIrrigationFrequency: parseFloat(pureIrrFreq) || 0,
+              pureIrrigationTime: pureIrrTime,
               irrigationTime: fertIrrigationTime,
               injectionTime: fertInjectionTime,
               rinsingTime: fertRinsingTime,
@@ -638,7 +654,9 @@ export function RecommendationForm({
                   date: appDate,
                   period: progItem.period || "matin",
                   label: progItem.label,
-                  frequency: parseFloat(progItem.frequency) || 1,
+                  frequency: parseFloat(progItem.frequency) || 2,
+                  pureIrrigationFrequency: parseFloat(progItem.pureIrrigationFrequency ?? "1") || 0,
+                  pureIrrigationTime: progItem.pureIrrigationTime || "1h30",
                   irrigationTime: progItem.irrigationTime,
                   injectionTime: progItem.injectionTime,
                   rinsingTime: progItem.rinsingTime,
@@ -938,18 +956,56 @@ export function RecommendationForm({
                             </div>
                           </div>
                           <label className="block">
-                            <span className="font-bold text-muted-foreground text-xs">{t("reco.form.frequency")}</span>
+                            <span className="font-bold text-muted-foreground text-xs">{t("reco.form.fertIrrigationFreq", "Irrigations avec fertilisation / sem")}</span>
                             <select
                               value={fertFrequency}
                               onChange={(e) => setFertFrequency(e.target.value)}
                               className="mt-1 w-full rounded border border-input bg-background px-3 py-1.5 text-xs font-semibold"
                             >
-                              <option value="7">{t("reco.freq.daily")}</option>
+                              <option value="2">{t("reco.freq.2perWeek", "2 fois par semaine")}</option>
+                              <option value="1">{t("reco.freq.1perWeek", "1 fois par semaine")}</option>
                               <option value="3.5">{t("reco.freq.every2")}</option>
                               <option value="2.3">{t("reco.freq.every3")}</option>
-                              <option value="1">{t("reco.freq.weekly")}</option>
+                              <option value="7">{t("reco.freq.daily")}</option>
                             </select>
                           </label>
+                        </div>
+
+                        {/* Bloc Irrigation Seule (Sans fertilisation / Eau claire) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-blue-500/5 border border-blue-500/20 p-2.5 rounded-xl">
+                          <label className="block">
+                            <span className="font-bold text-blue-700 dark:text-blue-300 text-xs flex items-center gap-1">
+                              <span>💧</span> {t("reco.form.pureIrrigationFreq", "Irrigations seules (eau claire) / sem")}
+                            </span>
+                            <select
+                              value={pureIrrFreq}
+                              onChange={(e) => setPureIrrFreq(e.target.value)}
+                              className="mt-1 w-full rounded border border-input bg-background px-3 py-1.5 text-xs font-semibold"
+                            >
+                              <option value="0">{t("reco.freq.none", "0 (Aucune)")}</option>
+                              <option value="1">{t("reco.freq.1perWeek", "1 fois par semaine")}</option>
+                              <option value="2">{t("reco.freq.2perWeek", "2 fois par semaine")}</option>
+                              <option value="3">{t("reco.freq.3perWeek", "3 fois par semaine")}</option>
+                            </select>
+                          </label>
+                          {pureIrrFreq !== "0" && (
+                            <label className="block">
+                              <span className="font-bold text-blue-700 dark:text-blue-300 text-xs flex items-center gap-1">
+                                <span>⏱️</span> {t("reco.form.pureIrrigationTime", "Durée irrigation seule")}
+                              </span>
+                              <select
+                                value={pureIrrTime}
+                                onChange={(e) => setPureIrrTime(e.target.value)}
+                                className="mt-1 w-full rounded border border-input bg-background px-3 py-1.5 text-xs font-semibold"
+                              >
+                                <option value="1h">1h</option>
+                                <option value="1h30">1h30</option>
+                                <option value="2h">2h</option>
+                                <option value="2h30">2h30</option>
+                                <option value="3h">3h</option>
+                              </select>
+                            </label>
+                          )}
                         </div>
 
                         {/* Temps d'irrigation detail fields */}
