@@ -1,22 +1,22 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "@/lib/router-compat";
 import { useSearchParams, Navigate } from "react-router-dom";
-import { 
-  Droplets, 
-  Sprout, 
-  ArrowRight, 
-  Plus, 
+import {
+  Droplets,
+  Sprout,
+  ArrowRight,
+  Plus,
   Pencil,
   Trash2,
-  SprayCan, 
-  Bug, 
-  Search, 
-  Database, 
-  CircleDollarSign, 
-  Coins, 
-  Clock, 
-  AlertCircle, 
-  TrendingUp, 
+  SprayCan,
+  Bug,
+  Search,
+  Database,
+  CircleDollarSign,
+  Coins,
+  Clock,
+  AlertCircle,
+  TrendingUp,
   Sparkles,
   Layers,
   ShoppingCart,
@@ -88,10 +88,10 @@ function irrDate(r: IrrRec): string | undefined {
 type TypeFilter = "all" | "irrigation" | "fertilisation" | "pulverisation" | "phytosanitaire";
 
 function formatMoney(val: number) {
-  return new Intl.NumberFormat("fr-DZ", { 
-    style: "currency", 
-    currency: "DZD", 
-    maximumFractionDigits: 0 
+  return new Intl.NumberFormat("fr-DZ", {
+    style: "currency",
+    currency: "DZD",
+    maximumFractionDigits: 0
   })
     .format(val)
     .replace("DZD", "DA");
@@ -155,9 +155,9 @@ function ProgrammesPage() {
     const groups = Array.isArray(payload.crop_group)
       ? payload.crop_group
       : payload.crop_group
-      ? [payload.crop_group]
-      : [];
-    
+        ? [payload.crop_group]
+        : [];
+
     if (groups.length === 0) {
       return parcels.filter(p => reco.parcel_ids.includes(p.id));
     }
@@ -184,7 +184,7 @@ function ProgrammesPage() {
   const handleValidatePurchase = async (reco: Recommendation) => {
     const payload = (reco.payload ?? {}) as any;
     const program = payload.program;
-    
+
     try {
       // 1) Determine target parcelles based on crop group
       const targetParcels = getTargetParcels(reco);
@@ -300,10 +300,18 @@ function ProgrammesPage() {
   const purchaseRecos = useMemo(() => {
     return recos
       .filter((r) => {
+        if (!r) return false;
         if (r.status === "rejetee") return true;
-        // Détecter automatiquement toute recommandation dont les produits manquent en stock
-        const report = checkRecoStock(r, suppliers, parcels);
-        return report.hasMissingStock;
+        // Seules les recommandations en attente nécessitent un approvisionnement préalable si le stock est insuffisant
+        if (r.status === "envoyee") {
+          try {
+            const report = checkRecoStock(r, suppliers, parcels);
+            return report.hasMissingStock;
+          } catch {
+            return false;
+          }
+        }
+        return false;
       })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [recos, suppliers, parcels]);
@@ -423,13 +431,13 @@ function ProgrammesPage() {
   // Tab 2: Database computed items
   const filteredProducts = useMemo(() => {
     return products.filter((prod) => {
-      const matchesSearch = 
+      const matchesSearch =
         prod.name.toLowerCase().includes(dbSearch.toLowerCase()) ||
         prod.type.toLowerCase().includes(dbSearch.toLowerCase()) ||
         (prod.note || "").toLowerCase().includes(dbSearch.toLowerCase());
-      
-      const matchesType = dbType === "all" 
-        ? true 
+
+      const matchesType = dbType === "all"
+        ? true
         : prod.type.toLowerCase().includes(dbType.toLowerCase());
 
       return matchesSearch && matchesType;
@@ -452,7 +460,7 @@ function ProgrammesPage() {
   const supplierSummaries = useMemo(() => {
     const map = new Map<string, { name: string; totalCost: number; paidAmount: number; debt: number }>();
     let grandTotal = 0;
-    
+
     for (const p of purchases) {
       const normName = p.supplierName.trim().toLowerCase();
       const current = map.get(normName) || { name: p.supplierName.trim(), totalCost: 0, paidAmount: 0, debt: 0 };
@@ -462,7 +470,7 @@ function ProgrammesPage() {
       map.set(normName, current);
       grandTotal += p.totalCost;
     }
-    
+
     return Array.from(map.values()).map(s => ({
       ...s,
       percentage: grandTotal > 0 ? s.totalCost / grandTotal : 0
@@ -487,67 +495,61 @@ function ProgrammesPage() {
 
   return (
     <ListPageShell title="Programmation & Agronomie">
-      
+
       {/* Premium Segmented Controls Top Tabs */}
       {isAdmin && (
         <div className="mb-4 grid grid-cols-2 min-[400px]:grid-cols-3 gap-1 rounded-2xl bg-muted p-1 sm:flex sm:grid-cols-none">
           <button
             onClick={() => setActiveTab("archive")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${
-              effectiveTab === "archive"
+            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "archive"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             Programmes Archivés
           </button>
           <button
             onClick={() => setActiveTab("database")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${
-              effectiveTab === "database"
+            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "database"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             Base Produits
           </button>
           <button
             onClick={() => setActiveTab("suppliers")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${
-              effectiveTab === "suppliers"
+            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "suppliers"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             Dépenses Fournisseurs
           </button>
           <button
             onClick={() => setActiveTab("species")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${
-              effectiveTab === "species"
+            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "species"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             Coûts par Espèce
           </button>
           <button
             onClick={() => setActiveTab("purchase")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${
-              effectiveTab === "purchase"
+            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "purchase"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             Achats
           </button>
           <button
             onClick={() => setActiveTab("stats")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${
-              effectiveTab === "stats"
+            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "stats"
                 ? "bg-background text-foreground shadow-sm"
                 : "text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             Statistiques & Graphes
           </button>
@@ -589,23 +591,23 @@ function ProgrammesPage() {
             <ul className="space-y-2">
               {archiveItems.map((it) => {
                 const parcel = parcels.find((p) => p.id === it.parcelId);
-                const Icon = 
-                  it.kind === "irrigation" 
-                    ? Droplets 
-                    : it.kind === "fertilisation" 
-                    ? Sprout 
-                    : it.kind === "pulverisation" 
-                    ? SprayCan 
-                    : Bug;
-                
-                const kindLabel = 
+                const Icon =
+                  it.kind === "irrigation"
+                    ? Droplets
+                    : it.kind === "fertilisation"
+                      ? Sprout
+                      : it.kind === "pulverisation"
+                        ? SprayCan
+                        : Bug;
+
+                const kindLabel =
                   it.kind === "irrigation"
                     ? "Irrigation"
                     : it.kind === "fertilisation"
-                    ? "Fertilisation"
-                    : it.kind === "pulverisation"
-                    ? "Pulvérisation"
-                    : "Phytosanitaire";
+                      ? "Fertilisation"
+                      : it.kind === "pulverisation"
+                        ? "Pulvérisation"
+                        : "Phytosanitaire";
 
                 return (
                   <li key={`${it.kind}-${it.id}`}>
@@ -684,13 +686,13 @@ function ProgrammesPage() {
               const isPhyto = prod.type.toLowerCase().includes("phyto");
               const isFoliar = prod.type.toLowerCase().includes("foliar") || prod.type.toLowerCase().includes("pulv");
 
-              const badgeColor = isBac 
-                ? "bg-sky-500/10 text-sky-600 dark:text-sky-400" 
-                : isPhyto 
-                ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                : isFoliar 
-                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                : "bg-purple-500/10 text-purple-600 dark:text-purple-400";
+              const badgeColor = isBac
+                ? "bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                : isPhyto
+                  ? "bg-red-500/10 text-red-600 dark:text-red-400"
+                  : isFoliar
+                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    : "bg-purple-500/10 text-purple-600 dark:text-purple-400";
 
               return (
                 <Card key={idx} className="p-3.5 flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -843,7 +845,7 @@ function ProgrammesPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span 
+                        <span
                           style={colorStyle}
                           className="rounded-lg px-2.5 py-1 text-xs font-black uppercase"
                         >
@@ -982,8 +984,8 @@ function ProgrammesPage() {
                 const cropGroups = Array.isArray(payload.crop_group)
                   ? payload.crop_group
                   : payload.crop_group
-                  ? [payload.crop_group]
-                  : [];
+                    ? [payload.crop_group]
+                    : [];
 
                 const authorName = profiles[reco.created_by] || "Ingénieur";
                 const recoDate = new Date(reco.created_at).toLocaleDateString("fr-FR");
@@ -1004,7 +1006,7 @@ function ProgrammesPage() {
                             const doseHa = parseFloat(String(it.qty || "0")) || 0;
                             const price = parseFloat(String(it.price || "0")) || 0;
                             const unit = it.unit || "kg";
-                            
+
                             for (const parcel of targetParcels) {
                               const surface = parseFloat(String(parcel.info?.surface || "1").trim().replace(",", ".")) || 1;
                               const totalQty = parseFloat((doseHa * surface * frequency).toFixed(2));
@@ -1368,7 +1370,7 @@ function ProgrammesPage() {
                   <Label className="text-xs font-semibold">Nom du Produit (Non modifiable)</Label>
                   <Input value={editingProduct.name} disabled className="mt-1 rounded-xl bg-muted" />
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <Label className="text-xs font-semibold">Catégorie / Type</Label>
@@ -1461,7 +1463,7 @@ function ProgrammesPage() {
               <Label className="text-xs font-semibold">Nom du Produit</Label>
               <Input name="name" placeholder="ex: Nitrate de Potasse" className="mt-1 rounded-xl" />
             </div>
-            
+
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label className="text-xs font-semibold">Catégorie / Type</Label>
@@ -1484,10 +1486,10 @@ function ProgrammesPage() {
                 <Label className="text-xs font-semibold">Prix Indicatif (DA)</Label>
                 <Input name="price" type="number" placeholder="ex: 150" className="mt-1 rounded-xl" />
               </div>
-                  <div>
-                    <Label className="text-xs font-semibold">Solubilité (g/L) / DAR (Jours)</Label>
-                    <Input name="solubility" type="number" placeholder="ex: 120" className="mt-1 rounded-xl" />
-                  </div>
+              <div>
+                <Label className="text-xs font-semibold">Solubilité (g/L) / DAR (Jours)</Label>
+                <Input name="solubility" type="number" placeholder="ex: 120" className="mt-1 rounded-xl" />
+              </div>
               <div>
                 <Label className="text-xs font-semibold">Agitation (min)</Label>
                 <Input name="time" type="number" placeholder="ex: 10" className="mt-1 rounded-xl" />
@@ -1539,7 +1541,7 @@ function ProgrammesPage() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              
+
               if (!pSupplierName.trim()) return toast.error("Nom du fournisseur requis");
               if (!pProductName) return toast.error("Veuillez sélectionner ou saisir un produit");
               if (!pQuantity || parseFloat(pQuantity) <= 0) return toast.error("Quantité invalide");
@@ -1564,7 +1566,7 @@ function ProgrammesPage() {
 
               toast.success("Achat enregistré avec succès !");
               setAddPurchaseOpen(false);
-              
+
               setPSupplierName("");
               setPProductName("");
               setPQuantity("");

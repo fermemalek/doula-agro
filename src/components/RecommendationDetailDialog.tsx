@@ -187,6 +187,12 @@ export function RecommendationDetailDialog({
   const [repeatWeeks, setRepeatWeeks] = useState<number>(4);
   const [weeklyFrequency, setWeeklyFrequency] = useState<number>(1);
   const [secondDayOffset, setSecondDayOffset] = useState<number>(4);
+  const [selectedParcelIds, setSelectedParcelIds] = useState<string[]>([]);
+
+  const candidateParcels = useMemo(() => {
+    if (!reco) return [];
+    return getTargetParcelsForReco(reco, parcels);
+  }, [reco, parcels]);
 
   useEffect(() => {
     if (reco) {
@@ -197,8 +203,15 @@ export function RecommendationDetailDialog({
       setWeeklyFrequency(freq >= 2 ? 2 : 1);
       setRepeatWeeks(4);
       setShowPlanningPreview(false);
+
+      const defaults = getTargetParcelsForReco(reco, parcels);
+      setSelectedParcelIds(defaults.map(p => p.id));
     }
-  }, [reco]);
+  }, [reco, parcels]);
+
+  const targetParcels = useMemo(() => {
+    return candidateParcels.filter(p => selectedParcelIds.includes(p.id));
+  }, [candidateParcels, selectedParcelIds]);
 
   const scheduledDates = useMemo(() => {
     return computeScheduledDates(selectedDate, repeatWeeks, weeklyFrequency, secondDayOffset);
@@ -206,8 +219,8 @@ export function RecommendationDetailDialog({
 
   const stockReport = useMemo(() => {
     if (!reco) return { hasMissingStock: false, items: [], missingItems: [], totalEstimatedMissingCost: 0 };
-    return checkRecoStock(reco, suppliers, parcels, scheduledDates.length);
-  }, [reco, suppliers, parcels, scheduledDates.length]);
+    return checkRecoStock(reco, suppliers, parcels, scheduledDates.length, targetParcels);
+  }, [reco, suppliers, parcels, scheduledDates.length, targetParcels]);
 
   const handleAutoCreatePurchases = () => {
     if (stockReport.missingItems.length === 0) {
@@ -663,32 +676,72 @@ export function RecommendationDetailDialog({
                     );
                   })()}
 
+                  {/* Choix multiple des parcelles ciblées */}
+                  {candidateParcels.length > 0 && (
+                    <div className="space-y-2 bg-background p-3 rounded-xl border">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
+                          <MapPin className="h-4 w-4 text-primary" />
+                          <span>Parcelles ciblées ({targetParcels.length}/{candidateParcels.length})</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedParcelIds(candidateParcels.map(p => p.id))}
+                            className="text-[10px] text-primary font-bold hover:underline"
+                          >
+                            Tout cocher
+                          </button>
+                          <span className="text-muted-foreground text-[10px]">·</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedParcelIds([])}
+                            className="text-[10px] text-muted-foreground hover:underline"
+                          >
+                            Tout décocher
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {candidateParcels.map((parcel) => {
+                          const isSelected = selectedParcelIds.includes(parcel.id);
+                          const surface = parcel.info?.surface || "—";
+                          return (
+                            <button
+                              key={parcel.id}
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedParcelIds(prev => prev.filter(id => id !== parcel.id));
+                                } else {
+                                  setSelectedParcelIds(prev => [...prev, parcel.id]);
+                                }
+                              }}
+                              className={`flex items-center gap-2 p-2 rounded-lg border text-left transition ${
+                                isSelected
+                                  ? "bg-primary/10 border-primary text-foreground font-bold shadow-xs"
+                                  : "bg-muted/40 border-border text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              <div className={`h-4 w-4 rounded flex items-center justify-center border text-[10px] ${
+                                isSelected ? "bg-primary border-primary text-primary-foreground font-black" : "border-muted-foreground"
+                              }`}>
+                                {isSelected ? "✓" : ""}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-[11px] truncate">{parcel.name}</p>
+                                <p className="text-[9px] text-muted-foreground font-normal">{surface} ha</p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* 3. Sequential Scheduling Block */}
                   {(() => {
-                    const targetParcels = parcels.filter((p) => {
-                      const groups = Array.isArray(payload.crop_group)
-                        ? payload.crop_group
-                        : payload.crop_group
-                        ? [payload.crop_group]
-                        : [];
-
-                      const parcelMatchesCropGroup = (parcelItem: typeof p, group: string) => {
-                        if (group === "oliviers") return parcelItem.type === "olivier";
-                        if (group === "pommiers") return parcelItem.type === "pommier";
-                        if (group === "nectarinier") return parcelItem.type === "nectarine";
-                        if (group === "redix25") return parcelItem.id === "redix25";
-                        if (group === "nablara") return parcelItem.id === "nablara";
-                        if (group === "casuarina") return parcelItem.name.toUpperCase().includes("CASUARINA") || parcelItem.id === "brisevent";
-                        if (group === "p9") return parcelItem.id === "p9";
-                        if (group === "p10") return parcelItem.id === "p10";
-                        if (group === "p11") return parcelItem.id === "p11";
-                        if (group === "p12") return parcelItem.id === "p12";
-                        return false;
-                      };
-
-                      return groups.some((group) => parcelMatchesCropGroup(p, group));
-                    });
-
                     if (targetParcels.length === 0) return null;
 
                     if (reco.kind === "fertilisation" && payload.method === "irrigation") {
@@ -888,28 +941,25 @@ export function RecommendationDetailDialog({
                                       }
                                     }
 
-                                    const adjustedProgram = {
+                                    const durationHours = (durationMinutes / 60).toString();
+                                    // Programme unifié : Irrigation avec Fertilisation (Fertigation = 1 seule entrée par passage)
+                                    const unifiedFertigation = {
                                       ...program,
+                                      method: "irrigation",
+                                      label: program.label || "Irrigation & Fertilisation",
                                       hectares: surface,
                                       total: totalCost,
                                       reco_id: reco.id,
                                       date: dateItem,
-                                    };
-                                    addModuleRecord(parcel.id, "fertilisation", adjustedProgram);
-
-                                    const durationHours = (durationMinutes / 60).toString();
-                                    const irrigationPayload = {
                                       mode: "date",
-                                      date: dateItem,
                                       duration: durationHours,
                                       dateStartHour: groupStart,
                                       wettingTime: program.wettingTime,
                                       injectionTime: program.injectionTime,
                                       rinsingTime: program.rinsingTime,
                                       irrigationTime: program.irrigationTime,
-                                      reco_id: reco.id,
                                     };
-                                    addModuleRecord(parcel.id, "irrigation", irrigationPayload);
+                                    addModuleRecord(parcel.id, "fertilisation", unifiedFertigation);
                                   }
 
                                   currentStart = addMinutesToTime(groupEnd, 5);

@@ -56,7 +56,13 @@ export function PendingPrograms() {
           {pending.map((p) => (
             <div key={p.id} className="flex items-center justify-between gap-2 rounded-xl border bg-background p-2.5 text-xs">
               <div className="min-w-0">
-                <p className="font-semibold capitalize text-foreground">{p.kind}</p>
+                <p className="font-semibold capitalize text-foreground flex items-center gap-1.5">
+                  {p.kind === "fertilisation" && ((p.payload as any)?.method === "irrigation" || (p.payload as any)?.irrigationTime) ? (
+                    <span className="text-emerald-700 dark:text-emerald-400 font-bold">💧🌱 Irrigation & Fertilisation</span>
+                  ) : (
+                    <span>{p.kind}</span>
+                  )}
+                </p>
                 <p className="truncate text-muted-foreground">
                   {fmt(p.scheduled_at)} · {parcelName(p.parcel_id)}
                 </p>

@@ -42,13 +42,15 @@ export function matchProductName(a: string, b: string): boolean {
   return false;
 }
 
-export function getTargetParcelsForReco(reco: Recommendation, parcels: Parcel[]): Parcel[] {
+export function getTargetParcelsForReco(reco: Recommendation, parcels: Parcel[] = []): Parcel[] {
+  if (!reco || !Array.isArray(parcels)) return [];
+
   if (reco.parcel_ids && reco.parcel_ids.length > 0) {
-    return parcels.filter((p) => reco.parcel_ids.includes(p.id));
+    return parcels.filter((p) => p && reco.parcel_ids.includes(p.id));
   }
 
   const payload = (reco.payload ?? {}) as any;
-  const rawGroups = payload.crop_group;
+  const rawGroups = payload?.crop_group;
   const groups: string[] = Array.isArray(rawGroups)
     ? rawGroups
     : rawGroups
@@ -58,17 +60,22 @@ export function getTargetParcelsForReco(reco: Recommendation, parcels: Parcel[])
   if (groups.length === 0) return parcels;
 
   const parcelMatchesGroup = (parcel: Parcel, group: string) => {
+    if (!parcel || !group || typeof group !== "string") return false;
     const g = group.toLowerCase();
-    if (g === "oliviers") return parcel.type === "olivier";
-    if (g === "pommiers") return parcel.type === "pommier";
-    if (g === "nectarinier") return parcel.type === "nectarine";
-    if (g === "redix25") return parcel.id.toLowerCase() === "redix25" || parcel.name.toLowerCase().includes("redix");
-    if (g === "nablara") return parcel.id.toLowerCase() === "nablara" || parcel.name.toLowerCase().includes("nablara");
-    if (g === "casuarina") return parcel.name.toUpperCase().includes("CASUARINA") || parcel.id === "brisevent";
-    if (g === "p9") return parcel.id === "p9";
-    if (g === "p10") return parcel.id === "p10";
-    if (g === "p11") return parcel.id === "p11";
-    if (g === "p12") return parcel.id === "p12";
+    const pType = (parcel.type || "").toLowerCase();
+    const pId = (parcel.id || "").toLowerCase();
+    const pName = (parcel.name || "").toLowerCase();
+
+    if (g === "oliviers") return pType === "olivier";
+    if (g === "pommiers") return pType === "pommier";
+    if (g === "nectarinier") return pType === "nectarine";
+    if (g === "redix25") return pId === "redix25" || pName.includes("redix");
+    if (g === "nablara") return pId === "nablara" || pName.includes("nablara");
+    if (g === "casuarina") return pName.includes("casuarina") || pId === "brisevent";
+    if (g === "p9") return pId === "p9";
+    if (g === "p10") return pId === "p10";
+    if (g === "p11") return pId === "p11";
+    if (g === "p12") return pId === "p12";
     return false;
   };
 
@@ -81,52 +88,83 @@ export function getTargetParcelsForReco(reco: Recommendation, parcels: Parcel[])
  * @param suppliers Liste des achats/stocks fournisseurs
  * @param parcels Liste des parcelles
  * @param repeatPassages Nombre total de répétitions / passages prévus
+ * @param customTargetParcels Parcelles explicitement choisies par l'utilisateur
  */
 export function checkRecoStock(
   reco: Recommendation,
-  suppliers: SupplierPurchase[],
-  parcels: Parcel[],
-  repeatPassages: number = 1
+  suppliers: SupplierPurchase[] = [],
+  parcels: Parcel[] = [],
+  repeatPassages: number = 1,
+  customTargetParcels?: Parcel[]
 ): RecoStockReport {
-  const targetParcels = getTargetParcelsForReco(reco, parcels);
-  const payload = (reco.payload ?? {}) as any;
-  const program = payload.program || {};
+  const emptyReport: RecoStockReport = {
+    hasMissingStock: false,
+    items: [],
+    missingItems: [],
+    totalEstimatedMissingCost: 0,
+  };
 
-  const sumsMap: Record<string, { name: string; neededPerPassage: number; unit: "kg" | "litres"; price: number }> = {};
+  if (!reco) return emptyReport;
 
-  if (reco.kind === "fertilisation") {
-    if (payload.method === "irrigation") {
-      if (Array.isArray(program.entries)) {
-        for (const entry of program.entries) {
-          if (Array.isArray(entry.items)) {
-            for (const it of entry.items) {
-              const name = it.name?.trim();
-              if (!name) continue;
-              const doseHa = safeParseFloat(it.qty);
-              const price = safeParseFloat(it.price);
-              const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+  try {
+    const targetParcels = Array.isArray(customTargetParcels) && customTargetParcels.length > 0
+      ? customTargetParcels
+      : getTargetParcelsForReco(reco, parcels);
 
-              for (const parcel of targetParcels) {
-                const surface = safeParseFloat(parcel.info?.surface) || 1;
-                const totalParcelQty = doseHa * surface;
-                if (!sumsMap[name]) {
-                  sumsMap[name] = { name, neededPerPassage: 0, unit, price };
+    const safeSuppliers = Array.isArray(suppliers) ? suppliers : [];
+    const payload = (reco.payload ?? {}) as any;
+    const program = payload?.program || {};
+
+    const sumsMap: Record<string, { name: string; neededPerPassage: number; unit: "kg" | "litres"; price: number }> = {};
+
+    if (reco.kind === "fertilisation") {
+      if (payload.method === "irrigation") {
+        if (Array.isArray(program.entries)) {
+          for (const entry of program.entries) {
+            if (Array.isArray(entry.items)) {
+              for (const it of entry.items) {
+                const name = it.name?.trim();
+                if (!name) continue;
+                const doseHa = safeParseFloat(it.qty);
+                const price = safeParseFloat(it.price);
+                const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+
+                for (const parcel of targetParcels) {
+                  const surface = safeParseFloat(parcel?.info?.surface) || 1;
+                  const totalParcelQty = doseHa * surface;
+                  if (!sumsMap[name]) {
+                    sumsMap[name] = { name, neededPerPassage: 0, unit, price };
+                  }
+                  sumsMap[name].neededPerPassage += totalParcelQty;
                 }
-                sumsMap[name].neededPerPassage += totalParcelQty;
               }
             }
           }
         }
+      } else {
+        // Pulvérisation foliaire
+        if (Array.isArray(program.items)) {
+          for (const it of program.items) {
+            const name = it.name?.trim();
+            if (!name) continue;
+            const qty = safeParseFloat(it.qty);
+            const price = safeParseFloat(it.price);
+            const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+            if (!sumsMap[name]) {
+              sumsMap[name] = { name, neededPerPassage: 0, unit, price };
+            }
+            sumsMap[name].neededPerPassage += qty;
+          }
+        }
       }
-    } else {
-      // Pulvérisation foliaire
-      if (Array.isArray(program.items)) {
-        for (const it of program.items) {
-          const name = it.name?.trim();
+    } else if (reco.kind === "phytosanitaire") {
+      if (Array.isArray(program.products)) {
+        for (const p of program.products) {
+          const name = (p.product || p.name)?.trim();
           if (!name) continue;
-          const qty = safeParseFloat(it.qty);
-          const price = safeParseFloat(it.price);
-          const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+          const qty = safeParseFloat(p.volume) || safeParseFloat(p.dosage) || 1;
+          const price = safeParseFloat(p.price);
+          const unit: "kg" | "litres" = "litres";
           if (!sumsMap[name]) {
             sumsMap[name] = { name, neededPerPassage: 0, unit, price };
           }
@@ -134,65 +172,54 @@ export function checkRecoStock(
         }
       }
     }
-  } else if (reco.kind === "phytosanitaire") {
-    if (Array.isArray(program.products)) {
-      for (const p of program.products) {
-        const name = (p.product || p.name)?.trim();
-        if (!name) continue;
-        const qty = safeParseFloat(p.volume) || safeParseFloat(p.dosage) || 1;
-        const price = safeParseFloat(p.price);
-        const unit: "kg" | "litres" = "litres";
-        if (!sumsMap[name]) {
-          sumsMap[name] = { name, neededPerPassage: 0, unit, price };
-        }
-        sumsMap[name].neededPerPassage += qty;
-      }
-    }
-  }
 
-  // Stock disponible par produit
-  const getProductStock = (prodName: string): number => {
-    return suppliers
-      .filter((p) => matchProductName(p.productName, prodName))
-      .reduce((sum, p) => sum + Math.max(0, p.quantity - (p.consumed || 0)), 0);
-  };
-
-  const items: RecoProductStockItem[] = [];
-  const missingItems: RecoProductStockItem[] = [];
-  let totalEstimatedMissingCost = 0;
-
-  for (const key of Object.keys(sumsMap)) {
-    const raw = sumsMap[key];
-    const totalNeeded = parseFloat((raw.neededPerPassage * repeatPassages).toFixed(2));
-    const available = parseFloat(getProductStock(raw.name).toFixed(2));
-    const missing = parseFloat(Math.max(0, totalNeeded - available).toFixed(2));
-    const cost = parseFloat((missing * raw.price).toFixed(2));
-    const isMissing = missing > 0;
-
-    const item: RecoProductStockItem = {
-      name: raw.name,
-      needed: totalNeeded,
-      available,
-      missing,
-      unit: raw.unit,
-      price: raw.price,
-      cost,
-      isMissing,
+    // Stock disponible par produit
+    const getProductStock = (prodName: string): number => {
+      return safeSuppliers
+        .filter((p) => p && matchProductName(p.productName, prodName))
+        .reduce((sum, p) => sum + Math.max(0, (p.quantity || 0) - (p.consumed || 0)), 0);
     };
 
-    items.push(item);
-    if (isMissing) {
-      missingItems.push(item);
-      totalEstimatedMissingCost += cost;
-    }
-  }
+    const items: RecoProductStockItem[] = [];
+    const missingItems: RecoProductStockItem[] = [];
+    let totalEstimatedMissingCost = 0;
 
-  return {
-    hasMissingStock: missingItems.length > 0,
-    items,
-    missingItems,
-    totalEstimatedMissingCost: parseFloat(totalEstimatedMissingCost.toFixed(2)),
-  };
+    for (const key of Object.keys(sumsMap)) {
+      const raw = sumsMap[key];
+      const totalNeeded = parseFloat((raw.neededPerPassage * repeatPassages).toFixed(2));
+      const available = parseFloat(getProductStock(raw.name).toFixed(2));
+      const missing = parseFloat(Math.max(0, totalNeeded - available).toFixed(2));
+      const cost = parseFloat((missing * raw.price).toFixed(2));
+      const isMissing = missing > 0;
+
+      const item: RecoProductStockItem = {
+        name: raw.name,
+        needed: totalNeeded,
+        available,
+        missing,
+        unit: raw.unit,
+        price: raw.price,
+        cost,
+        isMissing,
+      };
+
+      items.push(item);
+      if (isMissing) {
+        missingItems.push(item);
+        totalEstimatedMissingCost += cost;
+      }
+    }
+
+    return {
+      hasMissingStock: missingItems.length > 0,
+      items,
+      missingItems,
+      totalEstimatedMissingCost: parseFloat(totalEstimatedMissingCost.toFixed(2)),
+    };
+  } catch (err) {
+    console.error("Erreur calcul checkRecoStock:", err);
+    return emptyReport;
+  }
 }
 
 /**
@@ -243,3 +270,4 @@ export function computeScheduledDates(
 
   return dates.sort();
 }
+

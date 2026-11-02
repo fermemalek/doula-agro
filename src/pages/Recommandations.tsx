@@ -189,7 +189,9 @@ function RecommandationsPage() {
             const Icon = r.kind === "fertilisation" ? Sprout : FlaskConical;
             const author = profiles[r.created_by] || "Ingénieur";
             const statusInfo = getRecoStatusInfo(r);
-            const stockReport = checkRecoStock(r, suppliers, parcels);
+            // N'afficher l'alerte d'achat requis que pour les recommandations en attente non encore acceptées
+            const isPending = r.status === "envoyee" || r.status === "rejetee";
+            const stockReport = isPending ? checkRecoStock(r, suppliers, parcels) : { hasMissingStock: false };
             return (
               <li
                 key={r.id}
