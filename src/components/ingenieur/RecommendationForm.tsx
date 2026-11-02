@@ -756,7 +756,8 @@ export function RecommendationForm({
   const currentBacEntry = fertEntries.find(e => e.bac === fertBac) || { bac: fertBac, items: [] };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl bg-card text-card-foreground">
         <DialogHeader className="border-b pb-2">
           <DialogTitle className="text-base font-black uppercase tracking-wide flex items-center gap-2">
@@ -1614,8 +1615,9 @@ export function RecommendationForm({
           </button>
         </div>
       </DialogContent>
+    </Dialog>
 
-      {/* Product Creation Dialog */}
+    {/* Product Creation Dialog */}
       <Dialog open={newProductDialogOpen} onOpenChange={setNewProductDialogOpen}>
         <DialogContent className="max-w-md bg-card text-card-foreground text-xs">
           <DialogHeader>
@@ -1732,6 +1734,6 @@ export function RecommendationForm({
         onOpenChange={setPhytoHistoryOpen}
         currentCrops={cropGroups}
       />
-    </Dialog>
+    </>
   );
 }

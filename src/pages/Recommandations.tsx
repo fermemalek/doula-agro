@@ -27,7 +27,9 @@ const STATUS_LABEL: Record<Recommendation["status"], string> = {
   transferee: "Transférée",
 };
 
-function RecommandationsPage() {
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+
+function RecommandationsPageContent() {
   const navigate = useNavigate();
   const { userId } = useRole();
   const displayRole = useDisplayRole();
@@ -248,4 +250,10 @@ function RecommandationsPage() {
   );
 }
 
-export default RecommandationsPage;
+export default function RecommandationsPage() {
+  return (
+    <ErrorBoundary fallbackTitle="Erreur dans le module Recommandations">
+      <RecommandationsPageContent />
+    </ErrorBoundary>
+  );
+}

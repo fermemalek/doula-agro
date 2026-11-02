@@ -284,13 +284,7 @@ export function RecommendationDetailDialog({
     return "En attente";
   };
 
-  if (!reco) {
-    return (
-      <Dialog open={false} onOpenChange={onOpenChange}>
-        <DialogContent />
-      </Dialog>
-    );
-  }
+  if (!reco) return null;
 
   const Icon =
     reco.kind === "irrigation" ? Droplet : reco.kind === "phytosanitaire" ? FlaskConical : Sprout;
