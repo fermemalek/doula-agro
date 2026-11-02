@@ -103,12 +103,12 @@ export function PhytoHistoryModal({
 
     // 1. Depuis les recommandations phytosanitaires
     for (const r of recos) {
-      if (r.kind !== "phytosanitaire") continue;
+      if (!r || r.kind !== "phytosanitaire") continue;
       const payload = (r.payload || {}) as any;
       const prog = payload.program || {};
-      const date = prog.date || r.created_at.slice(0, 10);
-      const year = date.slice(0, 4);
-      const month = date.slice(5, 7);
+      const date = String(prog.date || (r.created_at ? r.created_at.slice(0, 10) : "") || new Date().toISOString().slice(0, 10));
+      const year = date.length >= 4 ? date.slice(0, 4) : new Date().getFullYear().toString();
+      const month = date.length >= 7 ? date.slice(5, 7) : "01";
       const period = prog.period as "matin" | "soir" | undefined;
       const cropList = Array.isArray(payload.crop_group)
         ? payload.crop_group

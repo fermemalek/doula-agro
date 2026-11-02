@@ -52,20 +52,26 @@ function RecommandationsPage() {
   }, [localIrr, localFert, localPulv, localPhy]);
 
   const getRecoStatusInfo = (r: Recommendation) => {
+    if (r.status === "acceptee") {
+      const matchingProgs = allPrograms.filter(p => p.reco_id === r.id || p.payload?.reco_id === r.id);
+      if (matchingProgs.length > 0) {
+        const allExecuted = matchingProgs.every(p => p.status === "execute" || p.executedAt !== undefined || p.executed_at !== null);
+        if (allExecuted) {
+          return { label: "Exécuté", tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" };
+        }
+        return { label: "Accepté (Planifié)", tone: "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400" };
+      }
+      return { label: "Accepté", tone: "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400" };
+    }
+
     if (r.status === "rejetee") {
       if (displayRole === "admin") {
-        return { label: "Approvisionnement", tone: "border-amber-500/30 bg-amber-500/5 text-amber-700" };
+        return { label: "Approvisionnement", tone: "border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300" };
       }
-      return { label: "En attente", tone: "border-blue-500/30 bg-blue-500/5 text-blue-700" };
+      return { label: "En attente", tone: "border-blue-500/30 bg-blue-500/5 text-blue-700 dark:text-blue-300" };
     }
-    const matchingProgs = allPrograms.filter(p => p.reco_id === r.id || p.payload?.reco_id === r.id);
-    if (matchingProgs.length > 0) {
-      const allExecuted = matchingProgs.every(p => p.status === "execute" || p.executedAt !== undefined || p.executed_at !== null);
-      if (allExecuted) {
-        return { label: "Accepté", tone: "border-emerald-500/30 bg-emerald-500/5 text-emerald-700" };
-      }
-    }
-    return { label: "En attente", tone: "border-blue-500/30 bg-blue-500/5 text-blue-700" };
+
+    return { label: "En attente", tone: "border-blue-500/30 bg-blue-500/5 text-blue-700 dark:text-blue-300" };
   };
 
   async function handleDeleteAll() {
@@ -220,11 +226,11 @@ function RecommandationsPage() {
                   <p className="truncate text-xs opacity-80">
                     {r.kind === "fertilisation" ? "Fertilisation" : "Phytosanitaire"}
                     {" · "}
-                    {r.parcel_ids.length} parcelle{r.parcel_ids.length > 1 ? "s" : ""}
+                    {(r.parcel_ids?.length || 0)} parcelle{((r.parcel_ids?.length || 0) > 1) ? "s" : ""}
                     {displayRole !== "ingenieur" && ` · par ${author}`}
                   </p>
                   <p className="mt-0.5 text-[10px] opacity-70">
-                    {new Date(r.created_at).toLocaleString("fr-FR")}
+                    {r.created_at ? new Date(r.created_at).toLocaleString("fr-FR") : "—"}
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full border bg-background/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase font-bold">

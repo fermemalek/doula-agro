@@ -79,8 +79,34 @@ export function useRecommendationActions() {
   });
 
   const queueReview = async (id: string, status: "acceptee" | "rejetee") => {
-    const { data: { session: __s } } = await supabase.auth.getSession(); const u = { user: __s?.user ?? null };
-    const { enqueueOp } = await import("@/lib/offline/sync-engine");
+    const { data: { session: __s } } = await supabase.auth.getSession();
+    const u = { user: __s?.user ?? null };
+    const reviewedAt = new Date().toISOString();
+
+    // 1. Optimistic update in query cache for instant UI response
+    qc.setQueryData<Recommendation[]>(KEY, (old) => {
+      if (!old) return old;
+      return old.map((r) =>
+        r.id === id ? { ...r, status, reviewed_at: reviewedAt } : r
+      );
+    });
+
+    // 2. Direct update to Supabase for immediate cloud persistence
+    try {
+      await supabase
+        .from("recommendations")
+        .update({
+          status,
+          reviewed_by: u.user?.id ?? null,
+          reviewed_at: reviewedAt,
+        })
+        .eq("id", id);
+    } catch (err) {
+      console.warn("Direct update to recommendations failed, offline sync will retry:", err);
+    }
+
+    // 3. Enqueue offline op as fallback / sync tracking
+    const { enqueueOp, triggerSync } = await import("@/lib/offline/sync-engine");
     const cur = qc.getQueryData<Recommendation[]>(KEY)?.find((r) => r.id === id);
     await enqueueOp({
       op: "recommendation.update",
@@ -93,10 +119,11 @@ export function useRecommendationActions() {
         patch: {
           status,
           reviewed_by: u.user?.id ?? null,
-          reviewed_at: new Date().toISOString(),
+          reviewed_at: reviewedAt,
         },
       },
     });
+    triggerSync();
   };
 
   const accept = useMutation({

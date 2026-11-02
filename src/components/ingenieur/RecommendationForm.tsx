@@ -1725,6 +1725,13 @@ export function RecommendationForm({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Historique des Traitements Phyto & Rotation Matières Actives */}
+      <PhytoHistoryModal
+        open={phytoHistoryOpen}
+        onOpenChange={setPhytoHistoryOpen}
+        currentCrops={cropGroups}
+      />
     </Dialog>
   );
 }

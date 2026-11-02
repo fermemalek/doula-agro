@@ -211,7 +211,7 @@ export function IngenieurHome() {
                           ? t("eng.phytosanitaire", "Phytosanitaire")
                           : t("eng.fertilisation", "Fertilisation")}{" "}
                       ·{" "}
-                      {r.parcel_ids.length} {currentLang === "ar" ? "قطعة" : `parcelle${r.parcel_ids.length > 1 ? "s" : ""}`}
+                      {(r.parcel_ids?.length || 0)} {currentLang === "ar" ? "قطعة" : `parcelle${(r.parcel_ids?.length || 0) > 1 ? "s" : ""}`}
                     </p>
                   </div>
                   <span className="rounded-full border bg-background/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase">

@@ -43,8 +43,8 @@ export function IngenieurRecoBanner({ kind }: { kind: RecoKind }) {
               <div className="flex-1 min-w-0">
                 <p className="truncate text-sm font-medium">{r.title}</p>
                 <p className="truncate text-[10px] text-muted-foreground">
-                  {r.parcel_ids.length} parcelle{r.parcel_ids.length > 1 ? "s" : ""} ·{" "}
-                  {new Date(r.created_at).toLocaleDateString("fr-FR")}
+                  {(r.parcel_ids?.length || 0)} parcelle{((r.parcel_ids?.length || 0) > 1) ? "s" : ""} ·{" "}
+                  {r.created_at ? new Date(r.created_at).toLocaleDateString("fr-FR") : "—"}
                 </p>
               </div>
               <span className="shrink-0 rounded-full border bg-background px-2 py-0.5 text-[9px] font-semibold uppercase">

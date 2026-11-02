@@ -159,7 +159,7 @@ function ProgrammesPage() {
         : [];
 
     if (groups.length === 0) {
-      return parcels.filter(p => reco.parcel_ids.includes(p.id));
+      return parcels.filter(p => reco.parcel_ids?.includes(p.id) ?? false);
     }
 
     const target = parcels.filter((p) => {
@@ -176,7 +176,7 @@ function ProgrammesPage() {
     });
 
     if (target.length === 0) {
-      return parcels.filter(p => reco.parcel_ids.includes(p.id));
+      return parcels.filter(p => reco.parcel_ids?.includes(p.id) ?? false);
     }
     return target;
   };

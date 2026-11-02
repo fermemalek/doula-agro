@@ -104,7 +104,7 @@ function getSeasonalWindow(dateStr: string) {
   }
   const month = d.getMonth();
   const day = d.getDate();
-  
+
   if (month >= 0 && month <= 2) {
     return SEASONAL_WINDOWS.winter_early_spring;
   } else if (month === 3) {
@@ -153,7 +153,7 @@ function parseDurationToMinutes(durationStr: string): number {
   if (durationStr === "2h") return 120;
   if (durationStr === "2h30") return 150;
   if (durationStr === "3h") return 180;
-  
+
   const match = String(durationStr).match(/(\d+)h(?:(\d+))?/);
   if (match) {
     const hours = parseInt(match[1]) || 0;
@@ -272,11 +272,13 @@ export function RecommendationDetailDialog({
   const allPrograms = [...localIrr, ...localFert, ...localPulv, ...localPhy];
 
   const getRecoStatusLabel = (r: Recommendation) => {
+    if (r.status === "acceptee") return "Acceptée";
+    if (r.status === "rejetee") return "Approvisionnement";
     const matchingProgs = allPrograms.filter(p => p.reco_id === r.id || p.payload?.reco_id === r.id);
     if (matchingProgs.length > 0) {
       const allExecuted = matchingProgs.every(p => p.status === "execute" || p.executedAt !== undefined || p.executed_at !== null);
       if (allExecuted) {
-        return "Accepté";
+        return "Exécuté";
       }
     }
     return "En attente";
@@ -293,7 +295,7 @@ export function RecommendationDetailDialog({
   const Icon =
     reco.kind === "irrigation" ? Droplet : reco.kind === "phytosanitaire" ? FlaskConical : Sprout;
   const author = profiles[reco.created_by] || "Ingénieur";
-  const parcelNames = reco.parcel_ids
+  const parcelNames = (reco.parcel_ids || [])
     .map((id) => parcels.find((p) => p.id === id)?.name ?? id)
     .join(", ");
   const payload = (reco.payload ?? {}) as {
@@ -339,7 +341,7 @@ export function RecommendationDetailDialog({
           <div className="flex items-start gap-2">
             <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
             <p className="text-xs text-muted-foreground">
-              {new Date(reco.created_at).toLocaleString("fr-FR")}
+              {reco.created_at ? new Date(reco.created_at).toLocaleString("fr-FR") : "—"}
             </p>
           </div>
 
@@ -627,18 +629,16 @@ export function RecommendationDetailDialog({
                               <button
                                 type="button"
                                 onClick={() => setWeeklyFrequency(1)}
-                                className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${
-                                  weeklyFrequency === 1 ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
-                                }`}
+                                className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${weeklyFrequency === 1 ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
+                                  }`}
                               >
                                 1 fois / sem
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setWeeklyFrequency(2)}
-                                className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${
-                                  weeklyFrequency === 2 ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
-                                }`}
+                                className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${weeklyFrequency === 2 ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"
+                                  }`}
                               >
                                 2 fois / sem
                               </button>
@@ -676,9 +676,8 @@ export function RecommendationDetailDialog({
                                     key={cnt}
                                     type="button"
                                     onClick={() => setPureWeeklyFrequency(cnt)}
-                                    className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${
-                                      pureWeeklyFrequency === cnt ? "bg-primary text-primary-foreground shadow-xs" : "text-muted-foreground"
-                                    }`}
+                                    className={`flex-1 py-1 rounded text-center font-bold text-[11px] transition ${pureWeeklyFrequency === cnt ? "bg-primary text-primary-foreground shadow-xs" : "text-muted-foreground"
+                                      }`}
                                   >
                                     {cnt === 0 ? "0" : `${cnt}x/sem`}
                                   </button>
@@ -814,15 +813,13 @@ export function RecommendationDetailDialog({
                                   setSelectedParcelIds(prev => [...prev, parcel.id]);
                                 }
                               }}
-                              className={`flex items-center gap-2 p-2 rounded-lg border text-left transition ${
-                                isSelected
+                              className={`flex items-center gap-2 p-2 rounded-lg border text-left transition ${isSelected
                                   ? "bg-primary/10 border-primary text-foreground font-bold shadow-xs"
                                   : "bg-muted/40 border-border text-muted-foreground hover:bg-muted"
-                              }`}
+                                }`}
                             >
-                              <div className={`h-4 w-4 rounded flex items-center justify-center border text-[10px] ${
-                                isSelected ? "bg-primary border-primary text-primary-foreground font-black" : "border-muted-foreground"
-                              }`}>
+                              <div className={`h-4 w-4 rounded flex items-center justify-center border text-[10px] ${isSelected ? "bg-primary border-primary text-primary-foreground font-black" : "border-muted-foreground"
+                                }`}>
                                 {isSelected ? "✓" : ""}
                               </div>
                               <div className="min-w-0 flex-1">
