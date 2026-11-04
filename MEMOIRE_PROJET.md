@@ -69,3 +69,6 @@ L'application **Doula Agro** (anciennement nommée Farm Friendy) est une platefo
 - **Routage** : HashRouter (`/#/...`) assurant la compatibilité totale avec GitHub Pages et Electron.
 - **Mobile** : Fichier APK disponible `DoulaAgro_debug.apk` pour installation Android.
 
+
+
+- **Correction import `getTargetParcelsForReco`** : Ajout de l'import manquant dans `src/pages/Recommandations.tsx` pour permettre le calcul dynamique du nombre de parcelles sans ReferenceError.

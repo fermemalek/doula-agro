@@ -106,7 +106,7 @@ export function useRecommendationActions() {
     }
 
     // 3. Enqueue offline op as fallback / sync tracking
-    const { enqueueOp, triggerSync } = await import("@/lib/offline/sync-engine");
+    const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
     const cur = qc.getQueryData<Recommendation[]>(KEY)?.find((r) => r.id === id);
     await enqueueOp({
       op: "recommendation.update",
@@ -123,7 +123,7 @@ export function useRecommendationActions() {
         },
       },
     });
-    triggerSync();
+    scheduleSync();
   };
 
   const accept = useMutation({

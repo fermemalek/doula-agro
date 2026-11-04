@@ -236,6 +236,8 @@ export function scheduleSync(delay = 0): void {
   }, delay);
 }
 
+export const triggerSync = scheduleSync;
+
 export async function runSync(): Promise<void> {
   if (runningPromise) return runningPromise;
   runningPromise = (async () => {
