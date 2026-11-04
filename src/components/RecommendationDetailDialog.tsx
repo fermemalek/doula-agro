@@ -808,8 +808,8 @@ export function RecommendationDetailDialog({
                                 }
                               }}
                               className={`flex items-center gap-2 p-2 rounded-lg border text-left transition ${isSelected
-                                  ? "bg-primary/10 border-primary text-foreground font-bold shadow-xs"
-                                  : "bg-muted/40 border-border text-muted-foreground hover:bg-muted"
+                                ? "bg-primary/10 border-primary text-foreground font-bold shadow-xs"
+                                : "bg-muted/40 border-border text-muted-foreground hover:bg-muted"
                                 }`}
                             >
                               <div className={`h-4 w-4 rounded flex items-center justify-center border text-[10px] ${isSelected ? "bg-primary border-primary text-primary-foreground font-black" : "border-muted-foreground"

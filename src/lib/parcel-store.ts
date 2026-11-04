@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { PARCELS, type Parcel, type ParcelInfo, type ParcelStatus } from "@/data/parcels";
 
 const STORAGE_KEY = "doula-parcels";
@@ -36,7 +36,7 @@ function merge(p: Parcel): Parcel {
 }
 
 export function useParcels(): Parcel[] {
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     const fn = () => setTick((t) => t + 1);
     listeners.add(fn);
@@ -44,7 +44,7 @@ export function useParcels(): Parcel[] {
       listeners.delete(fn);
     };
   }, []);
-  return PARCELS.map(merge);
+  return useMemo(() => PARCELS.map(merge), [tick]);
 }
 
 export function useParcel(id: string): Parcel | undefined {
