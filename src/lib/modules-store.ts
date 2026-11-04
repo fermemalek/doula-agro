@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 const KEY = "doula-modules";
@@ -121,7 +121,7 @@ function bucket(parcelId: string, mod: ModuleName): any[] {
 }
 
 export function useModuleRecords<T = any>(parcelId: string, mod: ModuleName): T[] {
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     const fn = () => setTick((t) => t + 1);
     listeners.add(fn);
@@ -129,11 +129,11 @@ export function useModuleRecords<T = any>(parcelId: string, mod: ModuleName): T[
       listeners.delete(fn);
     };
   }, []);
-  return bucket(parcelId, mod) as T[];
+  return useMemo(() => bucket(parcelId, mod) as T[], [tick, parcelId, mod]);
 }
 
 export function useAllModuleRecords<T = any>(mod: ModuleName): Array<T & { parcelId: string }> {
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     const fn = () => setTick((t) => t + 1);
     listeners.add(fn);
@@ -141,12 +141,14 @@ export function useAllModuleRecords<T = any>(mod: ModuleName): Array<T & { parce
       listeners.delete(fn);
     };
   }, []);
-  const all: Array<T & { parcelId: string }> = [];
-  for (const pid of Object.keys(data)) {
-    const arr = data[pid]?.[mod] ?? [];
-    for (const r of arr) all.push({ ...r, parcelId: pid });
-  }
-  return all;
+  return useMemo(() => {
+    const all: Array<T & { parcelId: string }> = [];
+    for (const pid of Object.keys(data)) {
+      const arr = data[pid]?.[mod] ?? [];
+      for (const r of arr) all.push({ ...r, parcelId: pid });
+    }
+    return all;
+  }, [tick, mod]);
 }
 
 export function useModuleActions() {

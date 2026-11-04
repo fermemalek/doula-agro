@@ -196,6 +196,8 @@ export function RecommendationDetailDialog({
     return getTargetParcelsForReco(reco, parcels);
   }, [reco, parcels]);
 
+  const recoId = reco?.id;
+
   useEffect(() => {
     if (reco) {
       const payload = (reco.payload ?? {}) as any;
@@ -212,7 +214,7 @@ export function RecommendationDetailDialog({
       const defaults = getTargetParcelsForReco(reco, parcels);
       setSelectedParcelIds(defaults.map(p => p.id));
     }
-  }, [reco, parcels]);
+  }, [recoId]);
 
   const targetParcels = useMemo(() => {
     return candidateParcels.filter(p => selectedParcelIds.includes(p.id));
@@ -269,7 +271,7 @@ export function RecommendationDetailDialog({
   const localPulv = useAllModuleRecords("pulverisation");
   const localPhy = useAllModuleRecords("phytosanitaire");
 
-  const allPrograms = [...localIrr, ...localFert, ...localPulv, ...localPhy];
+  const allPrograms = useMemo(() => [...localIrr, ...localFert, ...localPulv, ...localPhy], [localIrr, localFert, localPulv, localPhy]);
 
   const getRecoStatusLabel = (r: Recommendation) => {
     if (r.status === "acceptee") return "Acceptée";

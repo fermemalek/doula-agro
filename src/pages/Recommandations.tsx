@@ -228,7 +228,7 @@ function RecommandationsPageContent() {
                   <p className="truncate text-xs opacity-80">
                     {r.kind === "fertilisation" ? "Fertilisation" : "Phytosanitaire"}
                     {" · "}
-                    {(r.parcel_ids?.length || 0)} parcelle{((r.parcel_ids?.length || 0) > 1) ? "s" : ""}
+                    {getTargetParcelsForReco(r, parcels).length} parcelle{getTargetParcelsForReco(r, parcels).length > 1 ? "s" : ""}
                     {displayRole !== "ingenieur" && ` · par ${author}`}
                   </p>
                   <p className="mt-0.5 text-[10px] opacity-70">
