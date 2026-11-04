@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { useAllModuleRecords } from "@/lib/modules-store";
 import { useSuppliers } from "@/lib/suppliers-store";
 import { useParcels } from "@/lib/parcel-store";
-import { checkRecoStock } from "@/lib/stock-alerts";
+import { checkRecoStock, getTargetParcelsForReco } from "@/lib/stock-alerts";
 
 const STATUS_TONE: Record<Recommendation["status"], string> = {
   envoyee: "border-blue-500/30 bg-blue-500/5 text-blue-700",
