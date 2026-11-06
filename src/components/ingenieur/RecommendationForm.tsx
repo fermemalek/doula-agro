@@ -18,6 +18,8 @@ import { useProducts, useProductActions } from "@/lib/products-store";
 import { PHYTO_DATABASE } from "@/data/phytosanitaires";
 import { useTranslation } from "@/lib/i18n";
 import { PhytoHistoryModal } from "@/components/ingenieur/PhytoHistoryModal";
+import { PhytoAdvisorModal } from "@/components/ingenieur/PhytoAdvisorModal";
+import { ACTIVE_INGREDIENTS_DATABASE } from "@/lib/phyto/database";
 import { History } from "lucide-react";
 import { useSuppliers } from "@/lib/suppliers-store";
 import { matchProductName } from "@/lib/stock-alerts";
@@ -346,6 +348,29 @@ export function RecommendationForm({
 
   const [activePhyIndex, setActivePhyIndex] = useState(0);
   const [phytoHistoryOpen, setPhytoHistoryOpen] = useState(false);
+  const [phytoAdvisorOpen, setPhytoAdvisorOpen] = useState(false);
+
+  const handleSelectFromAdvisor = (ingredient: any, pest: any) => {
+    const targetIdx = phyProducts.findIndex(p => !p.product);
+    const newRow = {
+      product: ingredient.name,
+      cible: `${pest.nameFr} (${ingredient.codeGroup})`,
+      dosage: ingredient.standardDose,
+      volume: "100 L",
+      dar: `${ingredient.phiDays}j`,
+      price: "0",
+    };
+    if (targetIdx !== -1) {
+      updatePhyItem(targetIdx, newRow);
+    } else {
+      setPhyProducts(prev => [...prev, newRow]);
+    }
+    toast.success(
+      isAr
+        ? `تم اختيار ${ingredient.name} (${ingredient.codeGroup}) لمكافحة ${pest.nameAr}`
+        : `${ingredient.name} (${ingredient.codeGroup}) sélectionné contre ${pest.nameFr}`
+    );
+  };
   const currentPhyPassage = phyPassages[activePhyIndex] || phyPassages[0];
   const phyDate = currentPhyPassage.date;
   const setPhyDate = (val: string) => {
@@ -1342,6 +1367,14 @@ export function RecommendationForm({
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
+                              onClick={() => setPhytoAdvisorOpen(true)}
+                              className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs transition"
+                            >
+                              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+                              <span>{isAr ? "دليل المقاومة (IRAC/FRAC)" : "Guide Anti-Résistance (IRAC/FRAC)"}</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => setPhytoHistoryOpen(true)}
                               className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-xs transition"
                             >
@@ -1724,6 +1757,12 @@ export function RecommendationForm({
         open={phytoHistoryOpen}
         onOpenChange={setPhytoHistoryOpen}
         currentCrops={cropGroups}
+      />
+      <PhytoAdvisorModal
+        open={phytoAdvisorOpen}
+        onOpenChange={setPhytoAdvisorOpen}
+        cropGroup={cropGroups[0]}
+        onSelectIngredient={handleSelectFromAdvisor}
       />
     </>
   );
