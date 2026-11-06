@@ -1,0 +1,38 @@
+name: Deploiement Automatique GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verifier le code source
+        uses: actions/checkout@v4
+
+      - name: Configurer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Installer les dependances
+        run: npm install
+
+      - name: Compiler le projet Vite
+        run: npm run build
+
+      - name: Preparer 404.html pour GitHub Pages SPA
+        run: cp dist/index.html dist/404.html
+
+      - name: Deploiement vers la branche gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist
+          branch: gh-pages
