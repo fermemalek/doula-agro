@@ -58,22 +58,43 @@ export function useRecommendationActions() {
     mutationFn: async (input: CreateRecommendationInput) => {
       const { data: { session: __s } } = await supabase.auth.getSession(); const u = { user: __s?.user ?? null };
       if (!u.user) throw new Error("Non authentifié");
-      const { enqueueOp } = await import("@/lib/offline/sync-engine");
+      const newId = crypto.randomUUID();
+      const newRecord = {
+        id: newId,
+        kind: input.kind,
+        title: input.title,
+        comment: input.comment ?? null,
+        parcel_ids: input.parcel_ids,
+        payload: input.payload ?? {},
+        photo_urls: input.photo_urls ?? [],
+        created_by: u.user.id,
+        created_at: input.created_at || new Date().toISOString(),
+      };
+
+      // 1. Mise à jour optimiste immédiate dans le cache
+      qc.setQueryData<Recommendation[]>(KEY, (old) => {
+        if (!old) return [newRecord as Recommendation];
+        return [newRecord as Recommendation, ...old];
+      });
+
+      // 2. Écriture directe dans Supabase cloud pour synchro instantanée entre appareils
+      try {
+        await supabase.from("recommendations").insert(newRecord as never);
+      } catch (err) {
+        console.warn("Direct Supabase insert failed, offline sync will retry:", err);
+      }
+
+      // 3. File d'attente hors-ligne & déclenchement de la synchronisation
+      const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
       await enqueueOp({
         op: "recommendation.create",
         table: "recommendations",
-        payload: {
-          kind: input.kind,
-          title: input.title,
-          comment: input.comment ?? null,
-          parcel_ids: input.parcel_ids,
-          payload: input.payload ?? {},
-          photo_urls: input.photo_urls ?? [],
-          created_by: u.user.id,
-          created_at: input.created_at || new Date().toISOString(),
-        },
+        record_id: newId,
+        payload: newRecord,
       });
-      return { id: "(en attente)" } as Recommendation;
+      scheduleSync();
+
+      return newRecord as Recommendation;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
@@ -171,13 +192,28 @@ export function useRecommendationActions() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { enqueueOp } = await import("@/lib/offline/sync-engine");
+      // 1. Retrait optimiste immédiat de l'interface
+      qc.setQueryData<Recommendation[]>(KEY, (old) => {
+        if (!old) return [];
+        return old.filter((r) => r.id !== id);
+      });
+
+      // 2. Suppression directe dans Supabase cloud
+      try {
+        await supabase.from("recommendations").delete().eq("id", id);
+      } catch (err) {
+        console.warn("Direct delete failed, offline sync will retry:", err);
+      }
+
+      // 3. File d'attente hors-ligne & déclenchement synchro
+      const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
       await enqueueOp({
         op: "recommendation.delete",
         table: "recommendations",
         record_id: id,
         payload: { id },
       });
+      scheduleSync();
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });

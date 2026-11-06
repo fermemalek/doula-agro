@@ -81,9 +81,13 @@ function RecommandationsPageContent() {
     setDeletingAll(true);
     try {
       toast.info("Suppression en cours...");
+      const idsToDelete = list.map((r) => r.id);
+
+      // Suppression optimiste directe de l'affichage
       for (const r of list) {
         await remove.mutateAsync(r.id);
       }
+
       toast.success("Toutes les recommandations ont été supprimées !");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur lors de la suppression");
