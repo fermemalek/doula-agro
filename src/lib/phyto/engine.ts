@@ -30,11 +30,15 @@ export interface ActiveIngredient {
   nameAr?: string;
   type: ActionCodeType;
   codeGroup: string; // Ex: 'FRAC 3', 'IRAC 1B', 'FRAC M01'
+  multiCodes?: string[]; // Pour les associations, ex: ['FRAC 7', 'FRAC 11']
   familyChemical: string;
   phiDays: number; // Délai Avant Récolte (DAR / PHI en jours)
   reiHours: number; // Délai de Réentrée (DRE / REI en heures)
   standardDose: string;
+  standardDosePerHa?: string;
   maxApplicationsPerSeason: number;
+  formulation?: 'WSB' | 'WG' | 'WDG' | 'WP' | 'SC' | 'FL' | 'EC' | 'SL' | 'SP';
+  isMultiSite?: boolean; // Contact multi-site (immunité anti-résistance)
 }
 
 export interface PestTarget {
@@ -50,6 +54,21 @@ export interface PestTarget {
   descriptionAr?: string;
 }
 
+export interface CommercialProductDZ {
+  tradeName: string;
+  activeIngredient: string;
+  category: 'fongicide' | 'insecticide' | 'acaricide';
+  groupCode: string; // Ex: 'FRAC 3', 'IRAC 4A', 'FRAC M01'
+  multiCodes?: string[]; // Pour les mélanges commerciaux (ex: Signum, Nativo)
+  crops: CropType[];
+  targetPests: string[];
+  standardDose: string;
+  phiDays: number;
+  formulation: 'WSB' | 'WG' | 'WDG' | 'WP' | 'SC' | 'FL' | 'EC' | 'SL' | 'SP';
+  remarksFr?: string;
+  remarksAr?: string;
+}
+
 export interface SprayApplicationRecord {
   id: string;
   parcelId: string;
@@ -58,6 +77,7 @@ export interface SprayApplicationRecord {
   targetPestId: string;
   activeIngredientId: string;
   codeGroup: string; // Stocké à l'écriture pour éviter les jointures lourdes en offline
+  multiCodes?: string[];
 }
 
 export interface CompatibilityRule {
@@ -99,10 +119,32 @@ export const TANK_MIX_COMPATIBILITY_RULES: CompatibilityRule[] = [
 ];
 
 // ==========================================
-// 3. SERVICE PRINCIPAL : MOTEUR INGÉNIEUR IRAC / FRAC
+// 3. ORDRE OFFICIEL D'INCORPORATION EN CUVE
+// ==========================================
+
+export const TANK_MIX_ORDER_STEPS = [
+  { step: 1, type: 'WSB', labelFr: 'Sachets hydrosolubles (WSB)', labelAr: 'الأكياس القابلة للذوبان في الماء' },
+  { step: 2, type: 'WG/WDG', labelFr: 'Granulés dispersibles dans l’eau (WG / WDG)', labelAr: 'الحبيبات القابلة للانتشار' },
+  { step: 3, type: 'WP', labelFr: 'Poudres mouillables (WP)', labelAr: 'المساحيق القابلة للبلل' },
+  { step: 4, type: 'SC/FL', labelFr: 'Suspensions concentrées (SC / FL)', labelAr: 'المعلقات المركزة' },
+  { step: 5, type: 'EC/EW', labelFr: 'Concentrés émulsionnables (EC / EW)', labelAr: 'المستحلبات المركزة' },
+  { step: 6, type: 'SL/SP', labelFr: 'Solutions et poudres solubles (SL / SP)', labelAr: 'المحاليل السائلة القابلة للذوبان' },
+  { step: 7, type: 'ADJ', labelFr: 'Mouillants, Adjuvants et Engrais foliaires', labelAr: 'المواد الناشرة والمبللة والأسمدة الورقية في الأخير' },
+];
+
+// ==========================================
+// 4. SERVICE PRINCIPAL : MOTEUR INGÉNIEUR IRAC / FRAC
 // ==========================================
 
 export class PhytosanitaryEngine {
+  /**
+   * Vérifie si un groupe chimique bénéficie du statut d'immunité multi-site (FRAC M)
+   */
+  static isMultiSiteGroup(codeGroup: string): boolean {
+    const clean = (codeGroup || '').toUpperCase().trim();
+    return clean.startsWith('FRAC M') || clean === 'HUILE_MINERALE';
+  }
+
   /**
    * Filtre les ravageurs et maladies observables selon la culture et le stade végétatif
    */
@@ -118,15 +160,16 @@ export class PhytosanitaryEngine {
 
   /**
    * Évalue et classe les matières actives disponibles face à une cible,
-   * en vérifiant la résistance acquise et l'historique de la parcelle.
+   * en vérifiant la résistance acquise, l'immunité multi-site et l'historique de la parcelle.
    */
   static evaluateTreatmentOptions(params: {
     targetPest: PestTarget;
     parcelHistory: SprayApplicationRecord[];
     allIngredients: ActiveIngredient[];
     currentSeasonYear: number;
+    currentDate?: Date;
   }) {
-    const { targetPest, parcelHistory, allIngredients, currentSeasonYear } = params;
+    const { targetPest, parcelHistory, allIngredients, currentSeasonYear, currentDate = new Date() } = params;
 
     // Récupérer les traitements appliqués cette saison sur la parcelle contre cette cible
     const currentSeasonLogs = parcelHistory.filter((log) => {
@@ -139,6 +182,11 @@ export class PhytosanitaryEngine {
       ? [...currentSeasonLogs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]
       : null;
 
+    // Calculer les jours écoulés depuis le dernier traitement
+    const daysSinceLastApp = lastApplication
+      ? Math.floor((currentDate.getTime() - new Date(lastApplication.date).getTime()) / (1000 * 60 * 60 * 24))
+      : 999;
+
     // Matières actives homologuées pour la cible
     const candidateIngredients = allIngredients.filter((ing) =>
       targetPest.compatibleActiveIngredients.includes(ing.id)
@@ -148,17 +196,41 @@ export class PhytosanitaryEngine {
       let isAllowed = true;
       let blockReason = '';
       let priorityScore = 100;
+      const isMultiSite = ingredient.isMultiSite || PhytosanitaryEngine.isMultiSiteGroup(ingredient.codeGroup);
+
+      // Codes associés à tester (gestion des mélanges multi-modes, ex: Signum FRAC 7+11)
+      const ingredientCodes = ingredient.multiCodes && ingredient.multiCodes.length > 0
+        ? ingredient.multiCodes
+        : [ingredient.codeGroup];
+
+      const lastAppCodes = lastApplication?.multiCodes && lastApplication.multiCodes.length > 0
+        ? lastApplication.multiCodes
+        : lastApplication?.codeGroup ? [lastApplication.codeGroup] : [];
+
+      // Vérifier si un des codes concorde avec le dernier traitement
+      const hasDirectCodeConflict = ingredientCodes.some(c => lastAppCodes.includes(c));
 
       // Compter les applications de ce groupe spécifique sur la saison
-      const groupApplicationsCount = currentSeasonLogs.filter(
-        (log) => log.codeGroup === ingredient.codeGroup
-      ).length;
+      const groupApplicationsCount = currentSeasonLogs.filter((log) => {
+        const logCodes = log.multiCodes || [log.codeGroup];
+        return ingredientCodes.some(c => logCodes.includes(c));
+      }).length;
 
-      // 1. RÈGLE CRITIQUE ANTI-RÉSISTANCE : Pas 2 fois le même mode d'action d'affilée
-      if (lastApplication && lastApplication.codeGroup === ingredient.codeGroup) {
-        isAllowed = false;
-        blockReason = `Blocage Anti-Résistance : Le dernier traitement utilisait déjà le groupe [${ingredient.codeGroup}]. L'alternance vers un autre mode d'action (FRAC/IRAC) est obligatoire.`;
-        priorityScore = 0;
+      // 1. RÈGLE CRITIQUE ANTI-RÉSISTANCE (avec immunité des multi-sites & fenêtre de rémanence 45j)
+      if (hasDirectCodeConflict) {
+        if (isMultiSite) {
+          // Statut d'immunité : Les multi-sites (Cuivre, Soufre, Captane) ne sont jamais bloqués
+          isAllowed = true;
+          priorityScore = 95;
+        } else if (daysSinceLastApp < 45) {
+          // Bloqué car moins de 45 jours et même mode d'action d'affilée
+          isAllowed = false;
+          blockReason = `Blocage Anti-Résistance : Le dernier traitement (il y a ${daysSinceLastApp} jours) utilisait déjà le groupe [${ingredient.codeGroup}]. L'alternance vers un autre mode d'action (FRAC/IRAC) est obligatoire pour briser la résistance.`;
+          priorityScore = 0;
+        } else {
+          // Plus de 45 jours écoulés : ré-autorisation possible avec avertissement
+          priorityScore -= 20;
+        }
       }
 
       // 2. RÈGLE DE QUOTA : Dépassement du nombre maximal d'applications par saison
@@ -171,15 +243,20 @@ export class PhytosanitaryEngine {
       // Favoriser les groupes d'action encore jamais utilisés cette saison
       if (isAllowed) {
         priorityScore -= groupApplicationsCount * 25;
+        if (isMultiSite) {
+          priorityScore += 10; // Bonus pour favoriser les solutions de contact protectrices
+        }
       }
 
       return {
         ingredient,
         isAllowed,
+        isMultiSite,
         blockReason,
         priorityScore,
         currentSeasonUsageCount: groupApplicationsCount,
-        lastUsedDate: lastApplication?.codeGroup === ingredient.codeGroup ? lastApplication.date : null,
+        lastUsedDate: hasDirectCodeConflict ? lastApplication?.date : null,
+        daysSinceLastApp,
       };
     }).sort((a, b) => b.priorityScore - a.priorityScore);
   }
@@ -191,19 +268,78 @@ export class PhytosanitaryEngine {
     ingredientA: ActiveIngredient,
     ingredientB: ActiveIngredient
   ): { safe: boolean; warning?: string } {
-    const rule = TANK_MIX_COMPATIBILITY_RULES.find(
-      (r) =>
-        (r.groupA === ingredientA.codeGroup && r.groupB === ingredientB.codeGroup) ||
-        (r.groupB === ingredientA.codeGroup && r.groupA === ingredientB.codeGroup)
-    );
+    const codesA = ingredientA.multiCodes || [ingredientA.codeGroup];
+    const codesB = ingredientB.multiCodes || [ingredientB.codeGroup];
 
-    if (rule && !rule.isCompatible) {
-      return {
-        safe: false,
-        warning: rule.warningNotice || 'Risque de blocage physico-chimique en cuve.',
-      };
+    for (const ca of codesA) {
+      for (const cb of codesB) {
+        const rule = TANK_MIX_COMPATIBILITY_RULES.find(
+          (r) => (r.groupA === ca && r.groupB === cb) || (r.groupB === ca && r.groupA === cb)
+        );
+        if (rule && !rule.isCompatible) {
+          return {
+            safe: false,
+            warning: rule.warningNotice || 'Risque de blocage physico-chimique en cuve.',
+          };
+        }
+      }
     }
 
     return { safe: true };
+  }
+
+  /**
+   * Calculateur de cuve et dosage précis
+   */
+  static calculateTankMixDosage(params: {
+    tankVolumeL: number;       // Volume de la cuve (ex: 1000 L)
+    dosePerHlNum: number;      // Dose pour 100 L (ex: 50 g ou 30 cc)
+    unit: 'g' | 'cc' | 'kg' | 'L';
+  }) {
+    const { tankVolumeL, dosePerHlNum, unit } = params;
+    const numHlInTank = tankVolumeL / 100;
+    const totalRequiredInTank = dosePerHlNum * numHlInTank;
+
+    let displayStr = '';
+    if (unit === 'g' || unit === 'kg') {
+      if (totalRequiredInTank >= 1000) {
+        displayStr = `${(totalRequiredInTank / 1000).toFixed(2)} kg`;
+      } else {
+        displayStr = `${totalRequiredInTank.toFixed(0)} g`;
+      }
+    } else {
+      if (totalRequiredInTank >= 1000) {
+        displayStr = `${(totalRequiredInTank / 1000).toFixed(2)} L`;
+      } else {
+        displayStr = `${totalRequiredInTank.toFixed(0)} cc (mL)`;
+      }
+    }
+
+    return {
+      totalAmount: totalRequiredInTank,
+      displayStr,
+      numHl: numHlInTank,
+    };
+  }
+
+  /**
+   * Calcule la date minimale de récolte autorisée selon le DAR / PHI
+   */
+  static calculateHarvestSafetyDate(applicationDate: string | Date, phiDays: number): {
+    safeHarvestDate: string;
+    isSafeNow: boolean;
+    remainingDays: number;
+  } {
+    const app = new Date(applicationDate);
+    const safeDate = new Date(app.getTime() + phiDays * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const diffMs = safeDate.getTime() - now.getTime();
+    const remainingDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+    return {
+      safeHarvestDate: safeDate.toISOString().slice(0, 10),
+      isSafeNow: remainingDays === 0,
+      remainingDays,
+    };
   }
 }
