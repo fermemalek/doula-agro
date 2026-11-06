@@ -27,6 +27,13 @@ export interface Recommendation {
 
 const KEY = ["recommendations"] as const;
 
+export function cleanRecoTitle(title: string | null | undefined): string {
+  if (!title) return "";
+  let s = title.replace(/(\([^)]+\))\s*\1+/g, (_, p1) => p1);
+  s = s.replace(/(\((?:Programme|Passage|Traitement)[^)]*\))\s*(\((?:Programme|Passage|Traitement)[^)]*\))/g, (_, _p1, p2) => p2);
+  return s.trim();
+}
+
 export function useRecommendations() {
   useRealtimeInvalidate("rt-recommendations", "recommendations", [KEY]);
   return useQuery({
@@ -36,7 +43,10 @@ export function useRecommendations() {
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Recommendation[];
+      return (data ?? []).map((r) => ({
+        ...r,
+        title: cleanRecoTitle(r.title),
+      })) as Recommendation[];
     },
   });
 }

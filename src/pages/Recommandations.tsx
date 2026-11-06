@@ -1,6 +1,6 @@
 import { useNavigate } from "@/lib/router-compat";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Plus, Sprout, FlaskConical, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus, Sprout, FlaskConical, AlertTriangle, SprayCan, Droplet } from "lucide-react";
 import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
 import { useRole } from "@/lib/role";
 import { useDisplayRole } from "@/lib/display-role";
@@ -198,7 +198,9 @@ function RecommandationsPageContent() {
       ) : (
         <ul className="space-y-2">
           {list.map((r) => {
-            const Icon = r.kind === "fertilisation" ? Sprout : FlaskConical;
+            const isPulv = r.payload?.method === "pulverisation" || (r.payload?.program as any)?.kind === "pulverisation";
+            const isPhyto = r.kind === "phytosanitaire";
+            const Icon = isPhyto ? FlaskConical : isPulv ? SprayCan : Droplet;
             const author = profiles[r.created_by] || "Ingénieur";
             const statusInfo = getRecoStatusInfo(r);
             // N'afficher l'alerte d'achat requis que pour les recommandations en attente non encore acceptées
@@ -230,7 +232,7 @@ function RecommandationsPageContent() {
                     )}
                   </div>
                   <p className="truncate text-xs opacity-80">
-                    {r.kind === "fertilisation" ? "Fertilisation" : "Phytosanitaire"}
+                    {isPhyto ? "Phytosanitaire" : isPulv ? "Pulvérisation foliaire" : "Fertilisation"}
                     {" · "}
                     {getTargetParcelsForReco(r, parcels).length} parcelle{getTargetParcelsForReco(r, parcels).length > 1 ? "s" : ""}
                     {displayRole !== "ingenieur" && ` · par ${author}`}

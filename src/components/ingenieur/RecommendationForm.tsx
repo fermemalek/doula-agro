@@ -541,7 +541,7 @@ export function RecommendationForm({
         let currentKind: RecoKind = "fertilisation";
         let currentPayload: any = null;
         const cropNames = cropGroups.map((g) => t(`crop.${g}`)).join(", ");
-        const autoBaseTitle = title.trim() || `${cropNames} - ${appDate}`;
+        const autoBaseTitle = `${cropNames} - ${appDate}`;
         let currentTitle = autoBaseTitle;
 
         if (presc === "fert_irrigation") {
@@ -629,7 +629,7 @@ export function RecommendationForm({
         toast.success(t("reco.form.successModified"));
       } else {
         const cropNames = cropGroups.map((g) => t(`crop.${g}`)).join(", ");
-        const autoBaseTitle = title.trim() || `${cropNames} - ${appDate}`;
+        const autoBaseTitle = `${cropNames} - ${appDate}`;
 
         for (const presc of selectedPrescriptions) {
           if (presc === "fert_irrigation") {

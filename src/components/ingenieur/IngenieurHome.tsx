@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Droplet, FlaskConical, Sprout, CloudSun, ArrowRight } from "lucide-react";
+import { Plus, Droplet, FlaskConical, Sprout, CloudSun, ArrowRight, SprayCan } from "lucide-react";
+import { useParcels } from "@/lib/parcel-store";
+import { getTargetParcelsForReco } from "@/lib/stock-alerts";
 import { useNavigate } from "@/lib/router-compat";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { useRecommendations, type Recommendation } from "@/lib/cloud/recommendations";
@@ -14,6 +16,7 @@ export function IngenieurHome() {
   const navigate = useNavigate();
   const { userId } = useRole();
   const { data: recos = [] } = useRecommendations();
+  const parcels = useParcels();
   const [formOpen, setFormOpen] = useState(false);
   const [editingReco, setEditingReco] = useState<Recommendation | null>(null);
 
@@ -183,13 +186,23 @@ export function IngenieurHome() {
         ) : (
           <ul className="space-y-2">
             {mine.slice(0, 6).map((r) => {
-              const Icon =
-                r.kind === "irrigation"
-                  ? Droplet
-                  : r.kind === "phytosanitaire"
-                    ? FlaskConical
-                    : Sprout;
+              const isPulv = r.payload?.method === "pulverisation" || (r.payload?.program as any)?.kind === "pulverisation";
+              const isPhyto = r.kind === "phytosanitaire";
+              const Icon = isPhyto ? FlaskConical : isPulv ? SprayCan : Droplet;
               const statusInfo = getRecoStatusInfo(r);
+              const targetParcels = getTargetParcelsForReco(r, parcels);
+              const parcelCount = targetParcels.length;
+
+              const typeLabel = isPhyto
+                ? (currentLang === "ar" ? "الصحة النباتية (معالجة)" : "Phytosanitaire")
+                : isPulv
+                  ? (currentLang === "ar" ? "رش ورقي (تسميد)" : "Pulvérisation foliaire")
+                  : (currentLang === "ar" ? "تسميد عبر الري" : "Fertilisation (Irrigation)");
+
+              const parcelLabel = currentLang === "ar"
+                ? `${parcelCount} ${parcelCount > 10 ? "قطعة" : parcelCount >= 3 ? "قطع" : parcelCount === 2 ? "قطعتان" : parcelCount === 1 ? "قطعة واحدة" : "0 قطعة"}`
+                : `${parcelCount} parcelle${parcelCount > 1 ? "s" : ""}`;
+
               return (
                 <li
                   key={r.id}
@@ -205,13 +218,7 @@ export function IngenieurHome() {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold leading-tight">{r.title}</p>
                     <p className="text-xs opacity-80 text-left">
-                      {r.kind === "irrigation"
-                        ? t("eng.irrigation", "Irrigation")
-                        : r.kind === "phytosanitaire"
-                          ? t("eng.phytosanitaire", "Phytosanitaire")
-                          : t("eng.fertilisation", "Fertilisation")}{" "}
-                      ·{" "}
-                      {(r.parcel_ids?.length || 0)} {currentLang === "ar" ? "قطعة" : `parcelle${(r.parcel_ids?.length || 0) > 1 ? "s" : ""}`}
+                      {typeLabel} · {parcelLabel}
                     </p>
                   </div>
                   <span className="rounded-full border bg-background/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase">
