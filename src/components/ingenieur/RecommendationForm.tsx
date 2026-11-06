@@ -841,6 +841,45 @@ export function RecommendationForm({
               </label>
             </div>
 
+            {/* Bloc Irrigation Seule (Sans fertilisation / Eau claire) - Positionné en haut après la date d'application */}
+            {selectedPrescriptions.includes("fert_irrigation") && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-blue-500/10 border-2 border-blue-500/30 p-3 rounded-2xl shadow-xs">
+                <label className="block">
+                  <span className="font-bold text-blue-700 dark:text-blue-300 text-xs flex items-center gap-1">
+                    <span>💧</span> {t("reco.form.pureIrrigationFreq", "Irrigations seules (eau claire) / sem")}
+                  </span>
+                  <select
+                    value={pureIrrFreq}
+                    onChange={(e) => setPureIrrFreq(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-input bg-background px-3 py-2 text-xs font-semibold"
+                  >
+                    <option value="0">{t("reco.freq.none", "0 (Aucune)")}</option>
+                    <option value="1">{t("reco.freq.1perWeek", "1 fois par semaine")}</option>
+                    <option value="2">{t("reco.freq.2perWeek", "2 fois par semaine")}</option>
+                    <option value="3">{t("reco.freq.3perWeek", "3 fois par semaine")}</option>
+                  </select>
+                </label>
+                {pureIrrFreq !== "0" && (
+                  <label className="block">
+                    <span className="font-bold text-blue-700 dark:text-blue-300 text-xs flex items-center gap-1">
+                      <span>⏱️</span> {t("reco.form.pureIrrigationTime", "Durée irrigation seule")}
+                    </span>
+                    <select
+                      value={pureIrrTime}
+                      onChange={(e) => setPureIrrTime(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-input bg-background px-3 py-2 text-xs font-semibold"
+                    >
+                      <option value="1h">1h</option>
+                      <option value="1h30">1h30</option>
+                      <option value="2h">2h</option>
+                      <option value="2h30">2h30</option>
+                      <option value="3h">3h</option>
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
+
             {/* ========================================================= */}
             {/* NESTED FORM SECTION (EMBEDDING THE ADMIN INTERFACES)       */}
             {/* ========================================================= */}
@@ -967,42 +1006,6 @@ export function RecommendationForm({
                             </label>
                           </div>
 
-                          {/* Bloc Irrigation Seule (Sans fertilisation / Eau claire) */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-blue-500/5 border border-blue-500/20 p-2.5 rounded-xl">
-                            <label className="block">
-                              <span className="font-bold text-blue-700 dark:text-blue-300 text-xs flex items-center gap-1">
-                                <span>💧</span> {t("reco.form.pureIrrigationFreq", "Irrigations seules (eau claire) / sem")}
-                              </span>
-                              <select
-                                value={pureIrrFreq}
-                                onChange={(e) => setPureIrrFreq(e.target.value)}
-                                className="mt-1 w-full rounded border border-input bg-background px-3 py-1.5 text-xs font-semibold"
-                              >
-                                <option value="0">{t("reco.freq.none", "0 (Aucune)")}</option>
-                                <option value="1">{t("reco.freq.1perWeek", "1 fois par semaine")}</option>
-                                <option value="2">{t("reco.freq.2perWeek", "2 fois par semaine")}</option>
-                                <option value="3">{t("reco.freq.3perWeek", "3 fois par semaine")}</option>
-                              </select>
-                            </label>
-                            {pureIrrFreq !== "0" && (
-                              <label className="block">
-                                <span className="font-bold text-blue-700 dark:text-blue-300 text-xs flex items-center gap-1">
-                                  <span>⏱️</span> {t("reco.form.pureIrrigationTime", "Durée irrigation seule")}
-                                </span>
-                                <select
-                                  value={pureIrrTime}
-                                  onChange={(e) => setPureIrrTime(e.target.value)}
-                                  className="mt-1 w-full rounded border border-input bg-background px-3 py-1.5 text-xs font-semibold"
-                                >
-                                  <option value="1h">1h</option>
-                                  <option value="1h30">1h30</option>
-                                  <option value="2h">2h</option>
-                                  <option value="2h30">2h30</option>
-                                  <option value="3h">3h</option>
-                                </select>
-                              </label>
-                            )}
-                          </div>
 
                           {/* Temps d'irrigation detail fields */}
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t pt-2 mt-2">

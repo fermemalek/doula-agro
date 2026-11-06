@@ -72,3 +72,6 @@ L'application **Doula Agro** (anciennement nommée Farm Friendy) est une platefo
 
 
 - **Correction import `getTargetParcelsForReco`** : Ajout de l'import manquant dans `src/pages/Recommandations.tsx` pour permettre le calcul dynamique du nombre de parcelles sans ReferenceError.
+
+
+- **Suppression optimiste et synchro cloud immédiate** : Correction de `remove` et `create` dans `src/lib/cloud/recommendations.ts` pour appliquer une suppression/création immédiate dans le cache UI (`qc.setQueryData`) et directement dans la base Supabase sans attendre la file d'attente hors-ligne.
