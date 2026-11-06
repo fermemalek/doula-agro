@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Droplet, FlaskConical, SprayCan, Send, Camera, X, Plus, Trash2, Info, AlertTriangle } from "lucide-react";
+import { Droplet, FlaskConical, SprayCan, Send, Camera, X, Plus, Trash2, Info, AlertTriangle, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
