@@ -31,9 +31,15 @@ L'application **Doula Agro** (anciennement nommée Farm Friendy) est une platefo
 - **Répétition des programmes** : Planification automatique sur plusieurs semaines (1x ou 2x par semaine, ex: Mardi et Samedi).
 - **Unification Fertigation** : Génération d'enregistrements unifiés (16 programmes consolidés au lieu de 32) pour éviter les doublons par parcelle.
 
-### 2.3. Historique Phyto & Gestion des Résistances
-- **Modal Historique Phyto (`PhytoHistoryModal.tsx`)** : Consultable directement depuis le formulaire de recommandation de l'ingénieur.
-- **Rotation des matières actives** : Traçabilité des matières actives appliquées par parcelle pour éviter l'accoutumance et optimiser les DAR (Délais Avant Récolte).
+### 2.3. Moteur Phytosanitaire Scientifique & Gestion de la Résistance (IRAC / FRAC)
+- **Moteur Scientifique (`src/lib/phyto/engine.ts`)** :
+  - **Classification internationale FRAC & IRAC** : Catégorisation stricte par mécanisme d'action (FRAC 3 Triazoles, FRAC 7 SDHI, FRAC 11 Strobilurines, FRAC 17, IRAC 4A, IRAC 3A, IRAC 6, etc.).
+  - **Filtrage par stade phénologique (`GrowthStage`)** : Dormance, débourrement, floraison, nouaison, grossissement, maturité, post-récolte pour Pêcher/Nectarinier, Pommier, Olivier.
+  - **Blocage Anti-Résistance automatique** : Bloque l'ensemble des molécules partageant le même mode d'action que le traitement précédent pour forcer l'alternance obligatoire.
+  - **Contrôle des quotas saisonniers** : Alerte et blocage au-delà du nombre maximal d'applications (`maxApplicationsPerSeason`).
+  - **Matrice de compatibilité de mélange en cuve (`TANK_MIX_COMPATIBILITY_RULES`)** : Détection des incompatibilités chimiques (Cuivre + FRAC 3, Soufre + Huile minérale, etc.).
+  - **Assistant Ingénieur Interactif (`PhytoAdvisorModal.tsx`)** : Accessible directement dans le formulaire avec insertion guidée en 1 clic.
+- **Modal Historique Phyto (`PhytoHistoryModal.tsx`)** : Consultable directement depuis le formulaire.
 
 ### 2.4. Alertes Stocks & Achats Nécessaires
 - **Détection automatique du stock manquant (`checkRecoStock`)** : Analyse en direct des besoins de chaque recommandation vis-à-vis des stocks réels des fournisseurs/magasin.
