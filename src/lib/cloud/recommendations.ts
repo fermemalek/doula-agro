@@ -88,21 +88,25 @@ export function useRecommendationActions() {
       });
 
       // 2. Écriture directe dans Supabase cloud pour synchro instantanée entre appareils
+      let directInserted = false;
       try {
-        await supabase.from("recommendations").insert(newRecord as never);
+        const { error } = await supabase.from("recommendations").insert(newRecord as never);
+        if (!error) directInserted = true;
       } catch (err) {
         console.warn("Direct Supabase insert failed, offline sync will retry:", err);
       }
 
-      // 3. File d'attente hors-ligne & déclenchement de la synchronisation
-      const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
-      await enqueueOp({
-        op: "recommendation.create",
-        table: "recommendations",
-        record_id: newId,
-        payload: newRecord,
-      });
-      scheduleSync();
+      // 3. File d'attente hors-ligne seulement si l'insertion directe a échoué (mode hors-ligne)
+      if (!directInserted) {
+        const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
+        await enqueueOp({
+          op: "recommendation.create",
+          table: "recommendations",
+          record_id: newId,
+          payload: newRecord,
+        });
+        scheduleSync();
+      }
 
       return newRecord as Recommendation;
     },
@@ -209,21 +213,25 @@ export function useRecommendationActions() {
       });
 
       // 2. Suppression directe dans Supabase cloud
+      let directDeleted = false;
       try {
-        await supabase.from("recommendations").delete().eq("id", id);
+        const { error } = await supabase.from("recommendations").delete().eq("id", id);
+        if (!error) directDeleted = true;
       } catch (err) {
         console.warn("Direct delete failed, offline sync will retry:", err);
       }
 
-      // 3. File d'attente hors-ligne & déclenchement synchro
-      const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
-      await enqueueOp({
-        op: "recommendation.delete",
-        table: "recommendations",
-        record_id: id,
-        payload: { id },
-      });
-      scheduleSync();
+      // 3. File d'attente hors-ligne seulement si la suppression directe a échoué
+      if (!directDeleted) {
+        const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
+        await enqueueOp({
+          op: "recommendation.delete",
+          table: "recommendations",
+          record_id: id,
+          payload: { id },
+        });
+        scheduleSync();
+      }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });

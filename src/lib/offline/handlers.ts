@@ -141,7 +141,7 @@ registerOp("execution.create", async (e) => {
 registerOp("alert.create", async (e) => {
   const p = e.payload as Record<string, unknown>;
   const { error } = await supabase.from("alerts").insert(p as never);
-  if (error) throw error;
+  if (error && (error as any).code !== "23505") throw error;
 });
 
 registerOp("alert.update", async (e) => {
@@ -162,7 +162,7 @@ registerOp("alert.delete", async (e) => {
 registerOp("task.create", async (e) => {
   const p = e.payload as Record<string, unknown>;
   const { error } = await supabase.from("tasks").insert(p as never);
-  if (error) throw error;
+  if (error && (error as any).code !== "23505") throw error;
 });
 
 registerOp("task.update", async (e) => {
@@ -183,7 +183,7 @@ registerOp("task.delete", async (e) => {
 registerOp("program.create", async (e) => {
   const p = e.payload as Record<string, unknown>;
   const { error } = await supabase.from("module_records").insert(p as never);
-  if (error) throw error;
+  if (error && (error as any).code !== "23505") throw error;
 });
 
 registerOp("program.update", async (e) => {
@@ -201,7 +201,7 @@ registerOp("program.delete", async (e) => {
 registerOp("recommendation.create", async (e) => {
   const p = e.payload as Record<string, unknown>;
   const { error } = await supabase.from("recommendations").insert(p as never);
-  if (error) throw error;
+  if (error && (error as any).code !== "23505") throw error;
 });
 
 registerOp("recommendation.update", async (e) => {
@@ -228,7 +228,7 @@ registerOp("profile.update", async (e) => {
 registerOp("purchase.create", async (e) => {
   const p = e.payload as Record<string, unknown>;
   const { error } = await supabase.from("supplier_purchases" as any).insert(p as never);
-  if (error) throw error;
+  if (error && (error as any).code !== "23505") throw error;
 });
 
 registerOp("purchase.update", async (e) => {
