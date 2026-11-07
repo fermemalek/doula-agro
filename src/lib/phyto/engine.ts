@@ -366,3 +366,53 @@ export class PhytosanitaryEngine {
     };
   }
 }
+
+/**
+ * Résout le chemin absolu / relatif correct pour les images et assets phytosanitaires
+ * selon la base Vite ('./' ou '/') pour fonctionner aussi bien en local que sur GitHub Pages.
+ */
+export function resolvePhytoImageUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const base = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || './';
+  const cleanBase = base.endsWith('/') ? base : base + '/';
+  const cleanPath = url.startsWith('/') ? url.slice(1) : url;
+  return `${cleanBase}${cleanPath}`;
+}
+
+/**
+ * Associe chaque bioagresseur à son illustration visuelle locale de référence (Niveau 1 Offline-First).
+ * Garantit qu'aucune image brisée ne s'affiche jamais.
+ */
+export function getPestVisualAsset(pest: { id: string; category?: string; primarySampleUrl?: string }): string {
+  if (pest.primarySampleUrl && !pest.primarySampleUrl.startsWith('http')) {
+    return resolvePhytoImageUrl(pest.primarySampleUrl)!;
+  }
+  const id = pest.id.toLowerCase();
+  if (id.includes('cloque')) return resolvePhytoImageUrl('assets/phyto/cloque.svg')!;
+  if (id.includes('tavelure')) return resolvePhytoImageUrl('assets/phyto/tavelure.svg')!;
+  if (id.includes('feu_bacterien')) return resolvePhytoImageUrl('assets/phyto/feu_bacterien.svg')!;
+  if (id.includes('monilia')) return resolvePhytoImageUrl('assets/phyto/moniliose.svg')!;
+  if (id.includes('carpocapse')) return resolvePhytoImageUrl('assets/phyto/carpocapse.svg')!;
+  if (id.includes('oeil_paon')) return resolvePhytoImageUrl('assets/phyto/oeil_paon.svg')!;
+  if (id.includes('mouche') && id.includes('oli')) return resolvePhytoImageUrl('assets/phyto/mouche_olive.svg')!;
+  if (id.includes('ceratite') || (id.includes('mouche') && !id.includes('oli'))) return resolvePhytoImageUrl('assets/phyto/ceratite.svg')!;
+  if (id.includes('tuberculose') || id.includes('chancre')) return resolvePhytoImageUrl('assets/phyto/tuberculose.svg')!;
+  if (id.includes('oidium')) return resolvePhytoImageUrl('assets/phyto/oidium.svg')!;
+  if (id.includes('coryneum') || id.includes('rouille')) return resolvePhytoImageUrl('assets/phyto/coryneum.svg')!;
+  if (id.includes('puceron')) return resolvePhytoImageUrl('assets/phyto/puceron.svg')!;
+  if (id.includes('acarien') || id.includes('tetranyque')) return resolvePhytoImageUrl('assets/phyto/acarien.svg')!;
+  if (id.includes('cochenille')) return resolvePhytoImageUrl('assets/phyto/cochenille.svg')!;
+  if (id.includes('psylle')) return resolvePhytoImageUrl('assets/phyto/psylle.svg')!;
+  if (id.includes('anthracnose')) return resolvePhytoImageUrl('assets/phyto/anthracnose.svg')!;
+  if (id.includes('thrips') || id.includes('mineuse') || id.includes('tordeuse') || id.includes('anthonome') || id.includes('capnode')) {
+    return resolvePhytoImageUrl('assets/phyto/thrips.svg')!;
+  }
+  if (pest.primarySampleUrl) return resolvePhytoImageUrl(pest.primarySampleUrl)!;
+  if (pest.category === 'champignon') return resolvePhytoImageUrl('assets/phyto/tavelure.svg')!;
+  if (pest.category === 'bacterie') return resolvePhytoImageUrl('assets/phyto/feu_bacterien.svg')!;
+  if (pest.category === 'acarien') return resolvePhytoImageUrl('assets/phyto/acarien.svg')!;
+  return resolvePhytoImageUrl('assets/phyto/puceron.svg')!;
+}

@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { PestTarget, SymptomOrganSample } from '@/lib/phyto/engine';
+import { PestTarget, SymptomOrganSample, getPestVisualAsset, resolvePhytoImageUrl } from '@/lib/phyto/engine';
 import { 
   ExternalLink, 
   Search, 
@@ -57,10 +57,13 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
         },
       ];
 
+  const localDefaultAsset = getPestVisualAsset(pest);
   const activeOrgan = organs[selectedOrganIndex] || organs[0];
 
-  // URL de l'image actuelle à afficher (priorité à l'organe, puis échantillon principal)
-  const currentImageUrl = activeOrgan.imageUrl || pest.primarySampleUrl;
+  // URL de l'image actuelle à afficher (priorité à l'organe, puis échantillon principal ou asset local)
+  const currentImageUrl = !imgError && activeOrgan.imageUrl
+    ? resolvePhytoImageUrl(activeOrgan.imageUrl)
+    : localDefaultAsset;
 
   // Niveau 3 : Recherche Web Google Images ciblée sur le nom scientifique universel
   const openWebSearch = () => {
@@ -166,12 +169,16 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
 
           {/* NIVEAU 1 : Zone d'affichage visuel (Image ou Illustration représentative) */}
           <div className="rounded-2xl border bg-muted/20 overflow-hidden relative shadow-inner">
-            {currentImageUrl && !imgError ? (
+            {currentImageUrl ? (
               <div className="relative group">
                 <img
                   src={currentImageUrl}
                   alt={isAr ? pest.nameAr : pest.nameFr}
-                  onError={() => setImgError(true)}
+                  onError={() => {
+                    if (currentImageUrl !== localDefaultAsset) {
+                      setImgError(true);
+                    }
+                  }}
                   className="w-full h-64 object-cover object-center transition-transform duration-300 group-hover:scale-102"
                   loading="lazy"
                 />
@@ -262,3 +269,4 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
     </Dialog>
   );
 };
+

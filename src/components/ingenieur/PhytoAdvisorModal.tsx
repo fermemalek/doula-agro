@@ -36,6 +36,7 @@ import {
   SprayApplicationRecord,
   CommercialProductDZ,
   TANK_MIX_ORDER_STEPS,
+  getPestVisualAsset,
 } from '@/lib/phyto/engine';
 import {
   PHENOLOGICAL_STAGES,
@@ -363,14 +364,12 @@ export function PhytoAdvisorModal({
                           </div>
 
                           <div className="flex items-center gap-2 mt-2">
-                            {pest.primarySampleUrl ? (
-                              <img
-                                src={pest.primarySampleUrl}
-                                alt={pest.nameScientific}
-                                className="h-10 w-10 rounded-lg object-cover border shrink-0 bg-muted/40"
-                                loading="lazy"
-                              />
-                            ) : null}
+                            <img
+                              src={getPestVisualAsset(pest)}
+                              alt={pest.nameScientific}
+                              className="h-10 w-10 rounded-lg object-cover border shrink-0 bg-muted/40 shadow-xs"
+                              loading="lazy"
+                            />
                             <div className="min-w-0 flex-1">
                               <p className="font-black text-xs leading-snug truncate">
                                 {isAr ? pest.nameAr : pest.nameFr}

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1c1917"/>
+      <stop offset="100%" stop-color="#0c0a09"/>
+    </linearGradient>
+    <linearGradient id="bronzeLeaf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a16207"/>
+      <stop offset="50%" stop-color="#713f12"/>
+      <stop offset="100%" stop-color="#3f6212"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="300" rx="20" fill="url(#bg)"/>
+
+  <!-- Feuille décolorée, plombée/bronzée avec toiles soyeuses fines -->
+  <g transform="translate(60, 30)">
+    <path d="M 30 160 C 60 20, 200 10, 260 50 C 240 130, 140 200, 30 160 Z" fill="url(#bronzeLeaf)"/>
+    
+    <!-- Décoloration en pointillés grisâtres/jaunâtres (stippling) -->
+    <g fill="#fef08a" opacity="0.7">
+      <circle cx="80" cy="110" r="1.5"/><circle cx="85" cy="115" r="1.5"/><circle cx="95" cy="105" r="1.5"/>
+      <circle cx="110" cy="120" r="1.5"/><circle cx="115" cy="100" r="1.5"/><circle cx="125" cy="95" r="1.5"/>
+      <circle cx="140" cy="85" r="1.5"/><circle cx="150" cy="90" r="1.5"/><circle cx="160" cy="75" r="1.5"/>
+      <circle cx="170" cy="70" r="1.5"/><circle cx="180" cy="80" r="1.5"/><circle cx="190" cy="65" r="1.5"/>
+    </g>
+
+    <!-- Fines toiles soyeuses (Spider mite web) -->
+    <path d="M 120 70 Q 160 90 190 75 M 130 90 Q 155 110 180 85 M 140 60 Q 170 80 200 65" 
+          stroke="#ffffff" stroke-width="1.2" stroke-dasharray="2,2" fill="none" opacity="0.65"/>
+
+    <!-- Araignées rouges (acariens) microscopiques visibles -->
+    <circle cx="145" cy="80" r="4.5" fill="#dc2626"/>
+    <circle cx="165" cy="90" r="4" fill="#ef4444"/>
+    <circle cx="135" cy="95" r="3.5" fill="#b91c1c"/>
+  </g>
+
+  <!-- Légende clinique -->
+  <rect x="20" y="235" width="360" height="48" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#334155"/>
+  <text x="35" y="256" fill="#f8fafc" font-size="14" font-family="system-ui, sans-serif" font-weight="bold">Araignée rouge / Tétranyque (العنكبوت الأحمر)</text>
+  <text x="35" y="273" fill="#fca5a5" font-size="11" font-family="system-ui, sans-serif" font-style="italic">Tetranychus urticae • Décoloration bronzée plombée &amp; fines toiles soyeuses</text>
+</svg>
