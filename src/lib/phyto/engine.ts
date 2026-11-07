@@ -33,6 +33,7 @@ export interface TreatmentActionRule {
   hasVisibleSymptoms: boolean;    // Maladie déjà installée (action curative requise)
   isRapidShootsGrowth: boolean;   // Débourrement / Pousse rapide du printemps
   daysBeforeHarvest: number;      // Proximité de la récolte (< 15j pour sécurité DAR)
+  oliveDestination?: 'huile' | 'table'; // Destination de la récolte (conflit de lipophilie)
 }
 
 export interface ModeOfActionRecommendation {
@@ -53,7 +54,8 @@ export interface ActiveIngredient {
   codeGroup: string; // Ex: 'FRAC 3', 'IRAC 1B', 'FRAC M01'
   multiCodes?: string[]; // Pour les associations, ex: ['FRAC 7', 'FRAC 11']
   familyChemical: string;
-  phiDays: number; // Délai Avant Récolte (DAR / PHI en jours)
+  phiDays: number; // Délai Avant Récolte standard / table (en jours)
+  phiDaysOil?: number; // Délai Avant Récolte spécifique pour trituration / huile d'olive (en jours)
   reiHours: number; // Délai de Réentrée (DRE / REI en heures)
   standardDose: string;
   standardDosePerHa?: string;
@@ -169,6 +171,18 @@ export const TANK_MIX_COMPATIBILITY_RULES: CompatibilityRule[] = [
     groupB: 'PRE_RECOLTE',   // Finition des fruits
     isCompatible: false,
     warningNotice: 'Alerte roussissure Cuivre en pré-récolte : Risque de rugosité (russeting) altérant la valeur marchande des fruits.',
+  },
+  {
+    groupA: 'FRAC M01',      // Cuivre
+    groupB: 'ENGRAIS_KNO3',  // Nitrate de potassium
+    isCompatible: false,
+    warningNotice: 'Incompatibilité Cuivre + Nitrate de Potassium (KNO3) : Effet de salinité ionique brutale provoquant la floculation de la bouillie et la libération massive d’ions Cu2+ phytotoxiques (brûlures des feuilles et des olives).',
+  },
+  {
+    groupA: 'FRAC M01',      // Cuivre
+    groupB: 'BORE_FOLIAIRE', // Bore foliaire
+    isCompatible: false,
+    warningNotice: 'Incompatibilité Cuivre + Bore : Le bore alcalinise le milieu (pH > 8.5), entraînant la précipitation irréversible du cuivre en boues insolubles, colmatage des buses et neutralisation de l’action fongicide.',
   }
 ];
 
@@ -384,10 +398,17 @@ export class PhytosanitaryEngine {
         priorityScore = 0;
       }
 
-      // 3. RÈGLE CRITIQUE DE SANTÉ PUBLIQUE : Délai Avant Récolte (DAR / PHI)
-      if (conditions?.daysBeforeHarvest !== undefined && conditions.daysBeforeHarvest > 0 && ingredient.phiDays > conditions.daysBeforeHarvest) {
+      // 3. RÈGLE CRITIQUE DE SANTÉ PUBLIQUE : Délai Avant Récolte (DAR Standard ou Huile d'olive)
+      const isOliveOil = conditions?.oliveDestination === 'huile' || (params.targetPest.crops.includes('olive') && conditions?.oliveDestination === 'huile');
+      const effectivePhiDays = (isOliveOil && ingredient.phiDaysOil) ? ingredient.phiDaysOil : ingredient.phiDays;
+
+      if (conditions?.daysBeforeHarvest !== undefined && conditions.daysBeforeHarvest > 0 && effectivePhiDays > conditions.daysBeforeHarvest) {
         isAllowed = false;
-        blockReason = `Interdit - Délai Avant Récolte (DAR) insuffisant : Cette matière exige un DAR de ${ingredient.phiDays} jours, or la récolte est prévue dans ${conditions.daysBeforeHarvest} jours (risque avéré de résidus chimiques non dégradés sur les fruits).`;
+        if (isOliveOil && ingredient.phiDaysOil && ingredient.phiDaysOil > ingredient.phiDays) {
+          blockReason = `Interdit - DAR Spécial Huile d'Olive non respecté (Lipophilie) : Pour les olives destinées à l'huile (trituration), cette matière lipophile exige un DAR de ${ingredient.phiDaysOil} jours (contre ${ingredient.phiDays}j pour olive de table) car elle s'accumule dans la matière grasse. La récolte prévue dans ${conditions.daysBeforeHarvest} jours entraînerait une contamination chimique de l'huile.`;
+        } else {
+          blockReason = `Interdit - Délai Avant Récolte (DAR) insuffisant : Cette matière exige un DAR de ${effectivePhiDays} jours, or la récolte est prévue dans ${conditions.daysBeforeHarvest} jours (risque avéré de résidus chimiques non dégradés sur les fruits).`;
+        }
         priorityScore = 0;
       }
 
