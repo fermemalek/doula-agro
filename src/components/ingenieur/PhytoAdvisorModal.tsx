@@ -478,11 +478,11 @@ export function PhytoAdvisorModal({
                           }`}
                         >
                           {/* Image réelle de terrain */}
-                          <div className="relative h-28 sm:h-32 w-full bg-muted/60 overflow-hidden">
+                          <div className="relative aspect-[16/10] w-full bg-slate-900/10 overflow-hidden flex items-center justify-center">
                             <img
                               src={getPestVisualAsset(pest)}
                               alt={pest.nameScientific}
-                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                              className="w-full h-full object-cover object-center group-hover:scale-102 transition-transform duration-300"
                               loading="lazy"
                             />
 

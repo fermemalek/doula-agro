@@ -268,10 +268,10 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
             </div>
           )}
 
-          {/* NIVEAU 1 : Zone d'affichage visuel (Photo réelle ou Schéma clinique) */}
-          <div className="rounded-2xl border bg-muted/20 overflow-hidden relative shadow-inner">
+          {/* NIVEAU 1 : Zone d'affichage visuel (Photo réelle de terrain sans recadrage abusif) */}
+          <div className="rounded-2xl border bg-slate-950 overflow-hidden relative shadow-inner">
             {currentImageUrl ? (
-              <div className="relative group">
+              <div className="relative group flex items-center justify-center min-h-[260px] max-h-[380px] bg-slate-950">
                 <img
                   src={currentImageUrl}
                   alt={isAr ? pest.nameAr : pest.nameFr}
@@ -282,20 +282,20 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
                       setImgError(true);
                     }
                   }}
-                  className="w-full h-64 object-cover object-center transition-transform duration-300 group-hover:scale-102"
+                  className="max-h-[360px] w-auto max-w-full object-contain mx-auto transition-transform duration-300"
                   loading="lazy"
                 />
 
                 {/* Badge d'identification du type d'image (100% Photo réelle de terrain) */}
-                <div className="absolute top-3 left-3">
+                <div className="absolute top-3 left-3 z-10">
                   <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5 bg-emerald-600/95 text-white border border-emerald-400/50">
                     <Camera className="h-3.5 w-3.5" />
                     <span>{isAr ? "صورة فوتوغرافية حقيقية" : "Photo réelle de terrain"}</span>
                   </span>
                 </div>
 
-                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent flex items-end p-4">
-                  <div className="text-white text-xs font-medium backdrop-blur-xs bg-black/40 p-2.5 rounded-xl border border-white/10 w-full flex items-center justify-between">
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex items-end p-4 z-10">
+                  <div className="text-white text-xs font-medium backdrop-blur-xs bg-black/50 p-2.5 rounded-xl border border-white/10 w-full flex items-center justify-between">
                     <div>
                       <p className="font-bold text-white text-sm">{isAr ? activeOrgan.organAr : activeOrgan.organFr}</p>
                       <p className="text-[11px] text-emerald-300 font-mono italic">{pest.nameScientific} sur {cropMeta.latinHost}</p>

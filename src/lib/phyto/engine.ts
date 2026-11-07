@@ -547,7 +547,7 @@ export const REAL_PEST_PHOTOS_MAP: Record<string, string> = {
   // Nectarine / Pêche
   nec_cloque: 'assets/phyto/photos/nec_cloque.jpg',
   nec_chancre_bacterien: 'assets/phyto/photos/oli_bacteriose.jpg',
-  nec_cochenille_blanche: 'assets/phyto/photos/oli_cochenille.jpg',
+  nec_cochenille_blanche: 'assets/phyto/photos/nec_cochenille_blanche.jpg',
   nec_coryneum: 'assets/phyto/photos/nec_coryneum.jpg',
   nec_tetranyque_tisserand: 'assets/phyto/photos/pom_acariens.jpg',
   nec_monilia_fleur: 'assets/phyto/photos/nec_monilia.jpg',
