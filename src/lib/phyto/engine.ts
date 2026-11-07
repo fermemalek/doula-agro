@@ -138,7 +138,13 @@ export const TANK_MIX_COMPATIBILITY_RULES: CompatibilityRule[] = [
     groupA: 'FRAC M02',      // Soufre
     groupB: 'HUILE_MINERALE', // Huile blanche / minérale
     isCompatible: false,
-    warningNotice: 'Incompatibilité Soufre + Huile minérale : Risque grave de brûlure foliaire. Délai de 21 jours obligatoire entre les deux traitements.',
+    warningNotice: 'Incompatibilité majeure Soufre + Huile minérale : Risque très grave de brûlures foliaires et nécrose des fruits. Respecter 21 jours d\'intervalle.',
+  },
+  {
+    groupA: 'FRAC M04',      // Captane
+    groupB: 'HUILE_MINERALE', // Huile blanche / minérale
+    isCompatible: false,
+    warningNotice: 'Incompatibilité absolue Captane + Huile minérale : Pénétration cuticulaire violente provoquant la destruction des tissus foliaires et du fruit. Délai de 21 jours obligatoire.',
   },
   {
     groupA: 'FRAC M01', // Cuivre
@@ -151,6 +157,18 @@ export const TANK_MIX_COMPATIBILITY_RULES: CompatibilityRule[] = [
     groupB: 'HUILE_MINERALE', // Huiles
     isCompatible: false,
     warningNotice: 'Incompatibilité Cuivre + Huile en période végétative : Risque de nécrose des bourgeons.',
+  },
+  {
+    groupA: 'FRAC M02',      // Soufre
+    groupB: 'CHALEUR_FORTE', // Forte chaleur (> 28°C)
+    isCompatible: false,
+    warningNotice: 'Alerte phytotoxicité Soufre par forte chaleur (> 28°C) : Dégagement de vapeurs soufrées provoquant des brûlures sur l’épiderme des pommes.',
+  },
+  {
+    groupA: 'FRAC M01',      // Cuivre
+    groupB: 'PRE_RECOLTE',   // Finition des fruits
+    isCompatible: false,
+    warningNotice: 'Alerte roussissure Cuivre en pré-récolte : Risque de rugosité (russeting) altérant la valeur marchande des fruits.',
   }
 ];
 
@@ -178,7 +196,20 @@ export class PhytosanitaryEngine {
    * Contact vs Systémique vs Translaminaire
    */
   static recommendModeOfAction(conditions: TreatmentActionRule): ModeOfActionRecommendation {
-    // 1. Priorité Curative absolue : Infection active et symptômes visibles
+    // 1. SÉCURITÉ ABSOLUE PRÉ-RÉCOLTE : Cueillette imminente (< 15 jours)
+    // Primauté de la santé publique et des LMR : éviter à tout prix les résidus chimiques
+    if (conditions.daysBeforeHarvest < 15) {
+      return {
+        recommendedType: ['contact', 'translaminaire'],
+        dominantReason: 'harvest',
+        adviceNoticeFr: `Sécurité pré-récolte critique (${conditions.daysBeforeHarvest}j avant récolte) : Priorité absolue aux matières actives à DAR ultra-court (<= ${conditions.daysBeforeHarvest}j) ou contact non rémanent pour garantir l'absence de résidus chimiques dans les fruits récoltés.`,
+        adviceNoticeAr: `أمان قصوى قبل الجني (${conditions.daysBeforeHarvest} أيام قبل القطف) : الأولوية الصارمة للمواد ذات فترة أمان قصيرة جداً (أقل من ${conditions.daysBeforeHarvest} أيام) أو مبيدات الملامسة سريعة التحلل لضمان خلو الثمار تماماً من المتبقيات.`,
+        idealMixStrategyFr: 'Exclure impérativement toute matière dont le DAR dépasse le délai de récolte. Privilégier un produit biologique (ex: Bacillus) ou pénétrant à DAR court (ex: Émamectine 7j, Boscalide 7j).',
+        idealMixStrategyAr: 'منع كلي لأي مادة يتجاوز أجل أمانها (DAR) موعد الجني. الأفضلية للمكافحة الحيوية (Bacillus) أو المواد سريعة التحلل (Emamectine 7j).',
+      };
+    }
+
+    // 2. Priorité Curative : Infection active et symptômes visibles
     if (conditions.hasVisibleSymptoms) {
       return {
         recommendedType: ['systemique', 'translaminaire'],
@@ -190,7 +221,7 @@ export class PhytosanitaryEngine {
       };
     }
 
-    // 2. Alerte Lessivage Météo : Pluie > 20 mm imminente sous 48h
+    // 3. Alerte Lessivage Météo : Pluie > 20 mm imminente sous 48h
     if (conditions.isRainExpectedSoon) {
       return {
         recommendedType: ['systemique'],
@@ -199,18 +230,6 @@ export class PhytosanitaryEngine {
         adviceNoticeAr: 'تنبيه أمطار وغسيل (> 20 ملم خلال 48 ساعة) : مبيدات الملامسة ستُغسل بمياه الأمطار. المبيد الجهازي الممتص خلال 2 إلى 4 ساعات يضمن حماية داخلية تقاوم الغسيل.',
         idealMixStrategyFr: 'Si un produit de contact est utilisé en pré-pluie, exiger une matière très adhérente ou additif fixateur (ex: Dithianon résistant au délavage).',
         idealMixStrategyAr: 'في حال الرش بالملامسة قبل المطر، يُشترط استعمال مادة لاصقة شديدة المقاومة للغسيل (مثل Dithianon).',
-      };
-    }
-
-    // 3. Sécurité Pré-récolte : Proximité de la cueillette (DAR critique)
-    if (conditions.daysBeforeHarvest < 15) {
-      return {
-        recommendedType: ['contact'],
-        dominantReason: 'harvest',
-        adviceNoticeFr: 'Sécurité pré-récolte (DAR court) : À l’approche de la cueillette, privilégier un produit de contact ou à faible rémanence pour éviter tout résidu dans les fruits.',
-        adviceNoticeAr: 'أمان ما قبل الجني (DAR) : مع اقتراب القطف، الأفضلية لمبيدات الملامسة أو المواد ذات فترة الأمان القصيرة لضمان خلو الثمار من المتبقيات.',
-        idealMixStrategyFr: 'Vérifier impérativement le Délai Avant Récolte (DAR / PHI) légal de chaque matière avant traitement.',
-        idealMixStrategyAr: 'التأكد الصارم من فترة الأمان القانونية قبل القطف (DAR / PHI) على العبوة.',
       };
     }
 
@@ -362,6 +381,13 @@ export class PhytosanitaryEngine {
       if (groupApplicationsCount >= ingredient.maxApplicationsPerSeason) {
         isAllowed = false;
         blockReason = `Plafond Saison Atteint : ${groupApplicationsCount}/${ingredient.maxApplicationsPerSeason} pulvérisations déjà effectuées pour le groupe [${ingredient.codeGroup}].`;
+        priorityScore = 0;
+      }
+
+      // 3. RÈGLE CRITIQUE DE SANTÉ PUBLIQUE : Délai Avant Récolte (DAR / PHI)
+      if (conditions?.daysBeforeHarvest !== undefined && conditions.daysBeforeHarvest > 0 && ingredient.phiDays > conditions.daysBeforeHarvest) {
+        isAllowed = false;
+        blockReason = `Interdit - Délai Avant Récolte (DAR) insuffisant : Cette matière exige un DAR de ${ingredient.phiDays} jours, or la récolte est prévue dans ${conditions.daysBeforeHarvest} jours (risque avéré de résidus chimiques non dégradés sur les fruits).`;
         priorityScore = 0;
       }
 
