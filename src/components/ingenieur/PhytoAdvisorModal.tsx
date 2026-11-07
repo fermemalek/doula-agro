@@ -116,7 +116,34 @@ export function PhytoAdvisorModal({
     // 1. Extraire depuis les recommandations
     for (const r of recos) {
       if (r.kind === 'phytosanitaire') {
+        // Ignorer les recommandations rejetées ou supprimées
+        if (r.status === 'rejetee') continue;
+
         const payload = (r.payload || {}) as any;
+        const cropList = Array.isArray(payload.crop_group)
+          ? payload.crop_group
+          : payload.crop_group
+          ? [payload.crop_group]
+          : [];
+
+        // Ne compter que les traitements de la même culture
+        const matchesCrop = cropList.length === 0 || cropList.some((c: string) => {
+          const cl = c.toLowerCase();
+          if (currentCrop === 'olive') return cl.includes('oliv');
+          if (currentCrop === 'pomme') return cl.includes('pomm');
+          if (currentCrop === 'peche' || currentCrop === 'nectarine') return cl.includes('pech') || cl.includes('nectar');
+          return true;
+        });
+        if (!matchesCrop) continue;
+
+        // Ignorer les recommandations supprimées localement ou marquées comme effacées
+        try {
+          const rawDismissed = localStorage.getItem("doula_dismissed_phyto_history");
+          if (rawDismissed && (rawDismissed.includes(r.id) || (payload.program?.products && JSON.stringify(payload.program.products).toLowerCase().includes('luna')))) {
+            continue;
+          }
+        } catch {}
+
         const prog = payload.program || {};
         const products = prog.products || [];
         for (const p of products) {
