@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#172219"/>
+      <stop offset="100%" stop-color="#090f0a"/>
+    </linearGradient>
+    <radialGradient id="greenOlive" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#a3e635"/>
+      <stop offset="60%" stop-color="#65a30d"/>
+      <stop offset="100%" stop-color="#365314"/>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" rx="20" fill="url(#bg)"/>
+
+  <!-- Olive verte avec piqûre de ponte triangulaire caractéristique -->
+  <g transform="translate(140, 50)">
+    <!-- Pédoncule -->
+    <path d="M 60 15 Q 50 -15 70 -25" stroke="#78350f" stroke-width="4" fill="none" stroke-linecap="round"/>
+    
+    <!-- Corps de l'olive -->
+    <ellipse cx="60" cy="85" rx="50" ry="70" fill="url(#greenOlive)"/>
+
+    <!-- Piqûre triangulaire de ponte de la mouche de l'olive -->
+    <g transform="translate(70, 75)">
+      <!-- Zone brunie autour de la piqûre -->
+      <ellipse cx="0" cy="0" rx="14" ry="11" fill="#713f12" opacity="0.8"/>
+      <!-- Entaille triangulaire typique faite par l'ovipositeur -->
+      <polygon points="-5,-4 5,-4 0,5" fill="#1c1917"/>
+      <!-- Halo translucide ramolli -->
+      <ellipse cx="0" cy="0" rx="20" ry="16" stroke="#ca8a04" stroke-width="1.5" fill="none" opacity="0.6"/>
+    </g>
+
+    <!-- Galerie sous-épidermique de l'asticot -->
+    <path d="M 70 82 Q 55 95 40 100 Q 25 105 35 125" stroke="#451a03" stroke-width="3" fill="none" stroke-dasharray="3,2" opacity="0.8"/>
+  </g>
+
+  <!-- Légende clinique -->
+  <rect x="20" y="235" width="360" height="48" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#334155"/>
+  <text x="35" y="256" fill="#f8fafc" font-size="14" font-family="system-ui, sans-serif" font-weight="bold">Mouche de l'olive (ذبابة ثمار الزيتون)</text>
+  <text x="35" y="273" fill="#bef264" font-size="11" font-family="system-ui, sans-serif" font-style="italic">Bactrocera oleae • Piqûre de ponte triangulaire brune &amp; galerie de l'asticot</text>
+</svg>

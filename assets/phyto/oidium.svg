@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#142119"/>
+      <stop offset="100%" stop-color="#080e0a"/>
+    </linearGradient>
+    <linearGradient id="powderyLeaf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4d7c0f"/>
+      <stop offset="100%" stop-color="#1e3a10"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="300" rx="20" fill="url(#bg)"/>
+
+  <!-- Feuille couverte du feutrage blanc farineux de l'oïdium (Blanc) -->
+  <g transform="translate(70, 30)">
+    <path d="M 30 150 C 70 30, 180 15, 230 40 C 210 120, 130 180, 30 150 Z" fill="url(#powderyLeaf)"/>
+    <path d="M 30 150 Q 130 90 230 40" stroke="#84cc16" stroke-width="2" fill="none" opacity="0.6"/>
+
+    <!-- Voile farineux blanc (poudre d'oïdium) -->
+    <path d="M 50 140 C 90 60, 160 50, 210 45 C 190 100, 130 150, 50 140 Z" fill="#ffffff" fill-opacity="0.45"/>
+    <ellipse cx="120" cy="95" rx="45" ry="32" fill="#ffffff" fill-opacity="0.6"/>
+    <ellipse cx="160" cy="75" rx="35" ry="25" fill="#ffffff" fill-opacity="0.7"/>
+    <ellipse cx="80" cy="115" rx="30" ry="22" fill="#ffffff" fill-opacity="0.55"/>
+
+    <!-- Poussières de conidies -->
+    <circle cx="110" cy="80" r="3" fill="#ffffff" opacity="0.9"/>
+    <circle cx="140" cy="65" r="4" fill="#ffffff" opacity="0.95"/>
+    <circle cx="175" cy="85" r="3.5" fill="#ffffff" opacity="0.9"/>
+    <circle cx="95" cy="105" r="3" fill="#ffffff" opacity="0.85"/>
+  </g>
+
+  <!-- Légende clinique -->
+  <rect x="20" y="235" width="360" height="48" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#334155"/>
+  <text x="35" y="256" fill="#f8fafc" font-size="14" font-family="system-ui, sans-serif" font-weight="bold">Oïdium (البياض الدقيقي / الرماد)</text>
+  <text x="35" y="273" fill="#e2e8f0" font-size="11" font-family="system-ui, sans-serif" font-style="italic">Podosphaera spp. • Poudre blanche farineuse &amp; crispation des pousses</text>
+</svg>
