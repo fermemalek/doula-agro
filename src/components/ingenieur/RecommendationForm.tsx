@@ -170,6 +170,17 @@ export function RecommendationForm({
         });
       }
     }
+    for (const ing of ACTIVE_INGREDIENTS_DATABASE) {
+      if (!list.some(x => x.name.toLowerCase() === ing.name.toLowerCase())) {
+        list.push({
+          name: ing.name,
+          cible: ing.codeGroup,
+          dosage: ing.standardDose,
+          price: "0",
+          dar: `${ing.phiDays}j`,
+        });
+      }
+    }
     return list;
   }, [phytoProductsList]);
 
@@ -1531,6 +1542,9 @@ export function RecommendationForm({
                                       className="w-full rounded border bg-background px-2 py-1 text-xs font-semibold"
                                     >
                                       <option value="">{t("reco.form.chooseActive")}</option>
+                                      {p.product && !phytoDropdownOptions.some(pr => pr.name.toLowerCase() === p.product.toLowerCase()) && (
+                                        <option value={p.product}>{p.product}</option>
+                                      )}
                                       {phytoDropdownOptions.map(pr => (
                                         <option key={pr.name} value={pr.name}>{pr.name}</option>
                                       ))}
