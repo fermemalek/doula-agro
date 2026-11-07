@@ -26,6 +26,9 @@ jobs:
         run: npm install
 
       - name: Compiler le projet Vite
+        env:
+          VITE_SUPABASE_URL: "https://krmvdahejfczrziobesi.supabase.co"
+          VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_9GTs8V5G33NYHqEQUPoHzA_Nd4xHgRq"
         run: npm run build
 
       - name: Preparer 404.html pour GitHub Pages SPA

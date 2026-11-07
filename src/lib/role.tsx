@@ -55,26 +55,12 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const isTabActiveNow =
-      typeof window !== "undefined" &&
-      sessionStorage.getItem("doula-session-active") === "1";
-
-    if (!isTabActiveNow) {
-      // Nouvelle visite : afficher immédiatement la page de connexion (/login) sans attendre
-      setSession(null);
-      setRole(null);
-      setLoading(false);
-    }
-
     const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
-      if (event === "SIGNED_IN" && s && typeof window !== "undefined") {
+      if ((event === "SIGNED_IN" || event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") && s && typeof window !== "undefined") {
         sessionStorage.setItem("doula-session-active", "1");
       }
-      const isTabActive =
-        typeof window !== "undefined" &&
-        sessionStorage.getItem("doula-session-active") === "1";
 
-      if (!s || !isTabActive) {
+      if (!s) {
         setSession(null);
         setRole(null);
         setLoading(false);
@@ -87,26 +73,27 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    if (isTabActiveNow) {
-      supabase.auth
-        .getSession()
-        .then(({ data }) => {
-          if (data.session) {
-            setSession(data.session);
-            const cached = readCachedRole(data.session.user.id);
-            setRole(cached ?? "executant");
-            setLoading(false);
-            fetchRole(data.session.user.id);
-          } else {
-            setSession(null);
-            setRole(null);
-            setLoading(false);
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (data.session) {
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("doula-session-active", "1");
           }
-        })
-        .catch(() => {
+          setSession(data.session);
+          const cached = readCachedRole(data.session.user.id);
+          setRole(cached ?? "executant");
           setLoading(false);
-        });
-    }
+          fetchRole(data.session.user.id);
+        } else {
+          setSession(null);
+          setRole(null);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        setLoading(false);
+      });
 
     return () => {
       sub.subscription.unsubscribe();

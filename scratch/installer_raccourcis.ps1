@@ -1,4 +1,4 @@
-﻿$desktop = [Environment]::GetFolderPath('Desktop')
+$desktop = [Environment]::GetFolderPath('Desktop')
 $wsh = New-Object -ComObject WScript.Shell
 $shortcutPath = Join-Path $desktop "Doula Agro.lnk"
 $shortcut = $wsh.CreateShortcut($shortcutPath)
@@ -26,3 +26,4 @@ if (Test-Path $ico) {
 }
 $startupShortcut.Save()
 Write-Host "SUCCES: Lancement automatique ajoute au Demarrage Windows: $startupShortcutPath"
+
