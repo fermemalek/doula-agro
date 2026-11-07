@@ -211,7 +211,20 @@ async function runOnce(): Promise<void> {
     await offlineDB.outbox.update(e.client_id, { status: "processing" });
     try {
       await processEntry(e);
-    } catch (err) {
+    } catch (err: any) {
+      const errStr = String(err?.message || err?.details || err?.code || err || "");
+      const isDuplicate =
+        err?.code === "23505" ||
+        errStr.includes("23505") ||
+        errStr.toLowerCase().includes("duplicate key") ||
+        errStr.toLowerCase().includes("unique constraint");
+
+      if (isDuplicate) {
+        // Enregistrement déjà synchronisé sur Supabase lors d'une tentative précédente
+        await offlineDB.outbox.delete(e.client_id);
+        continue;
+      }
+
       const attempts = e.attempts + 1;
       const tooOld = now - e.created_at > MAX_PENDING_AGE_MS;
       await offlineDB.outbox.update(e.client_id, {

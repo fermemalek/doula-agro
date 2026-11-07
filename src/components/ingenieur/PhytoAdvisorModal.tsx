@@ -23,7 +23,11 @@ import {
   Check,
   Search,
   Droplet,
-  Camera
+  Camera,
+  CloudRain,
+  GitFork,
+  Activity,
+  Shield
 } from 'lucide-react';
 import { PestVisualGalleryDialog } from './PestVisualGalleryDialog';
 import { useTranslation } from '@/lib/i18n';
@@ -37,6 +41,9 @@ import {
   CommercialProductDZ,
   TANK_MIX_ORDER_STEPS,
   getPestVisualAsset,
+  TreatmentActionRule,
+  SystemicType,
+  ModeOfActionRecommendation,
 } from '@/lib/phyto/engine';
 import {
   PHENOLOGICAL_STAGES,
@@ -80,6 +87,16 @@ export function PhytoAdvisorModal({
   const [selectedPestId, setSelectedPestId] = useState<string | null>(null);
   const [pressureLevel, setPressureLevel] = useState<'legere' | 'moyenne' | 'forte'>('moyenne');
   const [galleryPest, setGalleryPest] = useState<PestTarget | null>(null);
+
+  // Arbre de décision agronomique : Contact vs Systémique vs Translaminaire
+  const [isRainExpectedSoon, setIsRainExpectedSoon] = useState<boolean>(false);
+  const [hasVisibleSymptoms, setHasVisibleSymptoms] = useState<boolean>(false);
+  const [isRapidShootsGrowth, setIsRapidShootsGrowth] = useState<boolean>(
+    selectedStage === 'gonflement_bourgeons' || selectedStage === 'floraison' || selectedStage === 'chute_petales_nouaison' || selectedStage === 'grossissement_fruit'
+  );
+  const [daysBeforeHarvest, setDaysBeforeHarvest] = useState<number>(
+    selectedStage === 'maturation' ? 10 : 45
+  );
 
   // État du calculateur de cuve
   const [tankVolume, setTankVolume] = useState<number>(1000);
@@ -159,7 +176,19 @@ export function PhytoAdvisorModal({
     return eligiblePests.find(p => p.id === selectedPestId) || eligiblePests[0] || null;
   }, [selectedPestId, eligiblePests]);
 
-  // Évaluation scientifique des matières actives (IRAC / FRAC)
+  // Conditions terrain pour l'arbre de décision Contact vs Systémique
+  const actionConditions: TreatmentActionRule = useMemo(() => ({
+    isRainExpectedSoon,
+    hasVisibleSymptoms,
+    isRapidShootsGrowth,
+    daysBeforeHarvest,
+  }), [isRainExpectedSoon, hasVisibleSymptoms, isRapidShootsGrowth, daysBeforeHarvest]);
+
+  const modeRecommendation: ModeOfActionRecommendation = useMemo(() => {
+    return PhytosanitaryEngine.recommendModeOfAction(actionConditions);
+  }, [actionConditions]);
+
+  // Évaluation scientifique des matières actives (IRAC / FRAC) avec recommandation situationnelle
   const evaluatedOptions = useMemo(() => {
     if (!activePest) return [];
     return PhytosanitaryEngine.evaluateTreatmentOptions({
@@ -168,8 +197,9 @@ export function PhytoAdvisorModal({
       allIngredients: ACTIVE_INGREDIENTS_DATABASE,
       currentSeasonYear: new Date().getFullYear(),
       currentDate: new Date(),
+      conditions: actionConditions,
     });
-  }, [activePest, historyLogs]);
+  }, [activePest, historyLogs, actionConditions]);
 
   // Calcul du dosage pour la cuve
   const tankCalculation = useMemo(() => {
@@ -413,6 +443,154 @@ export function PhytoAdvisorModal({
                 )}
               </div>
 
+              {/* ARBRE DE DÉCISION AGRONOMIQUE : CONTACT VS SYSTÉMIQUE */}
+              {activePest && (
+                <div className="rounded-2xl border-2 border-emerald-500/30 bg-emerald-500/5 p-4 space-y-3.5 shadow-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-500/20 pb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <GitFork className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-xs text-foreground flex items-center gap-1.5">
+                          <span>{isAr ? "شجرة القرار الحقلي : مبيد ملامسة أم جهازي ؟" : "Arbre de Décision : Contact vs Systémique"}</span>
+                          <span className="text-[9px] uppercase px-2 py-0.5 rounded-full bg-emerald-600 text-white font-black">
+                            {modeRecommendation.dominantReason.toUpperCase()}
+                          </span>
+                        </h4>
+                        <p className="text-[10px] text-muted-foreground">
+                          {isAr ? "تحديد النمط الفيزيولوجي الأنسب وفق معطيات الطقس، حالة الشجرة وطور الإصابة" : "Orientation automatique selon météo, croissance foliaire et statut infectieux"}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Badge du mode recommandé */}
+                    <div className="flex items-center gap-1.5">
+                      {modeRecommendation.recommendedType.map(t => (
+                        <span
+                          key={t}
+                          className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-xl shadow-xs border ${
+                            t === 'contact'
+                              ? 'bg-sky-500 text-white border-sky-600'
+                              : t === 'systemique'
+                              ? 'bg-purple-600 text-white border-purple-700'
+                              : 'bg-teal-600 text-white border-teal-700'
+                          }`}
+                        >
+                          {t === 'contact' ? (isAr ? '🛡️ ملامسة' : '🛡️ Contact') : t === 'systemique' ? (isAr ? '🔄 جهازي' : '🔄 Systémique') : (isAr ? '🍃 عابر للصفائح' : '🍃 Translaminaire')}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Les 4 bascules de terrain */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                    {/* Bascule 1 : Pluie imminente */}
+                    <button
+                      type="button"
+                      onClick={() => setIsRainExpectedSoon(!isRainExpectedSoon)}
+                      className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
+                        isRainExpectedSoon
+                          ? 'bg-sky-500/15 border-sky-500 text-sky-900 dark:text-sky-200 ring-1 ring-sky-500'
+                          : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
+                      }`}
+                    >
+                      <CloudRain className={`h-4 w-4 shrink-0 mt-0.5 ${isRainExpectedSoon ? 'text-sky-600' : 'text-muted-foreground'}`} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold leading-tight">
+                          {isAr ? "أمطار مرتقبة (> 20 ملم)" : "Pluie contaminatrice"}
+                        </p>
+                        <p className="text-[9px] opacity-80 mt-0.5">
+                          {isAr ? "خطر غسيل المبيد السطحي" : "> 20 mm sous 48h (délavage)"}
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Bascule 2 : Symptômes visibles */}
+                    <button
+                      type="button"
+                      onClick={() => setHasVisibleSymptoms(!hasVisibleSymptoms)}
+                      className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
+                        hasVisibleSymptoms
+                          ? 'bg-rose-500/15 border-rose-500 text-rose-900 dark:text-rose-200 ring-1 ring-rose-500'
+                          : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
+                      }`}
+                    >
+                      <Activity className={`h-4 w-4 shrink-0 mt-0.5 ${hasVisibleSymptoms ? 'text-rose-600' : 'text-muted-foreground'}`} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold leading-tight">
+                          {isAr ? "أعراض إصابة مرئية" : "Infection déjà visible"}
+                        </p>
+                        <p className="text-[9px] opacity-80 mt-0.5">
+                          {isAr ? "مطلوب مفعول علاجي توقيفي" : "Action curative (stop 24-72h)"}
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Bascule 3 : Croissance foliaire active */}
+                    <button
+                      type="button"
+                      onClick={() => setIsRapidShootsGrowth(!isRapidShootsGrowth)}
+                      className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
+                        isRapidShootsGrowth
+                          ? 'bg-emerald-500/15 border-emerald-500 text-emerald-900 dark:text-emerald-200 ring-1 ring-emerald-500'
+                          : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
+                      }`}
+                    >
+                      <Layers className={`h-4 w-4 shrink-0 mt-0.5 ${isRapidShootsGrowth ? 'text-emerald-600' : 'text-muted-foreground'}`} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold leading-tight">
+                          {isAr ? "نمو خضري سريع" : "Pousse foliaire rapide"}
+                        </p>
+                        <p className="text-[9px] opacity-80 mt-0.5">
+                          {isAr ? "حماية النموات الجديدة" : "Couvrir les organes néoformés"}
+                        </p>
+                      </div>
+                    </button>
+
+                    {/* Bascule 4 : Cueillette imminente */}
+                    <button
+                      type="button"
+                      onClick={() => setDaysBeforeHarvest(daysBeforeHarvest < 15 ? 40 : 10)}
+                      className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
+                        daysBeforeHarvest < 15
+                          ? 'bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500'
+                          : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
+                      }`}
+                    >
+                      <Clock className={`h-4 w-4 shrink-0 mt-0.5 ${daysBeforeHarvest < 15 ? 'text-amber-600' : 'text-muted-foreground'}`} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-bold leading-tight">
+                          {isAr ? "اقتراب الجني (< 15 يوم)" : "Récolte proche (< 15 j)"}
+                        </p>
+                        <p className="text-[9px] opacity-80 mt-0.5">
+                          {isAr ? "احترام فترة الأمان DAR" : "Sécurité résidus & DAR court"}
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Synthèse agronomique & Stratégie Tank Mix */}
+                  <div className="p-3 rounded-xl bg-background border border-emerald-500/30 space-y-2">
+                    <p className="text-[11px] font-medium leading-relaxed text-foreground">
+                      💡 <strong>{isAr ? "التوجيه الفني :" : "Avis Agronomique :"} </strong>
+                      {isAr ? modeRecommendation.adviceNoticeAr : modeRecommendation.adviceNoticeFr}
+                    </p>
+                    <div className="p-2.5 rounded-lg bg-muted/40 border text-[10px] flex items-start gap-2">
+                      <Shield className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-emerald-700 dark:text-emerald-400">
+                          {isAr ? "الاستراتيجية المثلى لخلطة الصهريج (Tank Mix) : " : "Stratégie Cuve & Synergie Recommandée : "}
+                        </strong>
+                        <span className="text-muted-foreground">
+                          {isAr ? modeRecommendation.idealMixStrategyAr : modeRecommendation.idealMixStrategyFr}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* ÉTAPE 3 : MATIÈRES ACTIVES CLASSÉES & BLOCAGE ANTI-RÉSISTANCE */}
               {activePest && (
                 <div className="space-y-3">
@@ -440,7 +618,7 @@ export function PhytoAdvisorModal({
                   </div>
 
                   <div className="space-y-2.5">
-                    {evaluatedOptions.map(({ ingredient, isAllowed, isMultiSite, blockReason, currentSeasonUsageCount }) => {
+                    {evaluatedOptions.map(({ ingredient, isAllowed, isMultiSite, blockReason, currentSeasonUsageCount, isSituationallyRecommended }) => {
                       const isFrac = ingredient.type === 'FRAC';
                       const badgeColor = isFrac
                         ? 'bg-indigo-500/10 text-indigo-700 border-indigo-500/30'
@@ -475,6 +653,21 @@ export function PhytoAdvisorModal({
                                 <span className="text-[10px] text-muted-foreground font-semibold">
                                   ({ingredient.familyChemical})
                                 </span>
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                                  ingredient.systemicType === 'contact'
+                                    ? 'bg-sky-500/10 text-sky-700 border-sky-500/30'
+                                    : ingredient.systemicType === 'systemique'
+                                    ? 'bg-purple-500/10 text-purple-700 border-purple-500/30'
+                                    : 'bg-teal-500/10 text-teal-700 border-teal-500/30'
+                                }`}>
+                                  {ingredient.systemicType === 'contact' ? '🛡️ Contact' : ingredient.systemicType === 'systemique' ? '🔄 Systémique' : '🍃 Translaminaire'}
+                                </span>
+                                {isSituationallyRecommended && (
+                                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                                    <Sparkles className="h-3 w-3 text-amber-500" />
+                                    {isAr ? 'مناسب للظروف الحالية' : 'Idéal situation actuelle'}
+                                  </span>
+                                )}
                               </div>
                               <p className="text-[11px] text-muted-foreground">
                                 {ingredient.commonNameFr}

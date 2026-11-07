@@ -101,6 +101,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     maxApplicationsPerSeason: 6,
     formulation: 'WP',
     isMultiSite: true,
+    systemicType: 'contact',
   },
   {
     id: 'ing_oxychlorure_cuivre',
@@ -117,6 +118,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     maxApplicationsPerSeason: 5,
     formulation: 'WP',
     isMultiSite: true,
+    systemicType: 'contact',
   },
   {
     id: 'ing_soufre_mouillable',
@@ -133,6 +135,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     maxApplicationsPerSeason: 8,
     formulation: 'WG',
     isMultiSite: true,
+    systemicType: 'contact',
   },
   {
     id: 'ing_captane',
@@ -149,6 +152,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     maxApplicationsPerSeason: 4,
     formulation: 'WP',
     isMultiSite: true,
+    systemicType: 'contact',
   },
   {
     id: 'ing_dithianon',
@@ -165,6 +169,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     maxApplicationsPerSeason: 4,
     formulation: 'WG',
     isMultiSite: true,
+    systemicType: 'contact',
   },
 
   // --- FONGICIDES MONO-SITES (SYSTÉMIQUES & TRANSLAMINAIRES) ---
@@ -182,6 +187,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.4 à 0.5 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'EC',
+    systemicType: 'systemique',
   },
   {
     id: 'ing_difenoconazole',
@@ -197,6 +203,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.2 à 0.3 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'EC',
+    systemicType: 'systemique',
   },
   {
     id: 'ing_penconazole',
@@ -212,6 +219,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.35 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'EC',
+    systemicType: 'systemique',
   },
   {
     id: 'ing_boscalid_pyraclo',
@@ -228,6 +236,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.5 kg/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'WG',
+    systemicType: 'systemique',
   },
   {
     id: 'ing_fluopyram_tebu',
@@ -244,6 +253,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.5 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'SC',
+    systemicType: 'systemique',
   },
   {
     id: 'ing_tebu_trifloxy',
@@ -260,6 +270,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.35 kg/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'WG',
+    systemicType: 'systemique',
   },
   {
     id: 'ing_kresoxim_methyl',
@@ -275,6 +286,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.25 kg/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'WG',
+    systemicType: 'translaminaire',
   },
   {
     id: 'ing_fenhexamid',
@@ -290,6 +302,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '1.2 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'SC',
+    systemicType: 'contact',
   },
   {
     id: 'ing_fosetyl_al',
@@ -305,6 +318,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '2.5 kg/ha',
     maxApplicationsPerSeason: 3,
     formulation: 'WG',
+    systemicType: 'systemique',
   },
 
   // --- INSECTICIDES & ACARICIDES (IRAC) ---
@@ -322,6 +336,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.25 kg/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'SP',
+    systemicType: 'systemique',
   },
   {
     id: 'ing_spirotetramat',
@@ -337,6 +352,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.75 à 1 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'SC',
+    systemicType: 'systemique',
   },
   {
     id: 'ing_deltamethrine',
@@ -352,6 +368,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.15 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'EC',
+    systemicType: 'contact',
   },
   {
     id: 'ing_cypermethrine',
@@ -367,6 +384,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.35 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'EC',
+    systemicType: 'contact',
   },
   {
     id: 'ing_chlorantraniliprole',
@@ -382,6 +400,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.18 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'SC',
+    systemicType: 'translaminaire',
   },
   {
     id: 'ing_cyantraniliprole',
@@ -397,6 +416,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.75 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'SC',
+    systemicType: 'translaminaire',
   },
   {
     id: 'ing_spinosad',
@@ -412,6 +432,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.2 L/ha',
     maxApplicationsPerSeason: 3,
     formulation: 'SC',
+    systemicType: 'translaminaire',
   },
   {
     id: 'ing_emamectine',
@@ -427,6 +448,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.35 kg/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'WG',
+    systemicType: 'translaminaire',
   },
   {
     id: 'ing_abamectine',
@@ -442,6 +464,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.6 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'EC',
+    systemicType: 'translaminaire',
   },
   {
     id: 'ing_bacillus',
@@ -458,6 +481,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     maxApplicationsPerSeason: 6,
     formulation: 'WG',
     isMultiSite: true,
+    systemicType: 'contact',
   },
   {
     id: 'ing_spiromesifene',
@@ -473,6 +497,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '0.5 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'SC',
+    systemicType: 'translaminaire',
   },
   {
     id: 'ing_huile_minerale',
@@ -489,6 +514,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     maxApplicationsPerSeason: 2,
     formulation: 'EC',
     isMultiSite: true,
+    systemicType: 'contact',
   }
 ];
 

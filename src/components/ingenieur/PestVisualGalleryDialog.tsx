@@ -61,9 +61,10 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
   const activeOrgan = organs[selectedOrganIndex] || organs[0];
 
   // URL de l'image actuelle à afficher (priorité à l'organe, puis échantillon principal ou asset local)
-  const currentImageUrl = !imgError && activeOrgan.imageUrl
-    ? resolvePhytoImageUrl(activeOrgan.imageUrl)
-    : localDefaultAsset;
+  // Priorité au visuel local Data URL ou image d'organe si disponible et non en erreur
+  const currentImageUrl = !imgError && activeOrgan.imageUrl && !activeOrgan.imageUrl.startsWith('http')
+    ? (activeOrgan.imageUrl.startsWith('data:') ? activeOrgan.imageUrl : localDefaultAsset)
+    : (!imgError && activeOrgan.imageUrl ? resolvePhytoImageUrl(activeOrgan.imageUrl) : localDefaultAsset) || localDefaultAsset;
 
   // Niveau 3 : Recherche Web Google Images ciblée sur le nom scientifique universel
   const openWebSearch = () => {

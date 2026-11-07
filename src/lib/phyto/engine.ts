@@ -1,3 +1,4 @@
+import { getEmbeddedPestSvg } from './visualAssets';
 /**
  * DOULA AGRI-MANAGER - MODULE INGÉNIEUR AGRONOME
  * Moteur de Recommandation Phytosanitaire & Gestion de la Résistance (IRAC / FRAC)
@@ -25,6 +26,24 @@ export type PestCategory = 'insecte' | 'acarien' | 'champignon' | 'bacterie';
 
 export type ActionCodeType = 'FRAC' | 'IRAC';
 
+export type SystemicType = 'contact' | 'systemique' | 'translaminaire';
+
+export interface TreatmentActionRule {
+  isRainExpectedSoon: boolean;    // Pluie > 20 mm prévue sous 48h (lessivage)
+  hasVisibleSymptoms: boolean;    // Maladie déjà installée (action curative requise)
+  isRapidShootsGrowth: boolean;   // Débourrement / Pousse rapide du printemps
+  daysBeforeHarvest: number;      // Proximité de la récolte (< 15j pour sécurité DAR)
+}
+
+export interface ModeOfActionRecommendation {
+  recommendedType: SystemicType[];
+  adviceNoticeFr: string;
+  adviceNoticeAr: string;
+  idealMixStrategyFr: string;
+  idealMixStrategyAr: string;
+  dominantReason: 'curative' | 'rain' | 'growth' | 'harvest' | 'preventive';
+}
+
 export interface ActiveIngredient {
   id: string;
   name: string;
@@ -41,6 +60,7 @@ export interface ActiveIngredient {
   maxApplicationsPerSeason: number;
   formulation?: 'WSB' | 'WG' | 'WDG' | 'WP' | 'SC' | 'FL' | 'EC' | 'SL' | 'SP';
   isMultiSite?: boolean; // Contact multi-site (immunité anti-résistance)
+  systemicType: SystemicType; // Mode d'action physique : Contact vs Systémique vs Translaminaire
 }
 
 export interface SymptomOrganSample {
@@ -80,6 +100,7 @@ export interface CommercialProductDZ {
   standardDose: string;
   phiDays: number;
   formulation: 'WSB' | 'WG' | 'WDG' | 'WP' | 'SC' | 'FL' | 'EC' | 'SL' | 'SP';
+  systemicType?: SystemicType;
   remarksFr?: string;
   remarksAr?: string;
 }
@@ -153,6 +174,70 @@ export const TANK_MIX_ORDER_STEPS = [
 
 export class PhytosanitaryEngine {
   /**
+   * Arbre de décision automatique pour le choix du mode d'action physique :
+   * Contact vs Systémique vs Translaminaire
+   */
+  static recommendModeOfAction(conditions: TreatmentActionRule): ModeOfActionRecommendation {
+    // 1. Priorité Curative absolue : Infection active et symptômes visibles
+    if (conditions.hasVisibleSymptoms) {
+      return {
+        recommendedType: ['systemique', 'translaminaire'],
+        dominantReason: 'curative',
+        adviceNoticeFr: 'Infection active constatée : Privilégier un produit systémique ou translaminaire doté d’un effet curatif / stop (24-72h) pour stopper l’extension interne du mycélium.',
+        adviceNoticeAr: 'إصابة فعلية مؤكدة : الأولوية لمبيد جهازي أو عابر للصفائح ذو فاعلية علاجية توقيفية (Stop effect) لاختراق الأنسجة والقضاء على ميسيليوم الفطر الداخلي.',
+        idealMixStrategyFr: 'Mélange curatif recommandé : Associer un systémique (effet stop interne) + un contact multi-site (détruit les spores externes et protège le systémique contre les mutations résistantes).',
+        idealMixStrategyAr: 'خلطة علاجية مزدوجة : دمج مبيد جهازي داخلي مع مبيد بالملامسة متعدد مواقع التأثير لتطهير السطح الخارجي وحماية المبيد الجهازي من انكسار المقاومة.',
+      };
+    }
+
+    // 2. Alerte Lessivage Météo : Pluie > 20 mm imminente sous 48h
+    if (conditions.isRainExpectedSoon) {
+      return {
+        recommendedType: ['systemique'],
+        dominantReason: 'rain',
+        adviceNoticeFr: 'Risque de lessivage par la pluie (> 20 mm sous 48h) : Les produits de contact risquent d’être lavés. Un systémique absorbé en 2 à 4 heures garantit une protection endothérapique durable.',
+        adviceNoticeAr: 'تنبيه أمطار وغسيل (> 20 ملم خلال 48 ساعة) : مبيدات الملامسة ستُغسل بمياه الأمطار. المبيد الجهازي الممتص خلال 2 إلى 4 ساعات يضمن حماية داخلية تقاوم الغسيل.',
+        idealMixStrategyFr: 'Si un produit de contact est utilisé en pré-pluie, exiger une matière très adhérente ou additif fixateur (ex: Dithianon résistant au délavage).',
+        idealMixStrategyAr: 'في حال الرش بالملامسة قبل المطر، يُشترط استعمال مادة لاصقة شديدة المقاومة للغسيل (مثل Dithianon).',
+      };
+    }
+
+    // 3. Sécurité Pré-récolte : Proximité de la cueillette (DAR critique)
+    if (conditions.daysBeforeHarvest < 15) {
+      return {
+        recommendedType: ['contact'],
+        dominantReason: 'harvest',
+        adviceNoticeFr: 'Sécurité pré-récolte (DAR court) : À l’approche de la cueillette, privilégier un produit de contact ou à faible rémanence pour éviter tout résidu dans les fruits.',
+        adviceNoticeAr: 'أمان ما قبل الجني (DAR) : مع اقتراب القطف، الأفضلية لمبيدات الملامسة أو المواد ذات فترة الأمان القصيرة لضمان خلو الثمار من المتبقيات.',
+        idealMixStrategyFr: 'Vérifier impérativement le Délai Avant Récolte (DAR / PHI) légal de chaque matière avant traitement.',
+        idealMixStrategyAr: 'التأكد الصارم من فترة الأمان القانونية قبل القطف (DAR / PHI) على العبوة.',
+      };
+    }
+
+    // 4. Croissance Végétative Rapide du Printemps (Débourrement / Nouaison / Pousses actives)
+    if (conditions.isRapidShootsGrowth) {
+      return {
+        recommendedType: ['systemique', 'translaminaire'],
+        dominantReason: 'growth',
+        adviceNoticeFr: 'Croissance foliaire rapide : Les matières de contact ne protègent pas les nouvelles feuilles formées après le passage. Un produit systémique circule dans la sève et protège les organes en croissance.',
+        adviceNoticeAr: 'نمو خضري سريع : مبيدات الملامسة لا تحمي الأوراق الجديدة النامية بعد الرش. المبيد الجهازي يسري مع العصارة لحماية القمم النامية.',
+        idealMixStrategyFr: 'Stratégie alternée : Utiliser un systémique pour couvrir la pousse active, ou rapprocher les passages de contact tous les 7 jours.',
+        idealMixStrategyAr: 'خطة متناوبة : استخدام جهازي لتغطية النمو السريع، أو تقريب دورات الرش بالملامسة كل 7 أيام.',
+      };
+    }
+
+    // 5. Situation Préventive Standard / Période Sèche
+    return {
+      recommendedType: ['contact', 'systemique'],
+      dominantReason: 'preventive',
+      adviceNoticeFr: 'Traitement protecteur standard (Temps sec) : Un produit de contact multi-site (Cuivre, Soufre, Captane) est idéal pour limiter la pression sans risque de sélection de résistance.',
+      adviceNoticeAr: 'معاملة وقائية قياسية (طقس مستقر) : مبيد بالملامسة متعدد مواقع التأثير (نحاس، كبريت، كابتان) مثالي لبناء درع سطحي مانع للأبواغ دون خطر نشوء مناعة.',
+      idealMixStrategyFr: 'Association d’excellence : Contact multi-site seul ou couplé à un systémique pour sécuriser à la fois la surface et l’intérieur de la plante.',
+      idealMixStrategyAr: 'مزيج وقائي متوازن : ملامسة متعدد المواقع بمفرده أو مدعوم بجهازي مقنن لحماية السطح والداخل معاً.',
+    };
+  }
+
+  /**
    * Vérifie si un groupe chimique bénéficie du statut d'immunité multi-site (FRAC M)
    */
   static isMultiSiteGroup(codeGroup: string): boolean {
@@ -191,8 +276,11 @@ export class PhytosanitaryEngine {
     allIngredients: ActiveIngredient[];
     currentSeasonYear: number;
     currentDate?: Date;
+    conditions?: TreatmentActionRule;
   }) {
-    const { targetPest, parcelHistory, allIngredients, currentSeasonYear, currentDate = new Date() } = params;
+    const { targetPest, parcelHistory, allIngredients, currentSeasonYear, currentDate = new Date(), conditions } = params;
+
+    const modeRecommendation = conditions ? PhytosanitaryEngine.recommendModeOfAction(conditions) : null;
 
     // Récupérer les traitements appliqués cette saison sur la parcelle contre cette cible
     const currentSeasonLogs = parcelHistory.filter((log) => {
@@ -263,11 +351,18 @@ export class PhytosanitaryEngine {
         priorityScore = 0;
       }
 
+      const isSituationallyRecommended = modeRecommendation 
+        ? modeRecommendation.recommendedType.includes(ingredient.systemicType)
+        : true;
+
       // Favoriser les groupes d'action encore jamais utilisés cette saison
       if (isAllowed) {
         priorityScore -= groupApplicationsCount * 25;
         if (isMultiSite) {
           priorityScore += 10; // Bonus pour favoriser les solutions de contact protectrices
+        }
+        if (isSituationallyRecommended) {
+          priorityScore += 15; // Bonus adéquation météo / physiologique (Contact vs Systémique)
         }
       }
 
@@ -275,6 +370,8 @@ export class PhytosanitaryEngine {
         ingredient,
         isAllowed,
         isMultiSite,
+        systemicType: ingredient.systemicType,
+        isSituationallyRecommended,
         blockReason,
         priorityScore,
         currentSeasonUsageCount: groupApplicationsCount,
@@ -387,32 +484,8 @@ export function resolvePhytoImageUrl(url?: string): string | undefined {
  * Garantit qu'aucune image brisée ne s'affiche jamais.
  */
 export function getPestVisualAsset(pest: { id: string; category?: string; primarySampleUrl?: string }): string {
-  if (pest.primarySampleUrl && !pest.primarySampleUrl.startsWith('http')) {
-    return resolvePhytoImageUrl(pest.primarySampleUrl)!;
+  if (pest.primarySampleUrl && pest.primarySampleUrl.startsWith('data:')) {
+    return pest.primarySampleUrl;
   }
-  const id = pest.id.toLowerCase();
-  if (id.includes('cloque')) return resolvePhytoImageUrl('assets/phyto/cloque.svg')!;
-  if (id.includes('tavelure')) return resolvePhytoImageUrl('assets/phyto/tavelure.svg')!;
-  if (id.includes('feu_bacterien')) return resolvePhytoImageUrl('assets/phyto/feu_bacterien.svg')!;
-  if (id.includes('monilia')) return resolvePhytoImageUrl('assets/phyto/moniliose.svg')!;
-  if (id.includes('carpocapse')) return resolvePhytoImageUrl('assets/phyto/carpocapse.svg')!;
-  if (id.includes('oeil_paon')) return resolvePhytoImageUrl('assets/phyto/oeil_paon.svg')!;
-  if (id.includes('mouche') && id.includes('oli')) return resolvePhytoImageUrl('assets/phyto/mouche_olive.svg')!;
-  if (id.includes('ceratite') || (id.includes('mouche') && !id.includes('oli'))) return resolvePhytoImageUrl('assets/phyto/ceratite.svg')!;
-  if (id.includes('tuberculose') || id.includes('chancre')) return resolvePhytoImageUrl('assets/phyto/tuberculose.svg')!;
-  if (id.includes('oidium')) return resolvePhytoImageUrl('assets/phyto/oidium.svg')!;
-  if (id.includes('coryneum') || id.includes('rouille')) return resolvePhytoImageUrl('assets/phyto/coryneum.svg')!;
-  if (id.includes('puceron')) return resolvePhytoImageUrl('assets/phyto/puceron.svg')!;
-  if (id.includes('acarien') || id.includes('tetranyque')) return resolvePhytoImageUrl('assets/phyto/acarien.svg')!;
-  if (id.includes('cochenille')) return resolvePhytoImageUrl('assets/phyto/cochenille.svg')!;
-  if (id.includes('psylle')) return resolvePhytoImageUrl('assets/phyto/psylle.svg')!;
-  if (id.includes('anthracnose')) return resolvePhytoImageUrl('assets/phyto/anthracnose.svg')!;
-  if (id.includes('thrips') || id.includes('mineuse') || id.includes('tordeuse') || id.includes('anthonome') || id.includes('capnode')) {
-    return resolvePhytoImageUrl('assets/phyto/thrips.svg')!;
-  }
-  if (pest.primarySampleUrl) return resolvePhytoImageUrl(pest.primarySampleUrl)!;
-  if (pest.category === 'champignon') return resolvePhytoImageUrl('assets/phyto/tavelure.svg')!;
-  if (pest.category === 'bacterie') return resolvePhytoImageUrl('assets/phyto/feu_bacterien.svg')!;
-  if (pest.category === 'acarien') return resolvePhytoImageUrl('assets/phyto/acarien.svg')!;
-  return resolvePhytoImageUrl('assets/phyto/puceron.svg')!;
+  return getEmbeddedPestSvg(pest.id, pest.category);
 }

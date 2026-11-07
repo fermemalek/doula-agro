@@ -140,7 +140,7 @@ registerOp("execution.create", async (e) => {
 
 registerOp("alert.create", async (e) => {
   const p = e.payload as Record<string, unknown>;
-  const { error } = await supabase.from("alerts").insert(p as never);
+  const { error } = await supabase.from("alerts").upsert(p as never, { onConflict: "id" });
   if (error && (error as any).code !== "23505") throw error;
 });
 
@@ -161,7 +161,7 @@ registerOp("alert.delete", async (e) => {
 
 registerOp("task.create", async (e) => {
   const p = e.payload as Record<string, unknown>;
-  const { error } = await supabase.from("tasks").insert(p as never);
+  const { error } = await supabase.from("tasks").upsert(p as never, { onConflict: "id" });
   if (error && (error as any).code !== "23505") throw error;
 });
 
@@ -182,7 +182,7 @@ registerOp("task.delete", async (e) => {
 
 registerOp("program.create", async (e) => {
   const p = e.payload as Record<string, unknown>;
-  const { error } = await supabase.from("module_records").insert(p as never);
+  const { error } = await supabase.from("module_records").upsert(p as never, { onConflict: "id" });
   if (error && (error as any).code !== "23505") throw error;
 });
 
@@ -200,7 +200,7 @@ registerOp("program.delete", async (e) => {
 
 registerOp("recommendation.create", async (e) => {
   const p = e.payload as Record<string, unknown>;
-  const { error } = await supabase.from("recommendations").insert(p as never);
+  const { error } = await supabase.from("recommendations").upsert(p as never, { onConflict: "id" });
   if (error && (error as any).code !== "23505") throw error;
 });
 
@@ -227,7 +227,7 @@ registerOp("profile.update", async (e) => {
 
 registerOp("purchase.create", async (e) => {
   const p = e.payload as Record<string, unknown>;
-  const { error } = await supabase.from("supplier_purchases" as any).insert(p as never);
+  const { error } = await supabase.from("supplier_purchases" as any).upsert(p as never, { onConflict: "id" });
   if (error && (error as any).code !== "23505") throw error;
 });
 
