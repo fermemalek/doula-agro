@@ -18,3 +18,4 @@ if %errorlevel% neq 0 (
 echo [*] Ouverture de l'application dans votre navigateur...
 start http://localhost:8080/#/
 exit
+

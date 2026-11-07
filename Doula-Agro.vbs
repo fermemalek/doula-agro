@@ -15,3 +15,4 @@ End If
 
 ' Ouverture immediate dans le navigateur par defaut
 WshShell.Run "http://localhost:8080/#/"
+
