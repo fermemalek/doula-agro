@@ -17,6 +17,8 @@ export type GrowthStage =
   | 'chute_petales_nouaison'
   | 'grossissement_fruit'
   | 'maturation'
+  | 'post_recolte'
+  | 'chute_feuilles'
   | 'post_recolte_chute_feuilles';
 
 export type PestCategory = 'insecte' | 'acarien' | 'champignon' | 'bacterie';
@@ -153,9 +155,17 @@ export class PhytosanitaryEngine {
     crop: CropType,
     stage: GrowthStage
   ): PestTarget[] {
-    return pests.filter(
-      (pest) => pest.crops.includes(crop) && pest.applicableStages.includes(stage)
-    );
+    return pests.filter((pest) => {
+      if (!pest.crops.includes(crop)) return false;
+      if (pest.applicableStages.includes(stage)) return true;
+      if (
+        (stage === 'post_recolte' || stage === 'chute_feuilles') &&
+        pest.applicableStages.includes('post_recolte_chute_feuilles')
+      ) {
+        return true;
+      }
+      return false;
+    });
   }
 
   /**

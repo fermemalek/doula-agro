@@ -273,7 +273,7 @@ export function PhytoAdvisorModal({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-1.5">
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-1.5">
                   {PHENOLOGICAL_STAGES.map((st) => {
                     const isSelected = selectedStage === st.id;
                     return (
@@ -284,15 +284,15 @@ export function PhytoAdvisorModal({
                           setSelectedStage(st.id);
                           setSelectedPestId(null);
                         }}
-                        className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-all ${
+                        className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-all min-h-[72px] ${
                           isSelected
                             ? "border-primary bg-primary/10 text-primary font-black shadow-xs ring-2 ring-primary/20 scale-102"
                             : "border-input bg-background hover:bg-muted/60 text-muted-foreground"
                         }`}
                       >
-                        <span className="text-lg">{st.icon}</span>
-                        <span className="text-[10px] font-bold line-clamp-2 mt-1 leading-tight">
-                          {isAr ? st.labelAr.split(" ")[0] : st.labelFr.split(" ")[0]}
+                        <span className="text-xl">{st.icon}</span>
+                        <span className="text-[10px] font-bold mt-1 leading-tight text-center line-clamp-2">
+                          {isAr ? st.labelAr : st.labelFr}
                         </span>
                       </button>
                     );
