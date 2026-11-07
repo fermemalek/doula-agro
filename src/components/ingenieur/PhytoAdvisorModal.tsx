@@ -914,6 +914,7 @@ export function PhytoAdvisorModal({
       {/* Modale de la galerie visuelle hybride en 3 niveaux */}
       <PestVisualGalleryDialog
         pest={galleryPest}
+        crop={currentCrop}
         open={!!galleryPest}
         onOpenChange={(op) => !op && setGalleryPest(null)}
         onConfirmSelection={(id) => {
