@@ -362,9 +362,14 @@ export function RecommendationForm({
   const [phytoAdvisorOpen, setPhytoAdvisorOpen] = useState(false);
 
   const handleSelectFromAdvisor = (ingredient: any, pest: any) => {
+    const matchedOption = phytoDropdownOptions.find(
+      opt => opt.name.toLowerCase().trim() === ingredient.name.toLowerCase().trim()
+    );
+    const chosenName = matchedOption ? matchedOption.name : ingredient.name;
+
     const targetIdx = phyProducts.findIndex(p => !p.product);
     const newRow = {
-      product: ingredient.name,
+      product: chosenName,
       cible: `${pest.nameFr} (${ingredient.codeGroup})`,
       dosage: ingredient.standardDose,
       volume: "100 L",
@@ -378,8 +383,8 @@ export function RecommendationForm({
     }
     toast.success(
       isAr
-        ? `تم اختيار ${ingredient.name} (${ingredient.codeGroup}) لمكافحة ${pest.nameAr}`
-        : `${ingredient.name} (${ingredient.codeGroup}) sélectionné contre ${pest.nameFr}`
+        ? `تم اختيار ${chosenName} (${ingredient.codeGroup}) لمكافحة ${pest.nameAr}`
+        : `${chosenName} (${ingredient.codeGroup}) sélectionné contre ${pest.nameFr}`
     );
   };
   const currentPhyPassage = phyPassages[activePhyIndex] || phyPassages[0];
@@ -1542,7 +1547,7 @@ export function RecommendationForm({
                                       className="w-full rounded border bg-background px-2 py-1 text-xs font-semibold"
                                     >
                                       <option value="">{t("reco.form.chooseActive")}</option>
-                                      {p.product && !phytoDropdownOptions.some(pr => pr.name.toLowerCase() === p.product.toLowerCase()) && (
+                                      {p.product && !phytoDropdownOptions.some(pr => pr.name === p.product) && (
                                         <option value={p.product}>{p.product}</option>
                                       )}
                                       {phytoDropdownOptions.map(pr => (

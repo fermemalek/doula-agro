@@ -1,4 +1,3 @@
-import { getEmbeddedPestSvg } from './visualAssets.ts';
 /**
  * DOULA AGRI-MANAGER - MODULE INGÉNIEUR AGRONOME
  * Moteur de Recommandation Phytosanitaire & Gestion de la Résistance (IRAC / FRAC)
@@ -541,12 +540,67 @@ export function resolvePhytoImageUrl(url?: string): string | undefined {
 }
 
 /**
- * Associe chaque bioagresseur à son illustration visuelle locale de référence (Niveau 1 Offline-First).
- * Garantit qu'aucune image brisée ne s'affiche jamais.
+ * Associe chaque bioagresseur à sa véritable photographie de terrain (100% photo réelle).
+ * Fini les schémas 3D / SVG : chargement instantané de vraies photos en verger.
  */
+export const REAL_PEST_PHOTOS_MAP: Record<string, string> = {
+  // Nectarine / Pêche
+  nec_cloque: 'assets/phyto/photos/nec_cloque.jpg',
+  nec_chancre_bacterien: 'assets/phyto/photos/oli_bacteriose.jpg',
+  nec_cochenille_blanche: 'assets/phyto/photos/oli_cochenille.jpg',
+  nec_coryneum: 'assets/phyto/photos/nec_coryneum.jpg',
+  nec_tetranyque_tisserand: 'assets/phyto/photos/pom_acariens.jpg',
+  nec_monilia_fleur: 'assets/phyto/photos/nec_monilia.jpg',
+  nec_monilia_fruit: 'assets/phyto/photos/nec_monilia.jpg',
+  nec_thrips: 'assets/phyto/photos/nec_thrips.jpg',
+  nec_oidium: 'assets/phyto/photos/nec_oidium.jpg',
+  nec_puceron_vert: 'assets/phyto/photos/pom_pucerons.jpg',
+  nec_tordeuse_orientale: 'assets/phyto/photos/nec_tordeuse.jpg',
+  nec_rouille: 'assets/phyto/photos/nec_coryneum.jpg',
+  nec_petite_mineuse: 'assets/phyto/photos/pom_mineuse.jpg',
+  nec_ceratite: 'assets/phyto/photos/nec_ceratite.jpg',
+
+  // Pommier
+  pom_tavelure: 'assets/phyto/photos/pom_tavelure.jpg',
+  pom_feu_bacterien: 'assets/phyto/photos/pom_feu_bacterien.jpg',
+  pom_carpocapse: 'assets/phyto/photos/pom_carpocapse.jpg',
+  pom_puceron_cendre: 'assets/phyto/photos/pom_pucerons.jpg',
+  pom_puceron_lanigere: 'assets/phyto/photos/pom_pucerons.jpg',
+  pom_oidium: 'assets/phyto/photos/pom_oidium.jpg',
+  pom_acarien_rouge: 'assets/phyto/photos/pom_acarien_rouge.jpg',
+  pom_psylle: 'assets/phyto/photos/pom_psylle.jpg',
+  pom_mineuse: 'assets/phyto/photos/pom_mineuse.jpg',
+  pom_pou_san_jose: 'assets/phyto/photos/pom_pou_san_jose.jpg',
+  pom_botrytis: 'assets/phyto/photos/pom_botrytis.jpg',
+  pom_zeuzere: 'assets/phyto/photos/pom_zeuzere.jpg',
+  pom_aleurode: 'assets/phyto/photos/pom_aleurode.jpg',
+  pom_tordeuse: 'assets/phyto/photos/pom_tordeuse.jpg',
+
+  // Olivier
+  oli_oeil_paon: 'assets/phyto/photos/oli_oeil_paon.jpg',
+  oli_tuberculose: 'assets/phyto/photos/oli_bacteriose.jpg',
+  oli_psylle: 'assets/phyto/photos/oli_psylle.jpg',
+  oli_teigne: 'assets/phyto/photos/oli_teigne.jpg',
+  oli_mouche: 'assets/phyto/photos/oli_mouche.jpg',
+  oli_anthracnose: 'assets/phyto/photos/oli_anthracnose.jpg',
+  oli_cochenille_noire: 'assets/phyto/photos/oli_cochenille.jpg',
+  oli_thrips: 'assets/phyto/photos/oli_thrips.jpg',
+  oli_limaces: 'assets/phyto/photos/oli_limaces.jpg',
+};
+
 export function getPestVisualAsset(pest: { id: string; category?: string; primarySampleUrl?: string }): string {
-  if (pest.primarySampleUrl && pest.primarySampleUrl.startsWith('data:')) {
-    return pest.primarySampleUrl;
+  // 1. Si une URL locale spécifique existe et n'est pas un SVG
+  if (pest.primarySampleUrl && !pest.primarySampleUrl.endsWith('.svg') && !pest.primarySampleUrl.startsWith('data:image/svg')) {
+    const resolved = resolvePhytoImageUrl(pest.primarySampleUrl);
+    if (resolved) return resolved;
   }
-  return getEmbeddedPestSvg(pest.id, pest.category);
+  // 2. Priorité absolue aux vraies photographies de terrain
+  const realPhoto = REAL_PEST_PHOTOS_MAP[pest.id];
+  if (realPhoto) {
+    const resolved = resolvePhytoImageUrl(realPhoto);
+    if (resolved) return resolved;
+  }
+  // 3. Fallback photographique propre
+  const defaultPhoto = resolvePhytoImageUrl('assets/phyto/photos/pom_tavelure.jpg');
+  return defaultPhoto || '';
 }

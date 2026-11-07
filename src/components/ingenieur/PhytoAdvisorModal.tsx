@@ -217,9 +217,29 @@ export function PhytoAdvisorModal({
   }, [recos, modulePhytoRecords, currentCrop, selectedPestId]);
 
   // Bioagresseurs éligibles au stade phénologique sélectionné
+  const [pestCategoryFilter, setPestCategoryFilter] = useState<'all' | 'insectes' | 'maladies'>('all');
+
   const eligiblePests = useMemo(() => {
     return PhytosanitaryEngine.getEligiblePests(PEST_TARGETS_DATABASE, currentCrop, selectedStage);
   }, [currentCrop, selectedStage]);
+
+  const countInsectes = useMemo(() => {
+    return eligiblePests.filter(p => p.category === 'insecte' || p.category === 'acarien').length;
+  }, [eligiblePests]);
+
+  const countMaladies = useMemo(() => {
+    return eligiblePests.filter(p => p.category === 'champignon' || p.category === 'bacterie').length;
+  }, [eligiblePests]);
+
+  const displayedPests = useMemo(() => {
+    if (pestCategoryFilter === 'insectes') {
+      return eligiblePests.filter(p => p.category === 'insecte' || p.category === 'acarien');
+    }
+    if (pestCategoryFilter === 'maladies') {
+      return eligiblePests.filter(p => p.category === 'champignon' || p.category === 'bacterie');
+    }
+    return eligiblePests;
+  }, [eligiblePests, pestCategoryFilter]);
 
   // Si aucun bioagresseur sélectionné, sélectionner le premier par défaut
   const activePest = useMemo(() => {
@@ -387,77 +407,120 @@ export function PhytoAdvisorModal({
                 </div>
               </div>
 
-              {/* ÉTAPE 2 : CHOIX DU BIOAGRESSEUR ÉLIGIBLE */}
+              {/* ÉTAPE 2 : CHOIX DU BIOAGRESSEUR ÉLIGIBLE (AVEC VRAIES PHOTOS DE TERRAIN & ONGLETS INSECTES / MALADIES) */}
               <div className="border rounded-2xl p-4 bg-muted/20 space-y-3">
-                <label className="font-black text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                  <span>2️⃣</span> {isAr ? "الآفة أو المرض الملاحظ في هذا الطور" : "Bioagresseur / Maladie détecté(e)"}
-                  <span className="text-[10px] font-normal lowercase text-muted-foreground">
-                    ({eligiblePests.length} {isAr ? "محتمل" : "observable(s)"})
-                  </span>
-                </label>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-1 border-b">
+                  <label className="font-black text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <span>2️⃣</span> {isAr ? "الآفة أو المرض الملاحظ في هذا الطور" : "Bioagresseur / Maladie détecté(e)"}
+                    <span className="text-[10px] font-normal lowercase text-muted-foreground">
+                      ({eligiblePests.length} {isAr ? "محتمل" : "observable(s)"})
+                    </span>
+                  </label>
 
-                {eligiblePests.length === 0 ? (
-                  <p className="text-center py-4 text-muted-foreground italic">
+                  {/* Onglets de filtrage : Tout / Insectes / Maladies */}
+                  <div className="flex items-center gap-1.5 bg-background/80 p-1 rounded-xl border">
+                    <button
+                      type="button"
+                      onClick={() => setPestCategoryFilter('all')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        pestCategoryFilter === 'all'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      }`}
+                    >
+                      {isAr ? `الكل ${eligiblePests.length}` : `Tout ${eligiblePests.length}`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPestCategoryFilter('insectes')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        pestCategoryFilter === 'insectes'
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      }`}
+                    >
+                      {isAr ? `حشرات ${countInsectes}` : `Insectes ${countInsectes}`}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPestCategoryFilter('maladies')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        pestCategoryFilter === 'maladies'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      }`}
+                    >
+                      {isAr ? `أمراض ${countMaladies}` : `Maladies ${countMaladies}`}
+                    </button>
+                  </div>
+                </div>
+
+                {displayedPests.length === 0 ? (
+                  <p className="text-center py-6 text-muted-foreground italic text-xs">
                     {isAr
-                      ? "لا توجد آفات وبائية رئيسية مسجلة في هذا الطور الفينولوجي."
-                      : "Aucun bioagresseur majeur recensé pour ce stade végétatif."}
+                      ? "لا توجد آفات مطابقة لهذا التصنيف في هذا الطور الفينولوجي."
+                      : "Aucun bioagresseur dans cette catégorie pour ce stade végétatif."}
                   </p>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                    {eligiblePests.map((pest) => {
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {displayedPests.map((pest) => {
                       const isSelected = activePest?.id === pest.id;
-                      const catColor =
-                        pest.category === 'champignon'
-                          ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30'
-                          : pest.category === 'insecte'
-                          ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30'
-                          : pest.category === 'bacterie'
-                          ? 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30'
-                          : 'bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30';
+                      const isInsect = pest.category === 'insecte' || pest.category === 'acarien';
 
                       return (
                         <div
                           key={pest.id}
                           onClick={() => setSelectedPestId(pest.id)}
-                          className={`cursor-pointer rounded-xl border p-2.5 transition-all relative ${
+                          className={`group cursor-pointer rounded-2xl border overflow-hidden transition-all duration-200 bg-card hover:shadow-md flex flex-col justify-between ${
                             isSelected
-                              ? "border-primary bg-primary/10 shadow-xs ring-2 ring-primary/20"
-                              : "border-input bg-background hover:bg-muted/40"
+                              ? "border-primary ring-2 ring-primary/40 shadow-md scale-101 bg-primary/5"
+                              : "border-input hover:border-primary/50 hover:bg-muted/30"
                           }`}
                         >
-                          <div className="flex items-start justify-between gap-1.5">
-                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${catColor}`}>
-                              {pest.category}
+                          {/* Image réelle de terrain */}
+                          <div className="relative h-28 sm:h-32 w-full bg-muted/60 overflow-hidden">
+                            <img
+                              src={getPestVisualAsset(pest)}
+                              alt={pest.nameScientific}
+                              className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                              loading="lazy"
+                            />
+
+                            {/* Badge catégorie (Insecte en rouge, Maladie en orange) */}
+                            <span className={`absolute top-2 left-2 text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-sm backdrop-blur-xs text-white ${
+                              isInsect ? 'bg-rose-600/90' : 'bg-amber-600/90'
+                            }`}>
+                              {isInsect ? (isAr ? "حشرة" : "Insecte") : (isAr ? "مرض" : "Maladie")}
                             </span>
-                            <div className="flex items-center gap-1">
-                              {/* Bouton d'accès rapide galerie visuelle 3 niveaux */}
+
+                            {/* Actions / Sélection en haut à droite */}
+                            <div className="absolute top-2 right-2 flex items-center gap-1">
                               <button
                                 type="button"
-                                title={isAr ? "معاينة صور الأعراض (3 مستويات)" : "Voir photos des symptômes"}
+                                title={isAr ? "معاينة الفحص الميداني الكامل" : "Agrandir & diagnostic complet"}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setGalleryPest(pest);
                                 }}
-                                className="p-1 rounded-lg bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
+                                className="p-1.5 rounded-full bg-black/50 hover:bg-black/75 text-white backdrop-blur-xs transition-colors shadow-xs"
                               >
-                                <Camera className="h-3.5 w-3.5" />
+                                <Camera className="h-3 w-3" />
                               </button>
-                              {isSelected && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
+                              {isSelected && (
+                                <div className="p-1 rounded-full bg-primary text-primary-foreground shadow-xs">
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                </div>
+                              )}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 mt-2">
-                            <img
-                              src={getPestVisualAsset(pest)}
-                              alt={pest.nameScientific}
-                              className="h-10 w-10 rounded-lg object-cover border shrink-0 bg-muted/40 shadow-xs"
-                              loading="lazy"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <p className="font-black text-xs leading-snug truncate">
+                          {/* Libellé de la fiche */}
+                          <div className="p-2.5 flex-1 flex flex-col justify-between">
+                            <div>
+                              <p className="font-bold text-xs sm:text-sm leading-snug line-clamp-2 text-foreground">
                                 {isAr ? pest.nameAr : pest.nameFr}
                               </p>
-                              <p className="text-[10px] text-muted-foreground italic truncate">
+                              <p className="text-[10px] text-muted-foreground italic font-serif truncate mt-0.5">
                                 {pest.nameScientific}
                               </p>
                             </div>

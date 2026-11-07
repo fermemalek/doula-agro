@@ -540,13 +540,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_cuivre_bouillie', 'ing_oxychlorure_cuivre', 'ing_captane', 'ing_difenoconazole'],
     descriptionFr: 'Feuilles cloquées, épaissies, déformées et rougeâtres dès le débourrement. Traitement fondamental en dormance et gonflement.',
     descriptionAr: 'انتفاخ وتشوه الأوراق وتلونها باللون الأحمر السميك مع بداية انطلاق العصارة في الربيع.',
-    primarySampleUrl: 'assets/phyto/cloque.svg',
+    primarySampleUrl: 'assets/phyto/photos/nec_cloque.jpg',
     symptomOrgans: [
       {
         organ: 'feuille',
         organFr: 'Feuillage',
         organAr: 'الأوراق',
-        imageUrl: 'assets/phyto/cloque.svg',
+        imageUrl: 'assets/phyto/photos/nec_cloque.jpg',
         descriptionFr: 'Boursouflures spectaculaires, épaississement charnu et décoloration rose à rouge-vif dès le débourrement.',
         descriptionAr: 'انتفاخ وتجعد شديد مع سماكة ملمس الأوراق وتلونها باللون الأحمر أو الوردي الفاقع ثم سقوطها المبكر.'
       },
@@ -570,13 +570,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_cuivre_bouillie', 'ing_oxychlorure_cuivre'],
     descriptionFr: 'Écoulement abondant de gomme le long des branches, chancres aplatis et mortalité brutale des rameaux.',
     descriptionAr: 'خروج صمغ كثيف على الأغصان مع تقرحات عميقة وموت مفاجئ للأفرع في الشتاء والربيع.',
-    primarySampleUrl: 'assets/phyto/tuberculose.svg',
+    primarySampleUrl: 'assets/phyto/photos/oli_bacteriose.jpg',
     symptomOrgans: [
       {
         organ: 'rameau',
         organFr: 'Écorce & Charpentières',
         organAr: 'اللحاء والأغصان الرئيسية',
-        imageUrl: 'assets/phyto/tuberculose.svg',
+        imageUrl: 'assets/phyto/photos/oli_bacteriose.jpg',
         descriptionFr: 'Chancres allongés et déprimés avec suintement abondant de gomme ambrée.',
         descriptionAr: 'تقرحات طولية غائرة في اللحاء مع إفرازات صمغية كثيفة على الفروع والجذع.'
       },
@@ -600,7 +600,7 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_huile_minerale', 'ing_spirotetramat', 'ing_acetamipride'],
     descriptionFr: 'Manchons blancs feutrés recouvrant le tronc et les charpentières, dessèchement des branches sous forte attaque.',
     descriptionAr: 'تراكم قشور بيضاء قطنية تغطي الجذع والأغصان الرئيسية تسبب جفاف وضعف الشجرة.',
-    primarySampleUrl: 'assets/phyto/cochenille.svg',
+    primarySampleUrl: 'assets/phyto/photos/oli_cochenille.jpg',
   },
   {
     id: 'nec_coryneum',
@@ -613,13 +613,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_cuivre_bouillie', 'ing_captane', 'ing_boscalid_pyraclo', 'ing_difenoconazole'],
     descriptionFr: 'Petites taches circulaires brunes se détachant du limbe en laissant des perforations (criblure). Taches en relief sur fruits.',
     descriptionAr: 'بقع بنية دائرية تسقط تاركة ثقوباً تشبه طلقات الرصاص في الأوراق وبقع بارزة على الثمار.',
-    primarySampleUrl: 'assets/phyto/coryneum.svg',
+    primarySampleUrl: 'assets/phyto/photos/nec_coryneum.jpg',
     symptomOrgans: [
       {
         organ: 'feuille',
         organFr: 'Feuillage (Criblure)',
         organAr: 'الأوراق (التثقب)',
-        imageUrl: 'assets/phyto/coryneum.svg',
+        imageUrl: 'assets/phyto/photos/nec_coryneum.jpg',
         descriptionFr: 'Petites ponctuations rouges virant au brun dont le centre se détache (aspect de coup de fusil).',
         descriptionAr: 'بقع بنية دائرية يتساقط مركزها مخلفة ثقوباً تشبه طلقات الرصاص في الأوراق.'
       },
@@ -643,7 +643,7 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_abamectine', 'ing_spiromesifene', 'ing_huile_minerale'],
     descriptionFr: 'Décoloration grisâtre/plombée des feuilles, fines toiles soyeuses sous la face inférieure par temps chaud et sec.',
     descriptionAr: 'تبرقش واصفرار رمادي للأوراق مع خيوط عنكبوتية دقيقة في الجو الحار الجاف.',
-    primarySampleUrl: 'assets/phyto/acarien.svg',
+    primarySampleUrl: 'assets/phyto/photos/pom_acariens.jpg',
   },
   {
     id: 'nec_monilia_fleur',
@@ -656,13 +656,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_boscalid_pyraclo', 'ing_tebuconazole', 'ing_fluopyram_tebu', 'ing_fenhexamid', 'ing_captane'],
     descriptionFr: 'Flétrissement brutal et dessèchement des bouquets floraux restant collés aux rameaux avec exsudats gommeux.',
     descriptionAr: 'ذبول وجفاف سريع للأزهار تظل معلقة على الأغصان مع إفرازات صمغية واضحة.',
-    primarySampleUrl: 'assets/phyto/moniliose.svg',
+    primarySampleUrl: 'assets/phyto/photos/nec_monilia.jpg',
     symptomOrgans: [
       {
         organ: 'fleur',
         organFr: 'Bouquets floraux',
         organAr: 'الأزهار والبتلات',
-        imageUrl: 'assets/phyto/moniliose.svg',
+        imageUrl: 'assets/phyto/photos/nec_monilia.jpg',
         descriptionFr: 'Brunissement et dessèchement soudain des pétales qui restent fixés au bois.',
         descriptionAr: 'ذبول وتيبس مفاجئ للأزهار مع اسودادها وبقائها ملتصقة بالغصن مع سيلان صمغي.'
       },
@@ -686,6 +686,7 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_spinosad', 'ing_acetamipride', 'ing_deltamethrine'],
     descriptionFr: 'Piqûres sur ovaires et jeunes fruits provoquant des marbrures liégeuses, déformations et argentures indélébiles.',
     descriptionAr: 'لسع حبات الثمار الصغيرة مسبباً تشوهات وتشطيبات فلينية فضية تفقد الثمرة قيمتها التجارية.',
+    primarySampleUrl: 'assets/phyto/photos/nec_thrips.jpg',
   },
   {
     id: 'nec_oidium',
@@ -698,13 +699,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_soufre_mouillable', 'ing_penconazole', 'ing_tebuconazole', 'ing_tebu_trifloxy', 'ing_boscalid_pyraclo'],
     descriptionFr: 'Feutrage blanc farineux sur jeunes pousses, gaufrage des feuilles et taches blanches cireuses sur nectarines.',
     descriptionAr: 'غبار أبيض دقيقي يكسو النموات الحديثة والأوراق مع بقع مبيضة على قشرة الثمار.',
-    primarySampleUrl: 'assets/phyto/oidium.svg',
+    primarySampleUrl: 'assets/phyto/photos/nec_oidium.jpg',
     symptomOrgans: [
       {
         organ: 'feuille',
         organFr: 'Feuilles & Pousses',
         organAr: 'الأوراق والقمم النامية',
-        imageUrl: 'assets/phyto/oidium.svg',
+        imageUrl: 'assets/phyto/photos/nec_oidium.jpg',
         descriptionFr: 'Poussière blanche farineuse recouvrant la face supérieure avec recroquevillement du limbe.',
         descriptionAr: 'مسحوق أبيض طحيني يغطي النموات الفتية مع التفاف حواف الأوراق وتوقف نموها.'
       },
@@ -1089,7 +1090,7 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_huile_minerale', 'ing_spirotetramat', 'ing_acetamipride'],
     descriptionFr: 'Boucliers noirs hémisphériques portant un relief en forme de H, abondant miellat provoquant une intense fumagine.',
     descriptionAr: 'حشرات قشرية سوداء متصلبة تحمل نقش حرف H على ظهرها، تفرز ندوة عسلية تسبب سواد الفحم على الأغصان.',
-    primarySampleUrl: 'assets/phyto/cochenille.svg',
+    primarySampleUrl: 'assets/phyto/photos/oli_cochenille.jpg',
   }
 ];
 

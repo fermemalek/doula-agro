@@ -142,9 +142,10 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
   const localDefaultAsset = getPestVisualAsset(pest);
   const activeOrgan = organs[selectedOrganIndex] || organs[0];
 
-  // URL de l'image actuelle à afficher (priorité à l'image d'organe ou échantillon, puis fallback sur SVG local)
+  // URL de l'image actuelle à afficher (priorité à la photo réelle de terrain)
   const candidateUrl = activeOrgan.imageUrl || pest.primarySampleUrl;
-  const currentImageUrl = (!imgError && candidateUrl)
+  const isSvgOrVector = candidateUrl && (candidateUrl.endsWith('.svg') || candidateUrl.startsWith('data:image/svg'));
+  const currentImageUrl = (!imgError && candidateUrl && !isSvgOrVector)
     ? resolvePhytoImageUrl(candidateUrl)
     : localDefaultAsset;
 
@@ -285,24 +286,11 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
                   loading="lazy"
                 />
 
-                {/* Badge d'identification du type d'image (Réelle vs Schéma) */}
+                {/* Badge d'identification du type d'image (100% Photo réelle de terrain) */}
                 <div className="absolute top-3 left-3">
-                  <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5 ${
-                    isRealPhotoUrl
-                      ? "bg-emerald-600/90 text-white border border-emerald-400/40"
-                      : "bg-slate-900/80 text-amber-200 border border-amber-300/30"
-                  }`}>
-                    {isRealPhotoUrl ? (
-                      <>
-                        <Camera className="h-3 w-3" />
-                        <span>{isAr ? "صورة فوتوغرافية حقيقية" : "Photo réelle de terrain"}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Layers className="h-3 w-3" />
-                        <span>{isAr ? "رسم سريري (أوفلاين)" : "Schéma clinique de repérage"}</span>
-                      </>
-                    )}
+                  <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5 bg-emerald-600/95 text-white border border-emerald-400/50">
+                    <Camera className="h-3.5 w-3.5" />
+                    <span>{isAr ? "صورة فوتوغرافية حقيقية" : "Photo réelle de terrain"}</span>
                   </span>
                 </div>
 
