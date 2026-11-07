@@ -81,3 +81,10 @@ L'application **Doula Agro** (anciennement nommée Farm Friendy) est une platefo
 
 
 - **Suppression optimiste et synchro cloud immédiate** : Correction de `remove` et `create` dans `src/lib/cloud/recommendations.ts` pour appliquer une suppression/création immédiate dans le cache UI (`qc.setQueryData`) et directement dans la base Supabase sans attendre la file d'attente hors-ligne.
+
+- **Moteur Phytosanitaire IRAC/FRAC & Système Visuel Hybride 3 Niveaux** :
+  - **8 Stades Phénologiques Normalisés** : `السكون الشتوي`, `انتفاخ البراعم (الزهرة الخضراء)`, `التزهير`, `سقوط البتلات والعقد`, `نمو الثمار`, `النضج قبل الحصاد`, `بعد الحصاد`, `تساقط الأوراق` avec affichage complet non tronqué.
+  - **Approche Visuelle Hybride en 3 Niveaux pour les Bioagresseurs** :
+    - *Niveau 1 (Offline-First)* : Mini-vignettes représentatives légères intégrées directement sur les fiches de sélection.
+    - *Niveau 2 (In-App)* : Boîte de dialogue détaillée `PestVisualGalleryDialog` avec décomposition des symptômes par organe touché (Feuille, Fruit, Rameaux, Fleurs) et descriptions cliniques bilingues (FR/AR).
+    - *Niveau 3 (Recherche Web Directe Fallback)* : Bouton de recherche automatique Google Images ciblant le binôme scientifique en latin (`disease.nameScientific`) pour une précision agronomique absolue sans ambiguïté linguistique.

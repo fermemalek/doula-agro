@@ -22,8 +22,10 @@ import {
   ListFilter,
   Check,
   Search,
-  Droplet
+  Droplet,
+  Camera
 } from 'lucide-react';
+import { PestVisualGalleryDialog } from './PestVisualGalleryDialog';
 import { useTranslation } from '@/lib/i18n';
 import {
   CropType,
@@ -76,6 +78,7 @@ export function PhytoAdvisorModal({
   const [selectedStage, setSelectedStage] = useState<GrowthStage>('floraison');
   const [selectedPestId, setSelectedPestId] = useState<string | null>(null);
   const [pressureLevel, setPressureLevel] = useState<'legere' | 'moyenne' | 'forte'>('moyenne');
+  const [galleryPest, setGalleryPest] = useState<PestTarget | null>(null);
 
   // État du calculateur de cuve
   const [tankVolume, setTankVolume] = useState<number>(1000);
@@ -321,49 +324,92 @@ export function PhytoAdvisorModal({
                       const isSelected = activePest?.id === pest.id;
                       const catColor =
                         pest.category === 'champignon'
-                          ? 'bg-amber-500/10 text-amber-700 border-amber-500/30'
+                          ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30'
                           : pest.category === 'insecte'
-                          ? 'bg-rose-500/10 text-rose-700 border-rose-500/30'
+                          ? 'bg-rose-500/10 text-rose-700 dark:text-rose-400 border-rose-500/30'
                           : pest.category === 'bacterie'
-                          ? 'bg-red-500/10 text-red-700 border-red-500/30'
-                          : 'bg-violet-500/10 text-violet-700 border-violet-500/30';
+                          ? 'bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/30'
+                          : 'bg-violet-500/10 text-violet-700 dark:text-violet-400 border-violet-500/30';
 
                       return (
                         <div
                           key={pest.id}
                           onClick={() => setSelectedPestId(pest.id)}
-                          className={`cursor-pointer rounded-xl border p-3 transition-all ${
+                          className={`cursor-pointer rounded-xl border p-2.5 transition-all relative ${
                             isSelected
                               ? "border-primary bg-primary/10 shadow-xs ring-2 ring-primary/20"
                               : "border-input bg-background hover:bg-muted/40"
                           }`}
                         >
-                          <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-start justify-between gap-1.5">
                             <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${catColor}`}>
                               {pest.category}
                             </span>
-                            {isSelected && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
+                            <div className="flex items-center gap-1">
+                              {/* Bouton d'accès rapide galerie visuelle 3 niveaux */}
+                              <button
+                                type="button"
+                                title={isAr ? "معاينة صور الأعراض (3 مستويات)" : "Voir photos des symptômes"}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setGalleryPest(pest);
+                                }}
+                                className="p-1 rounded-lg bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary transition-colors"
+                              >
+                                <Camera className="h-3.5 w-3.5" />
+                              </button>
+                              {isSelected && <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />}
+                            </div>
                           </div>
-                          <p className="font-black text-xs mt-1.5 leading-snug">
-                            {isAr ? pest.nameAr : pest.nameFr}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground italic mt-0.5">
-                            {pest.nameScientific}
-                          </p>
+
+                          <div className="flex items-center gap-2 mt-2">
+                            {pest.primarySampleUrl ? (
+                              <img
+                                src={pest.primarySampleUrl}
+                                alt={pest.nameScientific}
+                                className="h-10 w-10 rounded-lg object-cover border shrink-0 bg-muted/40"
+                                loading="lazy"
+                              />
+                            ) : null}
+                            <div className="min-w-0 flex-1">
+                              <p className="font-black text-xs leading-snug truncate">
+                                {isAr ? pest.nameAr : pest.nameFr}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground italic truncate">
+                                {pest.nameScientific}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
 
-                {/* Fiche descriptive du bioagresseur sélectionné */}
+                {/* Fiche descriptive du bioagresseur sélectionné avec bouton galerie visuelle */}
                 {activePest && (
-                  <div className="p-3 rounded-xl bg-background border flex items-start gap-2.5 text-muted-foreground">
-                    <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                    <p className="text-[11px] leading-relaxed">
-                      <strong className="text-foreground">{isAr ? "الأعراض والتشخيص : " : "Symptômes & Diagnostic : "}</strong>
-                      {isAr ? activePest.descriptionAr : activePest.descriptionFr}
-                    </p>
+                  <div className="p-3.5 rounded-xl bg-background border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-muted-foreground shadow-xs">
+                    <div className="flex items-start gap-2.5">
+                      <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-[11px] leading-relaxed">
+                          <strong className="text-foreground">{isAr ? "الأعراض والتشخيص : " : "Symptômes & Diagnostic : "}</strong>
+                          {isAr ? activePest.descriptionAr : activePest.descriptionFr}
+                        </p>
+                        <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-mono mt-0.5">
+                          {activePest.nameScientific}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setGalleryPest(activePest)}
+                      className="shrink-0 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl border border-primary/40 bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs transition-all shadow-xs"
+                    >
+                      <Camera className="h-4 w-4" />
+                      <span>{isAr ? "معاينة الأعراض (3 مستويات)" : "Galerie visuelle & Diagnostic"}</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -672,6 +718,17 @@ export function PhytoAdvisorModal({
           </div>
         </div>
       </DialogContent>
+
+      {/* Modale de la galerie visuelle hybride en 3 niveaux */}
+      <PestVisualGalleryDialog
+        pest={galleryPest}
+        open={!!galleryPest}
+        onOpenChange={(op) => !op && setGalleryPest(null)}
+        onConfirmSelection={(id) => {
+          setSelectedPestId(id);
+          setGalleryPest(null);
+        }}
+      />
     </Dialog>
   );
 }

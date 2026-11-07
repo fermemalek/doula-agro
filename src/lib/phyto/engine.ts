@@ -43,6 +43,15 @@ export interface ActiveIngredient {
   isMultiSite?: boolean; // Contact multi-site (immunité anti-résistance)
 }
 
+export interface SymptomOrganSample {
+  organ: 'feuille' | 'fruit' | 'fleur' | 'rameau' | 'racine' | 'general';
+  organFr: string;
+  organAr: string;
+  imageUrl?: string;
+  descriptionFr?: string;
+  descriptionAr?: string;
+}
+
 export interface PestTarget {
   id: string;
   nameScientific: string;
@@ -54,6 +63,10 @@ export interface PestTarget {
   compatibleActiveIngredients: string[]; // IDs des matières actives
   descriptionFr?: string;
   descriptionAr?: string;
+  // Système visuel hybride en 3 niveaux
+  primarySampleUrl?: string; // Niveau 1 : vignette locale / représentative
+  referenceGallery?: string[]; // Niveau 2 : galerie d'images complémentaires
+  symptomOrgans?: SymptomOrganSample[]; // Niveau 2 : détails des dégâts par organe
 }
 
 export interface CommercialProductDZ {
