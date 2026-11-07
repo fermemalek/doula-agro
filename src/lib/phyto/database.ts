@@ -1,4 +1,4 @@
-import { ActiveIngredient, PestTarget, GrowthStage, CropType, CommercialProductDZ } from './engine';
+import { ActiveIngredient, PestTarget, GrowthStage, CropType, CommercialProductDZ } from './engine.ts';
 
 // ==========================================
 // 1. STADES PHÉNOLOGIQUES CLÉS (FR & AR)
@@ -302,7 +302,7 @@ export const ACTIVE_INGREDIENTS_DATABASE: ActiveIngredient[] = [
     standardDosePerHa: '1.2 L/ha',
     maxApplicationsPerSeason: 2,
     formulation: 'SC',
-    systemicType: 'contact',
+    systemicType: 'translaminaire',
   },
   {
     id: 'ing_fosetyl_al',
@@ -788,10 +788,10 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
   {
     id: 'nec_monilia_fruit',
     nameScientific: 'Monilinia fructicola / laxa',
-    nameFr: 'Moniliose des fruits en pré-récolte',
+    nameFr: 'Moniliose des fruits (Pourriture brune)',
     nameAr: 'العفن البني للثمار قبل الجني',
     category: 'champignon',
-    applicableStages: ['maturation'],
+    applicableStages: ['grossissement_fruit', 'maturation'],
     crops: ['nectarine', 'peche'],
     compatibleActiveIngredients: ['ing_fenhexamid', 'ing_boscalid_pyraclo', 'ing_tebuconazole', 'ing_fluopyram_tebu'],
     descriptionFr: 'Taches rondes brunes s’étendant rapidement avec coussinets de spores en cercles concentriques. Momification.',

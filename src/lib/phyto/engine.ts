@@ -1,4 +1,4 @@
-import { getEmbeddedPestSvg } from './visualAssets';
+import { getEmbeddedPestSvg } from './visualAssets.ts';
 /**
  * DOULA AGRI-MANAGER - MODULE INGÉNIEUR AGRONOME
  * Moteur de Recommandation Phytosanitaire & Gestion de la Résistance (IRAC / FRAC)
@@ -309,14 +309,28 @@ export class PhytosanitaryEngine {
       let priorityScore = 100;
       const isMultiSite = ingredient.isMultiSite || PhytosanitaryEngine.isMultiSiteGroup(ingredient.codeGroup);
 
-      // Codes associés à tester (gestion des mélanges multi-modes, ex: Signum FRAC 7+11)
-      const ingredientCodes = ingredient.multiCodes && ingredient.multiCodes.length > 0
+      // Normalisation des codes FRAC/IRAC (ex: "FRAC 3", "3", "FRAC 7 + FRAC 3" -> ["7", "3"])
+      const extractNormalizedCodes = (codesList: string[]): string[] => {
+        const out: string[] = [];
+        for (const raw of codesList) {
+          if (!raw) continue;
+          const parts = raw.split('+').map(p => p.replace(/^(FRAC|IRAC)s*/i, '').trim().toUpperCase());
+          for (const p of parts) {
+            if (p && !out.includes(p)) out.push(p);
+          }
+        }
+        return out;
+      };
+
+      const rawIngCodes = ingredient.multiCodes && ingredient.multiCodes.length > 0
         ? ingredient.multiCodes
         : [ingredient.codeGroup];
+      const ingredientCodes = extractNormalizedCodes(rawIngCodes);
 
-      const lastAppCodes = lastApplication?.multiCodes && lastApplication.multiCodes.length > 0
+      const rawLastCodes = lastApplication?.multiCodes && lastApplication.multiCodes.length > 0
         ? lastApplication.multiCodes
         : lastApplication?.codeGroup ? [lastApplication.codeGroup] : [];
+      const lastAppCodes = extractNormalizedCodes(rawLastCodes);
 
       // Vérifier si un des codes concorde avec le dernier traitement
       const hasDirectCodeConflict = ingredientCodes.some(c => lastAppCodes.includes(c));
