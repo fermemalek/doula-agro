@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -53,6 +53,7 @@ import {
 } from '@/lib/phyto/database';
 import { useAllModuleRecords } from '@/lib/modules-store';
 import { useRecommendations } from '@/lib/cloud/recommendations';
+import { getRainForecast48h, RainForecast48h } from '@/lib/weather-forecast';
 
 interface PhytoAdvisorModalProps {
   open: boolean;
@@ -90,6 +91,31 @@ export function PhytoAdvisorModal({
 
   // Arbre de décision agronomique : Contact vs Systémique vs Translaminaire
   const [isRainExpectedSoon, setIsRainExpectedSoon] = useState<boolean>(false);
+  const [rainForecast, setRainForecast] = useState<RainForecast48h | null>(null);
+  const [isLoadingRain, setIsLoadingRain] = useState<boolean>(false);
+
+  // Synchronisation automatique via météo en direct (ferme Doula Agro) :
+  // Si les prévisions météo annoncent >= 20 mm sous 48h, l'option est activée automatiquement.
+  useEffect(() => {
+    if (!open) return;
+    let isMounted = true;
+    setIsLoadingRain(true);
+    getRainForecast48h()
+      .then((data) => {
+        if (!isMounted || !data) return;
+        setRainForecast(data);
+        // Activation automatique selon les données réelles de la station météo
+        setIsRainExpectedSoon(data.isContaminatingRain);
+      })
+      .catch((err) => console.warn('Erreur détection météo 48h:', err))
+      .finally(() => {
+        if (isMounted) setIsLoadingRain(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open]);
   const [hasVisibleSymptoms, setHasVisibleSymptoms] = useState<boolean>(false);
   const [isRapidShootsGrowth, setIsRapidShootsGrowth] = useState<boolean>(
     selectedStage === 'gonflement_bourgeons' || selectedStage === 'floraison' || selectedStage === 'chute_petales_nouaison' || selectedStage === 'grossissement_fruit'
@@ -512,24 +538,53 @@ export function PhytoAdvisorModal({
 
                   {/* Les 4 bascules de terrain */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
-                    {/* Bascule 1 : Pluie imminente */}
+                    {/* Bascule 1 : Pluie imminente (Synchronisée automatiquement avec la météo de la ferme) */}
                     <button
                       type="button"
                       onClick={() => setIsRainExpectedSoon(!isRainExpectedSoon)}
-                      className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
+                      className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2.5 relative group ${
                         isRainExpectedSoon
                           ? 'bg-sky-500/15 border-sky-500 text-sky-900 dark:text-sky-200 ring-1 ring-sky-500'
                           : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
                       }`}
+                      title={isAr ? "انقر للتبديل يدوياً إذا رغبت في تجربة سيناريو آخر" : "Cliquer pour forcer ou modifier manuellement"}
                     >
-                      <CloudRain className={`h-4 w-4 shrink-0 mt-0.5 ${isRainExpectedSoon ? 'text-sky-600' : 'text-muted-foreground'}`} />
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold leading-tight">
-                          {isAr ? "أمطار مرتقبة (> 20 ملم)" : "Pluie contaminatrice"}
-                        </p>
+                      <CloudRain className={`h-4 w-4 shrink-0 mt-0.5 ${isRainExpectedSoon ? 'text-sky-600 animate-bounce' : 'text-muted-foreground'}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <p className="text-[11px] font-bold leading-tight">
+                            {isAr ? "أمطار مرتقبة (> 20 ملم)" : "Pluie contaminatrice"}
+                          </p>
+                          {/* Badge de précipitation 48h */}
+                          {rainForecast !== null && (
+                            <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-mono font-bold leading-none ${
+                              rainForecast.isContaminatingRain
+                                ? 'bg-sky-500 text-white'
+                                : 'bg-muted text-muted-foreground'
+                            }`}>
+                              {rainForecast.totalMm} mm
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[9px] opacity-80 mt-0.5">
                           {isAr ? "خطر غسيل المبيد السطحي" : "> 20 mm sous 48h (délavage)"}
                         </p>
+                        {/* Indicateur d'automatisation météo */}
+                        <div className="mt-1 flex items-center gap-1 text-[8px]">
+                          {isLoadingRain ? (
+                            <span className="text-muted-foreground italic flex items-center gap-1">
+                              <span className="animate-spin inline-block">⏳</span> {isAr ? "فحص الطقس..." : "Lecture météo..."}
+                            </span>
+                          ) : rainForecast ? (
+                            <span className={rainForecast.isContaminatingRain ? "text-sky-700 dark:text-sky-300 font-semibold" : "text-muted-foreground"}>
+                              ⚡ {isAr ? "مكتشف آلياً" : "Détection auto"} : {rainForecast.totalMm} mm / 48h
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground opacity-60">
+                              {isAr ? "تحديد يدوي" : "Mode manuel"}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </button>
 
