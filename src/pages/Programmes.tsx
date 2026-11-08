@@ -127,6 +127,7 @@ function ProgrammesPage() {
   const products = useProducts();
   const { update: updateProduct, add: addProduct } = useProductActions();
   const purchases = useSuppliers();
+  const suppliers = purchases;
   const { addPurchase, updatePurchase, deletePurchase, deleteAllPurchases } = useSupplierActions();
 
   if (role !== "admin") {
