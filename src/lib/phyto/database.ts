@@ -600,7 +600,7 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_huile_minerale', 'ing_spirotetramat', 'ing_acetamipride'],
     descriptionFr: 'Manchons blancs feutrés recouvrant le tronc et les charpentières, dessèchement des branches sous forte attaque.',
     descriptionAr: 'تراكم قشور بيضاء قطنية تغطي الجذع والأغصان الرئيسية تسبب جفاف وضعف الشجرة.',
-    primarySampleUrl: 'assets/phyto/photos/oli_cochenille.jpg',
+    primarySampleUrl: 'assets/phyto/photos/nec_cochenille_blanche.jpg',
   },
   {
     id: 'nec_coryneum',

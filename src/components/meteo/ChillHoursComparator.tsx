@@ -20,13 +20,17 @@ import {
   Clock,
   ShieldAlert,
   Sprout,
-  Save
+  Save,
+  Pencil,
+  Trash2,
+  CalendarCheck
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import {
   VARIETIES_CATALOG,
   recordSeasonPhenology,
+  deleteSeasonPhenology,
   computePruningToBloomDays,
   type VarietyProfile,
   type PhenologyRecord,
@@ -82,7 +86,14 @@ function loadSavedCatalog(): VarietyProfile[] {
             ...(found.phenologyReference || {}),
           },
           campaignHistory: Array.isArray(found.campaignHistory) && found.campaignHistory.length > 0
-            ? found.campaignHistory
+            ? found.campaignHistory.map((ch: PhenologyRecord) => {
+                const def = v.campaignHistory.find((dh) => dh.year === ch.year);
+                return {
+                  ...def,
+                  ...ch,
+                  harvestStartDate: ch.harvestStartDate || def?.harvestStartDate,
+                };
+              })
             : v.campaignHistory,
         };
       });
@@ -105,8 +116,9 @@ export function ChillHoursComparator() {
   // Vue accordéon pour les détails phénologiques de chaque variété
   const [expandedVarietyId, setExpandedVarietyId] = useState<string | null>("nec_nablara");
 
-  // Modal d'ajout d'observation phénologique
+  // Modal d'ajout ou de modification d'observation phénologique
   const [editingVariety, setEditingVariety] = useState<VarietyProfile | null>(null);
+  const [editingRecord, setEditingRecord] = useState<PhenologyRecord | null>(null);
   const [newRecordYear, setNewRecordYear] = useState<number>(new Date().getFullYear());
   const [newPruningDate, setNewPruningDate] = useState<string>("");
   const [newBloomStartDate, setNewBloomStartDate] = useState<string>("");
@@ -124,14 +136,14 @@ export function ChillHoursComparator() {
     setGeneralSettings(settings);
     try {
       localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(settings));
-    } catch {}
+    } catch { }
   };
 
   const saveCatalog = (newCat: VarietyProfile[]) => {
     setCatalog(newCat);
     try {
       localStorage.setItem(STORAGE_CATALOG_KEY, JSON.stringify(newCat));
-    } catch {}
+    } catch { }
   };
 
   // ========================================================
@@ -246,20 +258,34 @@ export function ChillHoursComparator() {
       return toast.error("Veuillez renseigner au moins une date de taille ou de début de floraison.");
     }
 
+    const yr = Number(newRecordYear) || new Date().getFullYear();
+
     const record: PhenologyRecord = {
-      year: Number(newRecordYear) || new Date().getFullYear(),
+      year: yr,
       pruningDate: newPruningDate,
       bloomStartDate: newBloomStartDate,
       harvestStartDate: newHarvestDate || undefined,
-      accumulatedHoursAtBloom: weinbergerHours > 0 ? weinbergerHours : undefined,
-      accumulatedUtahAtBloom: utahUnits > 0 ? utahUnits : undefined,
+      accumulatedHoursAtBloom: editingRecord?.accumulatedHoursAtBloom || (weinbergerHours > 0 ? weinbergerHours : undefined),
+      accumulatedUtahAtBloom: editingRecord?.accumulatedUtahAtBloom || (utahUnits > 0 ? utahUnits : undefined),
       notes: newRecordNotes.trim() || undefined,
     };
 
-    const updated = recordSeasonPhenology(catalog, editingVariety.id, record);
+    let baseCat = catalog;
+    if (editingRecord && editingRecord.year !== yr) {
+      baseCat = deleteSeasonPhenology(baseCat, editingVariety.id, editingRecord.year);
+    }
+
+    const updated = recordSeasonPhenology(baseCat, editingVariety.id, record);
     saveCatalog(updated);
-    toast.success(isAr ? "تم حفظ تسجيل الملاحظة الفينولوجية بنجاح" : "Observation phénologique enregistrée avec succès !");
+    toast.success(
+      isAr
+        ? "تم حفظ تسجيل الملاحظة الفينولوجية بنجاح"
+        : editingRecord
+        ? "Observation phénologique mise à jour avec succès !"
+        : "Observation phénologique enregistrée avec succès !"
+    );
     setEditingVariety(null);
+    setEditingRecord(null);
     setNewPruningDate("");
     setNewBloomStartDate("");
     setNewHarvestDate("");
@@ -331,11 +357,10 @@ export function ChillHoursComparator() {
           <button
             type="button"
             onClick={() => setShowConfig(!showConfig)}
-            className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-bold transition active:scale-95 ${
-              showConfig
+            className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-bold transition active:scale-95 ${showConfig
                 ? "bg-primary text-primary-foreground shadow-xs"
                 : "border bg-muted/60 text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             <Settings className="h-3.5 w-3.5" />
             <span>{showConfig ? (isAr ? "إغلاق ✕" : "Fermer ✕") : (isAr ? "الإعدادات ⚙️" : "Paramètres ⚙️")}</span>
@@ -542,8 +567,8 @@ export function ChillHoursComparator() {
                     ? "تؤدي ساعات النهار المشمسة والدافئة إلى إضعاف فعالية البرودة المتراكمة ليلاً. نموذج يوتا يعكس بشكل أصدق مرحلة السكون الفسيولوجي للأشجار في ضيعتنا مقارنة بالعد الخام البسيط."
                     : "Les journées chaudes actuelles réduisent l'efficacité du froid accumulé la nuit. Le modèle Utah reflète plus fidèlement la dormance physiologique que le simple décompte brut."
                   : isAr
-                  ? "توافق ممتاز بين النموذجين : تبقى درجات الحرارة النهارية معتدلة وباردة مما يمنع إتلاف وتدمير وحدات البرودة المتراكمة."
-                  : "Bonne concordance entre les modèles : les températures diurnes restent suffisamment fraîches pour éviter la destruction des unités de froid."}
+                    ? "توافق ممتاز بين النموذجين : تبقى درجات الحرارة النهارية معتدلة وباردة مما يمنع إتلاف وتدمير وحدات البرودة المتراكمة."
+                    : "Bonne concordance entre les modèles : les températures diurnes restent suffisamment fraîches pour éviter la destruction des unités de froid."}
               </p>
             </div>
           </div>
@@ -619,9 +644,8 @@ export function ChillHoursComparator() {
                     </div>
                     <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          pctW >= 100 ? "bg-emerald-600" : "bg-emerald-500"
-                        }`}
+                        className={`h-full rounded-full transition-all duration-500 ${pctW >= 100 ? "bg-emerald-600" : "bg-emerald-500"
+                          }`}
                         style={{ width: `${pctW}%` }}
                       />
                     </div>
@@ -639,9 +663,8 @@ export function ChillHoursComparator() {
                     </div>
                     <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          pctU >= 100 ? "bg-sky-600" : "bg-sky-500"
-                        }`}
+                        className={`h-full rounded-full transition-all duration-500 ${pctU >= 100 ? "bg-sky-600" : "bg-sky-500"
+                          }`}
                         style={{ width: `${pctU}%` }}
                       />
                     </div>
@@ -740,19 +763,68 @@ export function ChillHoursComparator() {
                                     {h.accumulatedHoursAtBloom && (
                                       <span>Cumul réveil : <strong>{h.accumulatedHoursAtBloom} h</strong></span>
                                     )}
+
+                                    {/* Actions Modifier & Supprimer */}
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        title={isAr ? "تعديل الملاحظة" : "Modifier l'observation"}
+                                        onClick={() => {
+                                          setEditingVariety(variety);
+                                          setEditingRecord(h);
+                                          setNewRecordYear(h.year);
+                                          setNewPruningDate(h.pruningDate || "");
+                                          setNewBloomStartDate(h.bloomStartDate || "");
+                                          setNewHarvestDate(h.harvestStartDate || "");
+                                          setNewRecordNotes(h.notes || "");
+                                        }}
+                                        className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition"
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        title={isAr ? "حذف الملاحظة" : "Supprimer l'observation"}
+                                        onClick={() => {
+                                          if (
+                                            window.confirm(
+                                              isAr
+                                                ? `هل أنت متأكد من حذف ملاحظة سنة ${h.year}؟`
+                                                : `Voulez-vous vraiment supprimer l'observation de la campagne ${h.year} ?`
+                                            )
+                                          ) {
+                                            const updated = deleteSeasonPhenology(catalog, variety.id, h.year);
+                                            saveCatalog(updated);
+                                            toast.success(
+                                              isAr
+                                                ? "تم حذف الملاحظة بنجاح"
+                                                : "Observation de la campagne supprimée avec succès !"
+                                            );
+                                          }
+                                        }}
+                                        className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
                                   <div className="flex items-center gap-1.5 text-muted-foreground">
-                                    <Scissors className="h-3.5 w-3.5 text-muted-foreground" />
-                                    <span>Date de taille :</span>
+                                    <Scissors className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    <span>{isAr ? "تاريخ التقليم :" : "Date de taille :"}</span>
                                     <strong className="text-foreground">{h.pruningDate || "—"}</strong>
                                   </div>
                                   <div className="flex items-center gap-1.5 text-muted-foreground">
-                                    <Flower2 className="h-3.5 w-3.5 text-rose-500" />
-                                    <span>Début floraison :</span>
+                                    <Flower2 className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+                                    <span>{isAr ? "بداية التزهير :" : "Début floraison :"}</span>
                                     <strong className="text-foreground">{h.bloomStartDate || "—"}</strong>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                                    <CalendarCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                    <span>{isAr ? "تاريخ الجني :" : "Date de récolte :"}</span>
+                                    <strong className="text-foreground">{h.harvestStartDate || "—"}</strong>
                                   </div>
                                 </div>
 
@@ -784,16 +856,21 @@ export function ChillHoursComparator() {
                 <span className="text-xl">{editingVariety.icon}</span>
                 <div>
                   <h3 className="text-sm font-bold text-foreground">
-                    Nouvelle observation : {editingVariety.nameFr}
+                    {editingRecord
+                      ? (isAr ? `تعديل الملاحظة : ${editingVariety.nameAr || editingVariety.nameFr} (${newRecordYear})` : `Modifier l'observation : ${editingVariety.nameFr} (${newRecordYear})`)
+                      : (isAr ? `تسجيل ملاحظة جديدة : ${editingVariety.nameAr || editingVariety.nameFr}` : `Nouvelle observation : ${editingVariety.nameFr}`)}
                   </h3>
                   <p className="text-[10px] text-muted-foreground">
-                    Enrichissement de l'historique phénologique de la ferme
+                    {isAr ? "السجل التاريخي لسنوات الضيعة ومتابعة الأطوار الفينولوجية" : "Enrichissement de l'historique phénologique de la ferme"}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setEditingVariety(null)}
+                onClick={() => {
+                  setEditingVariety(null);
+                  setEditingRecord(null);
+                }}
                 className="rounded-lg p-1 text-muted-foreground hover:bg-muted"
               >
                 <X className="h-4 w-4" />
@@ -878,10 +955,13 @@ export function ChillHoursComparator() {
             <div className="flex justify-end gap-2 border-t pt-3">
               <button
                 type="button"
-                onClick={() => setEditingVariety(null)}
+                onClick={() => {
+                  setEditingVariety(null);
+                  setEditingRecord(null);
+                }}
                 className="rounded-xl border px-3 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted"
               >
-                Annuler
+                {isAr ? "إلغاء" : "Annuler"}
               </button>
               <button
                 type="button"
@@ -889,7 +969,11 @@ export function ChillHoursComparator() {
                 className="inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground px-4 py-1.5 text-xs font-bold active:scale-95 shadow-xs"
               >
                 <Save className="h-3.5 w-3.5" />
-                <span>Enregistrer observation</span>
+                <span>
+                  {editingRecord
+                    ? (isAr ? "تحديث الملاحظة 💾" : "Mettre à jour l'observation")
+                    : (isAr ? "حفظ الملاحظة 💾" : "Enregistrer observation")}
+                </span>
               </button>
             </div>
           </div>

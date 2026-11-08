@@ -69,6 +69,7 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
         year: 2026,
         pruningDate: '2026-01-25',
         bloomStartDate: '2026-02-11', // Constat réel : 17 jours après la taille
+        harvestStartDate: '2026-06-15',
         notes: 'Réveil très précoce. Débourrement homogène après cumul hivernal régulier.',
       },
     ],
@@ -100,6 +101,7 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
         year: 2026,
         pruningDate: '2026-01-25',
         bloomStartDate: '2026-02-18', // Constat réel : 24 jours après la taille
+        harvestStartDate: '2026-06-25',
         notes: 'Floraison intervenue 7 jours après Nablara, bonne nouaison.',
       },
     ],
@@ -131,6 +133,7 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
         year: 2026,
         pruningDate: '2026-01-30',
         bloomStartDate: '2026-03-25',
+        harvestStartDate: '2026-08-25',
         notes: 'Pleine floraison début avril, bonne vigueur sur bouquets.',
       },
     ],
@@ -162,6 +165,7 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
         year: 2026,
         pruningDate: '2026-02-10',
         bloomStartDate: '2026-05-05',
+        harvestStartDate: '2026-11-15',
         notes: 'Excellente induction florale, grappes denses.',
       },
     ],
@@ -217,3 +221,21 @@ export function recordSeasonPhenology(
     };
   });
 }
+
+/**
+ * Supprime l'observation d'une année pour une variété
+ */
+export function deleteSeasonPhenology(
+  catalog: VarietyProfile[],
+  varietyId: string,
+  year: number
+): VarietyProfile[] {
+  return catalog.map((variety) => {
+    if (variety.id !== varietyId) return variety;
+    return {
+      ...variety,
+      campaignHistory: variety.campaignHistory.filter((h) => h.year !== year),
+    };
+  });
+}
+
