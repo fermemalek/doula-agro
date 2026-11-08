@@ -36,7 +36,12 @@ async function lwwUpdate(params: {
   const isConflict =
     base_updated_at != null &&
     serverUpdatedAt != null &&
-    new Date(serverUpdatedAt).getTime() > new Date(base_updated_at).getTime();
+    new Date(serverUpdatedAt).getTime() > new Date(base_updated_at).getTime() &&
+    // N'est considéré comme conflit que si le patch apporte une réelle divergence par rapport au serveur
+    Object.entries(patch).some(([k, v]) => {
+      if (k === "updated_at") return false;
+      return JSON.stringify(serverSnapshot?.[k]) !== JSON.stringify(v);
+    });
 
   const { error } = await supabase
     .from(table as never)

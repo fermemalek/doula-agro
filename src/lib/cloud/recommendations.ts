@@ -184,8 +184,9 @@ export function useRecommendationActions() {
     });
 
     // 2. Direct update to Supabase for immediate cloud persistence
+    let directUpdated = false;
     try {
-      await supabase
+      const { error } = await supabase
         .from("recommendations")
         .update({
           status,
@@ -193,29 +194,32 @@ export function useRecommendationActions() {
           reviewed_at: reviewedAt,
         })
         .eq("id", id);
+      if (!error) directUpdated = true;
     } catch (err) {
       console.warn("Direct update to recommendations failed, offline sync will retry:", err);
     }
 
-    // 3. Enqueue offline op as fallback / sync tracking
-    const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
-    const cur = qc.getQueryData<Recommendation[]>(KEY)?.find((r) => r.id === id);
-    await enqueueOp({
-      op: "recommendation.update",
-      table: "recommendations",
-      record_id: id,
-      base_updated_at: cur?.updated_at ?? null,
-      payload: {
-        id,
+    // 3. Enqueue offline op ONLY if direct update failed (mode hors-ligne)
+    if (!directUpdated) {
+      const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
+      const cur = qc.getQueryData<Recommendation[]>(KEY)?.find((r) => r.id === id);
+      await enqueueOp({
+        op: "recommendation.update",
+        table: "recommendations",
+        record_id: id,
         base_updated_at: cur?.updated_at ?? null,
-        patch: {
-          status,
-          reviewed_by: u.user?.id ?? null,
-          reviewed_at: reviewedAt,
+        payload: {
+          id,
+          base_updated_at: cur?.updated_at ?? null,
+          patch: {
+            status,
+            reviewed_by: u.user?.id ?? null,
+            reviewed_at: reviewedAt,
+          },
         },
-      },
-    });
-    scheduleSync();
+      });
+      scheduleSync();
+    }
   };
 
   const accept = useMutation({

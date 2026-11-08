@@ -200,17 +200,31 @@ export function debitProductStock(productName: string, quantityToDebit: number) 
   
   persist();
 
-  // Envoi des mises à jour à Supabase
+  // Envoi des mises à jour à Supabase (directement si en ligne, sinon file hors-ligne)
   for (const item of updatedPurchases) {
-    void enqueueOp({
-      op: "purchase.update",
-      table: "supplier_purchases",
-      record_id: item.id,
-      payload: {
-        id: item.id,
-        patch: { consumed: item.consumed },
-      },
-    });
+    void (async () => {
+      let directDone = false;
+      try {
+        const { error } = await supabase
+          .from("supplier_purchases" as any)
+          .update({ consumed: item.consumed } as never)
+          .eq("id" as never, item.id as never);
+        if (!error) directDone = true;
+      } catch (err) {
+        console.warn("Direct purchase update failed:", err);
+      }
+      if (!directDone) {
+        void enqueueOp({
+          op: "purchase.update",
+          table: "supplier_purchases",
+          record_id: item.id,
+          payload: {
+            id: item.id,
+            patch: { consumed: item.consumed },
+          },
+        });
+      }
+    })();
   }
 }
 
@@ -224,12 +238,25 @@ export function useSupplierActions() {
     purchases.unshift(newPurchase);
     persist();
 
-    void enqueueOp({
-      op: "purchase.create",
-      table: "supplier_purchases",
-      client_id: newPurchase.id,
-      payload: mapToDb(newPurchase),
-    });
+    void (async () => {
+      let directDone = false;
+      try {
+        const { error } = await supabase
+          .from("supplier_purchases" as any)
+          .upsert(mapToDb(newPurchase) as never, { onConflict: "id" });
+        if (!error) directDone = true;
+      } catch (err) {
+        console.warn("Direct purchase upsert failed:", err);
+      }
+      if (!directDone) {
+        void enqueueOp({
+          op: "purchase.create",
+          table: "supplier_purchases",
+          client_id: newPurchase.id,
+          payload: mapToDb(newPurchase),
+        });
+      }
+    })();
   }, []);
 
   const updatePurchase = useCallback((id: string, patch: Partial<SupplierPurchase>) => {
@@ -239,15 +266,29 @@ export function useSupplierActions() {
       purchases[idx] = updated;
       persist();
 
-      void enqueueOp({
-        op: "purchase.update",
-        table: "supplier_purchases",
-        record_id: id,
-        payload: {
-          id,
-          patch: mapToDb(updated),
-        },
-      });
+      void (async () => {
+        let directDone = false;
+        try {
+          const { error } = await supabase
+            .from("supplier_purchases" as any)
+            .update(mapToDb(updated) as never)
+            .eq("id" as never, id as never);
+          if (!error) directDone = true;
+        } catch (err) {
+          console.warn("Direct purchase update failed:", err);
+        }
+        if (!directDone) {
+          void enqueueOp({
+            op: "purchase.update",
+            table: "supplier_purchases",
+            record_id: id,
+            payload: {
+              id,
+              patch: mapToDb(updated),
+            },
+          });
+        }
+      })();
     }
   }, []);
 
@@ -257,12 +298,26 @@ export function useSupplierActions() {
       purchases.splice(idx, 1);
       persist();
 
-      void enqueueOp({
-        op: "purchase.delete",
-        table: "supplier_purchases",
-        record_id: id,
-        payload: { id },
-      });
+      void (async () => {
+        let directDone = false;
+        try {
+          const { error } = await supabase
+            .from("supplier_purchases" as any)
+            .delete()
+            .eq("id" as never, id as never);
+          if (!error) directDone = true;
+        } catch (err) {
+          console.warn("Direct purchase delete failed:", err);
+        }
+        if (!directDone) {
+          void enqueueOp({
+            op: "purchase.delete",
+            table: "supplier_purchases",
+            record_id: id,
+            payload: { id },
+          });
+        }
+      })();
     }
   }, []);
 
