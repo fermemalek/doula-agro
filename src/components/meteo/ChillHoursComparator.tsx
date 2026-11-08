@@ -85,16 +85,25 @@ function loadSavedCatalog(): VarietyProfile[] {
             ...v.phenologyReference,
             ...(found.phenologyReference || {}),
           },
-          campaignHistory: Array.isArray(found.campaignHistory) && found.campaignHistory.length > 0
-            ? found.campaignHistory.map((ch: PhenologyRecord) => {
-                const def = v.campaignHistory.find((dh) => dh.year === ch.year);
-                return {
-                  ...def,
-                  ...ch,
-                  harvestStartDate: ch.harvestStartDate || def?.harvestStartDate,
-                };
-              })
-            : v.campaignHistory,
+          campaignHistory: (() => {
+            const savedHistory: PhenologyRecord[] = Array.isArray(found.campaignHistory) ? found.campaignHistory : [];
+            const savedYears = new Set(savedHistory.map((h) => h.year));
+            const merged: PhenologyRecord[] = savedHistory.map((ch: PhenologyRecord) => {
+              const def = v.campaignHistory.find((dh) => dh.year === ch.year);
+              return {
+                ...def,
+                ...ch,
+                harvestStartDate: ch.harvestStartDate || def?.harvestStartDate,
+              };
+            });
+            // Ajouter les années par défaut (ex: 2024, 2025) qui ne sont pas encore présentes dans le cache local
+            v.campaignHistory.forEach((dh) => {
+              if (!savedYears.has(dh.year)) {
+                merged.push(dh);
+              }
+            });
+            return merged.sort((a, b) => b.year - a.year);
+          })(),
         };
       });
     }
@@ -117,8 +126,19 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
   const [showConfig, setShowConfig] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Vue accordéon pour les détails phénologiques de chaque variété
-  const [expandedVarietyId, setExpandedVarietyId] = useState<string | null>("nec_nablara");
+  // Vue accordéon pour les détails phénologiques de chaque variété (toutes ouvertes par défaut pour ne rien masquer)
+  const [expandedVarietyIds, setExpandedVarietyIds] = useState<string[]>([
+    "nec_nablara",
+    "nec_redix25",
+    "pom_gala_one",
+    "oli_chemlal",
+  ]);
+
+  const toggleVarietyExpanded = (id: string) => {
+    setExpandedVarietyIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
 
   // Modal d'ajout ou de modification d'observation phénologique
   const [editingVariety, setEditingVariety] = useState<VarietyProfile | null>(null);
@@ -652,7 +672,7 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
             const reqU = variety.chillRequirements.utahUnits;
             const pctW = Math.min(100, Math.round((weinbergerHours / (reqW || 1)) * 100));
             const pctU = Math.min(100, Math.round((utahUnits / (reqU || 1)) * 100));
-            const isExpanded = expandedVarietyId === variety.id;
+            const isExpanded = expandedVarietyIds.includes(variety.id);
             const frostBadge = getFrostBadge(variety.phenologyReference.frostSensitivity);
 
             return (
@@ -677,16 +697,19 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border bg-primary/10 border-primary/20 text-primary text-[10px] font-bold px-2 py-0.5">
+                        📅 {variety.campaignHistory.length} {isAr ? "مواسم مسجلة" : "campagnes"}
+                      </span>
                       <span className={`rounded-full border text-[10px] font-bold px-2 py-0.5 ${frostBadge.tone}`}>
                         {frostBadge.label}
                       </span>
                       <button
                         type="button"
-                        onClick={() => setExpandedVarietyId(isExpanded ? null : variety.id)}
+                        onClick={() => toggleVarietyExpanded(variety.id)}
                         className="inline-flex items-center gap-1 rounded-xl border bg-muted/40 hover:bg-muted px-2.5 py-1 text-xs font-bold text-muted-foreground hover:text-foreground transition active:scale-95"
                       >
-                        <span>{isExpanded ? "Masquer détails" : "Historique & Fiche"}</span>
+                        <span>{isExpanded ? (isAr ? "إخفاء التفاصيل" : "Masquer détails") : (isAr ? "السجل والبطاقة" : "Historique & Fiche")}</span>
                         {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                       </button>
                     </div>
@@ -798,7 +821,7 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
                         </p>
                       ) : (
                         <div className="space-y-2">
-                          {variety.campaignHistory.map((h, hIdx) => {
+                          {[...variety.campaignHistory].sort((a, b) => b.year - a.year).map((h, hIdx) => {
                             const intervalDays = computePruningToBloomDays(h.pruningDate, h.bloomStartDate);
 
                             return (

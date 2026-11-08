@@ -72,6 +72,13 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
         harvestStartDate: '2026-06-15',
         notes: 'Réveil très précoce. Débourrement homogène après cumul hivernal régulier.',
       },
+      {
+        year: 2025,
+        pruningDate: '2025-01-28',
+        bloomStartDate: '2025-02-14',
+        harvestStartDate: '2025-06-18',
+        notes: 'Campagne 2025 : floraison précoce mi-février, débourrement vigoureux.',
+      },
     ],
   },
 
@@ -103,6 +110,13 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
         bloomStartDate: '2026-02-18', // Constat réel : 24 jours après la taille
         harvestStartDate: '2026-06-25',
         notes: 'Floraison intervenue 7 jours après Nablara, bonne nouaison.',
+      },
+      {
+        year: 2025,
+        pruningDate: '2025-01-28',
+        bloomStartDate: '2025-02-21',
+        harvestStartDate: '2025-06-28',
+        notes: 'Campagne 2025 : pleine floraison 3e semaine de février.',
       },
     ],
   },
@@ -136,6 +150,13 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
         harvestStartDate: '2026-08-25',
         notes: 'Pleine floraison début avril, bonne vigueur sur bouquets.',
       },
+      {
+        year: 2025,
+        pruningDate: '2025-02-05',
+        bloomStartDate: '2025-03-28',
+        harvestStartDate: '2025-08-28',
+        notes: 'Campagne 2025 : floraison homogène fin mars, bonne nouaison.',
+      },
     ],
   },
 
@@ -167,6 +188,20 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
         bloomStartDate: '2026-05-05',
         harvestStartDate: '2026-11-15',
         notes: 'Excellente induction florale, grappes denses.',
+      },
+      {
+        year: 2025,
+        pruningDate: '2025-02-12',
+        bloomStartDate: '2025-05-08',
+        harvestStartDate: '2025-11-20',
+        notes: 'Campagne 2025 : floraison début mai, récolte mi-novembre.',
+      },
+      {
+        year: 2024,
+        pruningDate: '2024-02-15',
+        bloomStartDate: '2024-05-10',
+        harvestStartDate: '2024-11-25',
+        notes: 'Campagne 2024 : bonne charge de fruits, récolte fin novembre.',
       },
     ],
   },
