@@ -53,6 +53,7 @@ import { toast } from "sonner";
 import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
 import { useProfilesMap } from "@/lib/cloud/alerts";
 import { RecommendationDetailDialog } from "@/components/RecommendationDetailDialog";
+import { PendingPrograms } from "@/components/home/PendingPrograms";
 import { StatsModule } from "@/components/stats/StatsModule";
 
 interface IrrRec {
@@ -496,6 +497,7 @@ function ProgrammesPage() {
 
   return (
     <ListPageShell title="Programmation & Agronomie">
+      {isAdmin && <PendingPrograms />}
 
       {/* Premium Segmented Controls Top Tabs */}
       {isAdmin && (
