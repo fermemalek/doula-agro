@@ -120,7 +120,7 @@ export function RecommendationForm({
   onOpenChange: (open: boolean) => void;
   recoToEdit?: Recommendation | null;
 }) {
-  const { create, update } = useRecommendationActions();
+  const { create, update, remove } = useRecommendationActions();
   const products = useProducts();
   const suppliers = useSuppliers();
   const { add: addProduct } = useProductActions();
@@ -1656,6 +1656,25 @@ export function RecommendationForm({
             >
               <Send className="h-4 w-4" /> {submitting ? t("gen.sending") : (recoToEdit ? t("reco.form.saveChanges") : t("reco.form.submit"))}
             </button>
+
+            {recoToEdit && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!window.confirm("Voulez-vous vraiment supprimer définitivement cette recommandation ?")) return;
+                  try {
+                    await remove.mutateAsync(recoToEdit.id);
+                    toast.success("Recommandation supprimée avec succès !");
+                    onOpenChange(false);
+                  } catch (e) {
+                    toast.error("Erreur lors de la suppression de la recommandation");
+                  }
+                }}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 px-4 text-sm font-bold uppercase active:scale-95 transition"
+              >
+                <Trash2 className="h-4 w-4" /> Supprimer cette recommandation
+              </button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

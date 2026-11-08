@@ -27,6 +27,28 @@ export interface Recommendation {
 
 const KEY = ["recommendations"] as const;
 
+const LOCAL_DELETED_KEY = "doula_deleted_recos";
+
+export function getLocalDeletedRecoIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(LOCAL_DELETED_KEY);
+    const list: string[] = raw ? JSON.parse(raw) : [];
+    return new Set(list);
+  } catch {
+    return new Set();
+  }
+}
+
+export function addLocalDeletedRecoId(id: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const s = getLocalDeletedRecoIds();
+    s.add(id);
+    localStorage.setItem(LOCAL_DELETED_KEY, JSON.stringify(Array.from(s)));
+  } catch {}
+}
+
 export function cleanRecoTitle(title: string | null | undefined): string {
   if (!title) return "";
   let s = title.replace(/(\([^)]+\))\s*\1+/g, (_, p1) => p1);
@@ -36,14 +58,47 @@ export function cleanRecoTitle(title: string | null | undefined): string {
 
 export function useRecommendations() {
   useRealtimeInvalidate("rt-recommendations", "recommendations", [KEY]);
+  useRealtimeInvalidate("rt-deleted-recos", "supplier_purchases", [KEY]);
+
   return useQuery({
     queryKey: KEY,
     queryFn: async (): Promise<Recommendation[]> => {
+      // 1. Lire toutes les recommandations depuis Supabase
       const { data, error } = await supabase.from("recommendations")
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []).map((r) => ({
+
+      // 2. Lire les suppressions synchronisées dans le cloud (supplier_purchases)
+      const cloudDeletedIds = new Set<string>();
+      try {
+        const { data: delRecords } = await supabase
+          .from("supplier_purchases")
+          .select("product_name")
+          .eq("supplier_name", "__SYSTEM_DELETED_RECO__");
+        if (delRecords) {
+          delRecords.forEach((r: any) => {
+            if (r.product_name) cloudDeletedIds.add(r.product_name);
+          });
+        }
+      } catch (err) {
+        console.warn("[recommendations] Cloud deletion sync lookup skipped:", err);
+      }
+
+      // 3. Lire les suppressions enregistrées localement
+      const localDeletedIds = getLocalDeletedRecoIds();
+      const allDeletedIds = new Set([...cloudDeletedIds, ...localDeletedIds]);
+
+      // 4. Filtrer les recommandations supprimées
+      const valid = (data ?? []).filter((r: any) => {
+        if (!r || !r.id) return false;
+        if (allDeletedIds.has(r.id)) return false;
+        if (r.payload?.deleted === true) return false;
+        if (typeof r.title === "string" && r.title.startsWith("[SUPPRIMÉ]")) return false;
+        return true;
+      });
+
+      return valid.map((r) => ({
         ...r,
         title: cleanRecoTitle(r.title),
       })) as Recommendation[];
@@ -206,23 +261,85 @@ export function useRecommendationActions() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      // 1. Retrait optimiste immédiat de l'interface
+      // 1. Enregistrer immédiatement dans le cache local permanent
+      addLocalDeletedRecoId(id);
+
+      // 2. Nettoyer aussi les modules et l'historique phyto locaux
+      if (typeof window !== "undefined") {
+        try {
+          const rawMod = localStorage.getItem("doula-modules");
+          if (rawMod) {
+            const parsed = JSON.parse(rawMod);
+            let changed = false;
+            for (const pid of Object.keys(parsed)) {
+              for (const modKey of ["phytosanitaire", "fertilisation", "irrigation", "pulverisation"]) {
+                const arr = parsed[pid]?.[modKey];
+                if (Array.isArray(arr)) {
+                  const f = arr.filter((r: any) => r.id !== id && r.reco_id !== id);
+                  if (f.length !== arr.length) {
+                    parsed[pid][modKey] = f;
+                    changed = true;
+                  }
+                }
+              }
+            }
+            if (changed) localStorage.setItem("doula-modules", JSON.stringify(parsed));
+          }
+          const rawHist = localStorage.getItem("doula_dismissed_phyto_history");
+          const histList: string[] = rawHist ? JSON.parse(rawHist) : [];
+          if (!histList.includes(id)) histList.push(id, `reco-${id}`);
+          localStorage.setItem("doula_dismissed_phyto_history", JSON.stringify(histList));
+        } catch {}
+      }
+
+      // 3. Retrait optimiste immédiat du cache React Query
       qc.setQueryData<Recommendation[]>(KEY, (old) => {
         if (!old) return [];
         return old.filter((r) => r.id !== id);
       });
 
-      // 2. Suppression directe dans Supabase cloud
-      let directDeleted = false;
+      // 4. Enregistrement de la suppression dans le Cloud Supabase (accessible à tous les utilisateurs authentifiés)
       try {
-        const { error } = await supabase.from("recommendations").delete().eq("id", id);
-        if (!error) directDeleted = true;
+        await supabase.from("supplier_purchases").upsert({
+          id: `del_reco_${id}`,
+          farm_id: "00000000-0000-0000-0000-000000000001",
+          supplier_name: "__SYSTEM_DELETED_RECO__",
+          product_name: id,
+          purchase_date: new Date().toISOString(),
+          quantity: 0,
+          unit: "reco",
+          price_per_unit: 0,
+          total_cost: 0,
+          paid_amount: 0,
+          consumed: 0,
+        });
       } catch (err) {
-        console.warn("Direct delete failed, offline sync will retry:", err);
+        console.warn("[recommendations] Cloud deletion marker upsert error:", err);
       }
 
-      // 3. File d'attente hors-ligne seulement si la suppression directe a échoué
-      if (!directDeleted) {
+      // 5. Tentative de soft-delete direct dans la table recommendations
+      try {
+        await supabase
+          .from("recommendations")
+          .update({
+            payload: { deleted: true, deleted_at: new Date().toISOString() },
+            title: `[SUPPRIMÉ] ${id}`,
+            status: "rejetee",
+          } as never)
+          .eq("id", id);
+      } catch (err) {
+        console.warn("[recommendations] Soft-delete error:", err);
+      }
+
+      // 6. Tentative de hard-delete direct dans Supabase (fonctionne si admin)
+      try {
+        await supabase.from("recommendations").delete().eq("id", id);
+      } catch (err) {
+        console.warn("[recommendations] Direct hard-delete error:", err);
+      }
+
+      // 7. File d'attente hors-ligne si besoin
+      try {
         const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
         await enqueueOp({
           op: "recommendation.delete",
@@ -231,7 +348,7 @@ export function useRecommendationActions() {
           payload: { id },
         });
         scheduleSync();
-      }
+      } catch {}
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });

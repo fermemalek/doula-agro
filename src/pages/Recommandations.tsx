@@ -1,6 +1,6 @@
 import { useNavigate } from "@/lib/router-compat";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Plus, Sprout, FlaskConical, AlertTriangle, SprayCan, Droplet } from "lucide-react";
+import { ArrowLeft, Plus, Sprout, FlaskConical, AlertTriangle, SprayCan, Droplet, Trash2 } from "lucide-react";
 import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
 import { useRole } from "@/lib/role";
 import { useDisplayRole } from "@/lib/display-role";
@@ -81,14 +81,14 @@ function RecommandationsPageContent() {
     setDeletingAll(true);
     try {
       toast.info("Suppression en cours...");
-      const idsToDelete = list.map((r) => r.id);
+      const itemsToDelete = [...list];
 
-      // Suppression optimiste directe de l'affichage
-      for (const r of list) {
+      // Suppression séquentielle garantie
+      for (const r of itemsToDelete) {
         await remove.mutateAsync(r.id);
       }
 
-      toast.success("Toutes les recommandations ont été supprimées !");
+      toast.success("Toutes les recommandations ont été supprimées avec succès !");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur lors de la suppression");
     } finally {
@@ -241,9 +241,30 @@ function RecommandationsPageContent() {
                     {r.created_at ? new Date(r.created_at).toLocaleString("fr-FR") : "—"}
                   </p>
                 </div>
-                <span className="shrink-0 rounded-full border bg-background/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase font-bold">
-                  {statusInfo.label}
-                </span>
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <span className="rounded-full border bg-background/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase font-bold">
+                    {statusInfo.label}
+                  </span>
+                  {(displayRole === "ingenieur" || displayRole === "admin") && (
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        if (!window.confirm(`Supprimer définitivement la recommandation "${r.title}" ?`)) return;
+                        try {
+                          await remove.mutateAsync(r.id);
+                          toast.success("Recommandation supprimée avec succès !");
+                        } catch {
+                          toast.error("Erreur lors de la suppression");
+                        }
+                      }}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive active:scale-90 transition"
+                      title="Supprimer cette recommandation"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
               </li>
             );
           })}

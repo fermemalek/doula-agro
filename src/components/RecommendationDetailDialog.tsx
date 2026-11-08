@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Droplet, Sprout, FlaskConical, Check, X, MapPin, Calendar, User, ShoppingCart, AlertTriangle, Repeat, CalendarDays, RefreshCw } from "lucide-react";
+import { Droplet, Sprout, FlaskConical, Check, X, MapPin, Calendar, User, ShoppingCart, AlertTriangle, Repeat, CalendarDays, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "@/lib/router-compat";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -260,7 +260,7 @@ export function RecommendationDetailDialog({
   };
 
   const { data: profiles = {} } = useProfilesMap();
-  const { accept, reject } = useRecommendationActions();
+  const { accept, reject, remove } = useRecommendationActions();
   const { add: addModuleRecord } = useModuleActions();
   const { setStatus } = useParcelActions();
   const { isAdmin } = useRole();
@@ -554,30 +554,48 @@ export function RecommendationDetailDialog({
           {isAdmin && (reco.status === "envoyee" || reco.status === "rejetee") && (
             <div className="space-y-4 border-t pt-3 mt-3">
               {!showPlanningPreview ? (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowPlanningPreview(true)}
-                    className="flex-1 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold uppercase text-primary-foreground active:scale-95 shadow-md"
-                  >
-                    <Check className="h-4 w-4" /> {reco.status === "rejetee" ? "Valider l'achat et Accepter" : "Accepter"}
-                  </button>
-                  {reco.status === "envoyee" && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
                     <button
-                      onClick={() =>
-                        reject.mutate(reco.id, {
-                          onSuccess: () => {
-                            toast.success("Recommandation mise en approvisionnement");
-                            onOpenChange(false);
-                          },
-                          onError: (e) => toast.error(e.message),
-                        })
-                      }
-                      disabled={accept.isPending || reject.isPending}
-                      className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 px-4 text-sm font-bold uppercase text-amber-600 active:scale-95 disabled:opacity-50"
+                      onClick={() => setShowPlanningPreview(true)}
+                      className="flex-1 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold uppercase text-primary-foreground active:scale-95 shadow-md"
                     >
-                      <X className="h-4 w-4" /> Approvisionnement
+                      <Check className="h-4 w-4" /> {reco.status === "rejetee" ? "Valider l'achat et Accepter" : "Accepter"}
                     </button>
-                  )}
+                    {reco.status === "envoyee" && (
+                      <button
+                        onClick={() =>
+                          reject.mutate(reco.id, {
+                            onSuccess: () => {
+                              toast.success("Recommandation mise en approvisionnement");
+                              onOpenChange(false);
+                            },
+                            onError: (e) => toast.error(e.message),
+                          })
+                        }
+                        disabled={accept.isPending || reject.isPending}
+                        className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 px-4 text-sm font-bold uppercase text-amber-600 active:scale-95 disabled:opacity-50"
+                      >
+                        <X className="h-4 w-4" /> Approvisionnement
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!window.confirm(`Supprimer définitivement la recommandation "${reco.title}" ?`)) return;
+                      try {
+                        await remove.mutateAsync(reco.id);
+                        toast.success("Recommandation supprimée avec succès !");
+                        onOpenChange(false);
+                      } catch {
+                        toast.error("Erreur lors de la suppression de la recommandation");
+                      }
+                    }}
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 px-4 text-xs font-bold uppercase active:scale-95 transition"
+                  >
+                    <Trash2 className="h-4 w-4" /> Supprimer cette recommandation
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-3 bg-muted/40 p-4 rounded-2xl border text-xs">
