@@ -1,6 +1,6 @@
 import { useNavigate } from "@/lib/router-compat";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Plus, Sprout, FlaskConical, AlertTriangle, SprayCan, Droplet, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Sprout, FlaskConical, AlertTriangle, SprayCan, Droplet, Trash2, CheckCircle2 } from "lucide-react";
 import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
 import { useRole } from "@/lib/role";
 import { useDisplayRole } from "@/lib/display-role";
@@ -9,10 +9,11 @@ import { RecommendationForm } from "@/components/ingenieur/RecommendationForm";
 import { RecommendationDetailDialog } from "@/components/RecommendationDetailDialog";
 import seededRecos from "@/data/seeded_recommendations.json";
 import { toast } from "sonner";
-import { useAllModuleRecords } from "@/lib/modules-store";
-import { useSuppliers } from "@/lib/suppliers-store";
-import { useParcels } from "@/lib/parcel-store";
+import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
+import { useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
+import { useParcels, useParcelActions } from "@/lib/parcel-store";
 import { checkRecoStock, getTargetParcelsForReco } from "@/lib/stock-alerts";
+import { validateRecommendationAndPurchases } from "@/lib/reco-validation";
 
 const STATUS_TONE: Record<Recommendation["status"], string> = {
   envoyee: "border-blue-500/30 bg-blue-500/5 text-blue-700",
@@ -40,7 +41,10 @@ function RecommandationsPageContent() {
   const [formOpen, setFormOpen] = useState(false);
   const [detail, setDetail] = useState<Recommendation | null>(null);
   const [editingReco, setEditingReco] = useState<Recommendation | null>(null);
-  const { create, remove } = useRecommendationActions();
+  const { create, remove, accept } = useRecommendationActions();
+  const { addPurchase } = useSupplierActions();
+  const { add: addModuleRecord } = useModuleActions();
+  const { setStatus: setParcelStatus } = useParcelActions();
   const [seeding, setSeeding] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
 
@@ -245,25 +249,68 @@ function RecommandationsPageContent() {
                   <span className="rounded-full border bg-background/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase font-bold">
                     {statusInfo.label}
                   </span>
-                  {(displayRole === "ingenieur" || displayRole === "admin") && (
-                    <button
-                      type="button"
-                      onClick={async (e) => {
-                        e.stopPropagation();
-                        if (!window.confirm(`Supprimer définitivement la recommandation "${r.title}" ?`)) return;
-                        try {
-                          await remove.mutateAsync(r.id);
-                          toast.success("Recommandation supprimée avec succès !");
-                        } catch {
-                          toast.error("Erreur lors de la suppression");
-                        }
-                      }}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive active:scale-90 transition"
-                      title="Supprimer cette recommandation"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {isPending && (displayRole === "ingenieur" || displayRole === "admin") && (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (
+                            !window.confirm(
+                              `Valider la recommandation "${r.title}" et enregistrer automatiquement les achats pour les produits requis ?`
+                            )
+                          )
+                            return;
+                          try {
+                            const res = await validateRecommendationAndPurchases({
+                              reco: r,
+                              parcels,
+                              suppliers,
+                              addPurchase,
+                              acceptReco: async (id) => accept.mutateAsync(id),
+                              addModuleRecord,
+                              setParcelStatus,
+                              options: {
+                                supplierName: "Achat Validé (Historique Ingénieur)",
+                                markAsExecutedIfPast: true,
+                              },
+                            });
+                            toast.success(
+                              `Recommandation et achats validés avec succès ! (${res.clonedCount} parcelles affectées${
+                                res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats créés` : ""
+                              }).`
+                            );
+                          } catch (err: any) {
+                            toast.error(err?.message || "Erreur lors de la validation");
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition"
+                        title="Valider la recommandation et ses achats"
+                      >
+                        <CheckCircle2 className="h-3 w-3" />
+                        <span>Valider Reco & Achats</span>
+                      </button>
+                    )}
+                    {(displayRole === "ingenieur" || displayRole === "admin") && (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!window.confirm(`Supprimer définitivement la recommandation "${r.title}" ?`)) return;
+                          try {
+                            await remove.mutateAsync(r.id);
+                            toast.success("Recommandation supprimée avec succès !");
+                          } catch {
+                            toast.error("Erreur lors de la suppression");
+                          }
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive active:scale-90 transition"
+                        title="Supprimer cette recommandation"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </li>
             );

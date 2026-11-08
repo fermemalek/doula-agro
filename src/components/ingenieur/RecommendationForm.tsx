@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Droplet, FlaskConical, SprayCan, Send, Camera, X, Plus, Trash2, Info, AlertTriangle, Sparkles } from "lucide-react";
+import { Droplet, FlaskConical, SprayCan, Send, Camera, X, Plus, Trash2, Info, AlertTriangle, Sparkles, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,10 @@ import { PhytoHistoryModal } from "@/components/ingenieur/PhytoHistoryModal";
 import { PhytoAdvisorModal } from "@/components/ingenieur/PhytoAdvisorModal";
 import { ACTIVE_INGREDIENTS_DATABASE } from "@/lib/phyto/database";
 import { History } from "lucide-react";
-import { useSuppliers } from "@/lib/suppliers-store";
+import { useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
+import { useModuleActions } from "@/lib/modules-store";
+import { useParcels } from "@/lib/parcel-store";
+import { validateRecommendationAndPurchases } from "@/lib/reco-validation";
 import { matchProductName } from "@/lib/stock-alerts";
 
 const getPhytoProductDetails = (pName: string, products: any[]) => {
@@ -120,9 +123,12 @@ export function RecommendationForm({
   onOpenChange: (open: boolean) => void;
   recoToEdit?: Recommendation | null;
 }) {
-  const { create, update, remove } = useRecommendationActions();
+  const { create, update, remove, accept } = useRecommendationActions();
   const products = useProducts();
   const suppliers = useSuppliers();
+  const parcels = useParcels();
+  const { addPurchase } = useSupplierActions();
+  const { add: addModuleRecord } = useModuleActions();
   const { add: addProduct } = useProductActions();
   const { t, lang } = useTranslation();
   const isAr = lang === "ar";
@@ -562,7 +568,7 @@ export function RecommendationForm({
     setPhyProducts(prev => prev.filter((_, i) => i !== idx));
   }
 
-  async function submit() {
+  async function submit(autoValidate = false) {
     if (!appDate) return toast.error("Date d'application requise");
     if (cropGroups.length === 0) return toast.error(t("reco.form.errorCropRequired"));
     if (selectedPrescriptions.length === 0) return toast.error(t("reco.form.errorPrescriptionRequired"));
@@ -667,10 +673,33 @@ export function RecommendationForm({
           payload: currentPayload,
           photo_urls: [...recoToEdit.photo_urls, ...photo_urls],
         });
-        toast.success(t("reco.form.successModified"));
+        if (autoValidate) {
+          const updatedReco: Recommendation = {
+            ...recoToEdit,
+            title: currentTitle,
+            payload: currentPayload,
+            status: "acceptee",
+          };
+          await validateRecommendationAndPurchases({
+            reco: updatedReco,
+            parcels,
+            suppliers,
+            addPurchase,
+            acceptReco: async (id) => accept.mutateAsync(id),
+            addModuleRecord,
+            options: {
+              supplierName: "Achat Validé (Historique Ingénieur)",
+              markAsExecutedIfPast: true,
+            },
+          });
+          toast.success("✅ Recommandation modifiée et validée avec succès ! Achats et stock mis à jour.");
+        } else {
+          toast.success(t("reco.form.successModified"));
+        }
       } else {
         const cropNames = cropGroups.map((g) => t(`crop.${g}`)).join(", ");
         const autoBaseTitle = `${cropNames} - ${appDate}`;
+        let totalCreatedPurchases = 0;
 
         for (const presc of selectedPrescriptions) {
           if (presc === "fert_irrigation") {
@@ -707,7 +736,7 @@ export function RecommendationForm({
                 }
               };
 
-              await create.mutateAsync({
+              const created = await create.mutateAsync({
                 kind: "fertilisation",
                 title: currentTitle,
                 comment: comment.trim() || `Recommandation agronomique pour les groupes ${cropGroups.join(", ")}`,
@@ -715,7 +744,24 @@ export function RecommendationForm({
                 payload: currentPayload,
                 photo_urls,
                 created_at: createdAtIso,
+                status: autoValidate ? "acceptee" : "envoyee",
               });
+
+              if (autoValidate && created) {
+                const res = await validateRecommendationAndPurchases({
+                  reco: created,
+                  parcels,
+                  suppliers,
+                  addPurchase,
+                  acceptReco: async (id) => accept.mutateAsync(id),
+                  addModuleRecord,
+                  options: {
+                    supplierName: "Achat Validé (Historique Ingénieur)",
+                    markAsExecutedIfPast: true,
+                  },
+                });
+                totalCreatedPurchases += res.createdPurchasesCount;
+              }
             }
           } else if (presc === "fert_pulverisation") {
             for (const passItem of pulvPassages) {
@@ -739,7 +785,7 @@ export function RecommendationForm({
                 }
               };
 
-              await create.mutateAsync({
+              const created = await create.mutateAsync({
                 kind: "fertilisation",
                 title: currentTitle,
                 comment: comment.trim() || `Recommandation agronomique pour les groupes ${cropGroups.join(", ")}`,
@@ -747,7 +793,24 @@ export function RecommendationForm({
                 payload: currentPayload,
                 photo_urls,
                 created_at: createdAtIso,
+                status: autoValidate ? "acceptee" : "envoyee",
               });
+
+              if (autoValidate && created) {
+                const res = await validateRecommendationAndPurchases({
+                  reco: created,
+                  parcels,
+                  suppliers,
+                  addPurchase,
+                  acceptReco: async (id) => accept.mutateAsync(id),
+                  addModuleRecord,
+                  options: {
+                    supplierName: "Achat Validé (Historique Ingénieur)",
+                    markAsExecutedIfPast: true,
+                  },
+                });
+                totalCreatedPurchases += res.createdPurchasesCount;
+              }
             }
           } else if (presc === "phytosanitaire") {
             for (const traitItem of phyPassages) {
@@ -770,7 +833,7 @@ export function RecommendationForm({
                 }
               };
 
-              await create.mutateAsync({
+              const created = await create.mutateAsync({
                 kind: "phytosanitaire",
                 title: currentTitle,
                 comment: comment.trim() || `Recommandation agronomique pour les groupes ${cropGroups.join(", ")}`,
@@ -778,11 +841,35 @@ export function RecommendationForm({
                 payload: currentPayload,
                 photo_urls,
                 created_at: createdAtIso,
+                status: autoValidate ? "acceptee" : "envoyee",
               });
+
+              if (autoValidate && created) {
+                const res = await validateRecommendationAndPurchases({
+                  reco: created,
+                  parcels,
+                  suppliers,
+                  addPurchase,
+                  acceptReco: async (id) => accept.mutateAsync(id),
+                  addModuleRecord,
+                  options: {
+                    supplierName: "Achat Validé (Historique Ingénieur)",
+                    markAsExecutedIfPast: true,
+                  },
+                });
+                totalCreatedPurchases += res.createdPurchasesCount;
+              }
             }
           }
         }
-        toast.success(t("reco.form.successSubmitted"));
+
+        if (autoValidate) {
+          toast.success(
+            `✅ Recommandation passée validée avec succès ! ${totalCreatedPurchases > 0 ? `${totalCreatedPurchases} achat(s) de produits créé(s) et ` : ""}programmes parcelles enregistrés.`
+          );
+        } else {
+          toast.success(t("reco.form.successSubmitted"));
+        }
       }
 
       reset();
@@ -1649,13 +1736,27 @@ export function RecommendationForm({
               )}
             </div>
 
-            <button
-              onClick={submit}
-              disabled={submitting}
-              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold uppercase text-primary-foreground active:scale-95 disabled:opacity-50 shadow-md"
-            >
-              <Send className="h-4 w-4" /> {submitting ? t("gen.sending") : (recoToEdit ? t("reco.form.saveChanges") : t("reco.form.submit"))}
-            </button>
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => submit(true)}
+                disabled={submitting}
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase active:scale-95 disabled:opacity-50 shadow-md transition"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span>{submitting ? "Validation en cours..." : "Valider Recommandation & Achats (Mois précédent)"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => submit(false)}
+                disabled={submitting}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold uppercase active:scale-95 disabled:opacity-50 transition"
+              >
+                <Send className="h-3.5 w-3.5" />
+                <span>{submitting ? t("gen.sending") : (recoToEdit ? t("reco.form.saveChanges") : `${t("reco.form.submit")} (En attente)`)}</span>
+              </button>
+            </div>
 
             {recoToEdit && (
               <button

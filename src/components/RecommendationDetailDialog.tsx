@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Droplet, Sprout, FlaskConical, Check, X, MapPin, Calendar, User, ShoppingCart, AlertTriangle, Repeat, CalendarDays, RefreshCw, Trash2 } from "lucide-react";
+import { Droplet, Sprout, FlaskConical, Check, X, MapPin, Calendar, User, ShoppingCart, AlertTriangle, Repeat, CalendarDays, RefreshCw, Trash2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "@/lib/router-compat";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,6 +15,7 @@ import { useModuleActions, useAllModuleRecords } from "@/lib/modules-store";
 import { debitProductStock, useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useTranslation } from "@/lib/i18n";
 import { checkRecoStock, computeScheduledDates, computePureIrrigationDates, getTargetParcelsForReco, type RecoProductStockItem } from "@/lib/stock-alerts";
+import { validateRecommendationAndPurchases } from "@/lib/reco-validation";
 
 const KIND_LABEL: Record<Recommendation["kind"], string> = {
   fertilisation: "Fertilisation",
@@ -555,12 +556,46 @@ export function RecommendationDetailDialog({
             <div className="space-y-4 border-t pt-3 mt-3">
               {!showPlanningPreview ? (
                 <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!window.confirm(`Valider directement cette recommandation et créer automatiquement les achats pour les produits requis ?`)) return;
+                      try {
+                        const res = await validateRecommendationAndPurchases({
+                          reco,
+                          parcels,
+                          suppliers,
+                          addPurchase,
+                          acceptReco: async (id) => accept.mutateAsync(id),
+                          addModuleRecord,
+                          setParcelStatus: setStatus,
+                          options: {
+                            supplierName: "Achat Validé (Historique Ingénieur)",
+                            markAsExecutedIfPast: true,
+                          },
+                        });
+                        toast.success(
+                          `Recommandation et achats validés avec succès ! (${res.clonedCount} tâches créées${
+                            res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats enregistrés` : ""
+                          }).`
+                        );
+                        onOpenChange(false);
+                      } catch (e: any) {
+                        toast.error(e?.message || "Erreur lors de la validation");
+                      }
+                    }}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-4 text-xs font-bold uppercase active:scale-95 shadow-md transition"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Valider Reco & Achats de Produits (Direct)</span>
+                  </button>
+
                   <div className="flex gap-2">
                     <button
                       onClick={() => setShowPlanningPreview(true)}
-                      className="flex-1 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold uppercase text-primary-foreground active:scale-95 shadow-md"
+                      className="flex-1 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-primary/10 border border-primary/30 text-primary hover:bg-primary/20 px-3 text-xs font-bold uppercase active:scale-95 transition"
                     >
-                      <Check className="h-4 w-4" /> {reco.status === "rejetee" ? "Valider l'achat et Accepter" : "Accepter"}
+                      <Check className="h-4 w-4" /> {reco.status === "rejetee" ? "Personnaliser planification" : "Planifier sur mesure"}
                     </button>
                     {reco.status === "envoyee" && (
                       <button
@@ -574,7 +609,7 @@ export function RecommendationDetailDialog({
                           })
                         }
                         disabled={accept.isPending || reject.isPending}
-                        className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 px-4 text-sm font-bold uppercase text-amber-600 active:scale-95 disabled:opacity-50"
+                        className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 px-3 text-xs font-bold uppercase text-amber-600 active:scale-95 disabled:opacity-50"
                       >
                         <X className="h-4 w-4" /> Approvisionnement
                       </button>

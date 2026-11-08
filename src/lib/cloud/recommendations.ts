@@ -114,6 +114,7 @@ export interface CreateRecommendationInput {
   payload?: Record<string, unknown>;
   photo_urls?: string[];
   created_at?: string;
+  status?: RecoStatus;
 }
 
 export function useRecommendationActions() {
@@ -132,6 +133,7 @@ export function useRecommendationActions() {
         parcel_ids: input.parcel_ids,
         payload: input.payload ?? {},
         photo_urls: input.photo_urls ?? [],
+        status: input.status || "envoyee",
         created_by: u.user.id,
         created_at: input.created_at || new Date().toISOString(),
       };
