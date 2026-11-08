@@ -392,7 +392,7 @@ export default function MeteoPage() {
             >
               <Sun className="h-6 w-6" />
             </span>
-            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
+            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
               {currentTemp.toFixed(1)}°C
             </span>
           </div>
@@ -426,7 +426,7 @@ export default function MeteoPage() {
             >
               <Snowflake className="h-6 w-6" />
             </span>
-            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300">
+            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 whitespace-nowrap shrink-0">
               {isAr ? "Weinberger vs Utah · 4 أصناف" : "Weinberger vs Utah · 4 Variétés"}
             </span>
           </div>
@@ -460,7 +460,7 @@ export default function MeteoPage() {
             >
               <Calendar className="h-6 w-6" />
             </span>
-            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 whitespace-nowrap shrink-0">
               {isAr ? "12 شهراً" : "12 Mois"}
             </span>
           </div>
