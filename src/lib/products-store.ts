@@ -30,15 +30,15 @@ function persist() {
 }
 
 export function useProducts(): FertilizerProduct[] {
-  const [, setTick] = useState(0);
+  const [data, setData] = useState<FertilizerProduct[]>(() => [...currentProducts]);
   useEffect(() => {
-    const fn = () => setTick((t) => t + 1);
+    const fn = () => setData([...currentProducts]);
     listeners.add(fn);
     return () => {
       listeners.delete(fn);
     };
   }, []);
-  return currentProducts;
+  return data;
 }
 
 export function useProductActions() {

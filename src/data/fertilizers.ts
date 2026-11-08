@@ -1,11 +1,13 @@
 export interface FertilizerProduct {
   name: string;
   type: string;
-  solubility: number; // g/L or 5000 for liquid acids/liquids
+  solubility: number; // g/L or 5000 for liquid acids/liquids (or DAR in days for phytos)
   time: number; // agitation time in minutes
   note: string; // terrain note / safety rule
   price: number; // DA
   unit: "kg" | "litres";
+  matiereActive?: string; // Matière active (Français)
+  matiereActiveAr?: string; // المادة الفعالة (العربية)
 }
 
 export const FERTILIZER_DATABASE: FertilizerProduct[] = [
@@ -219,6 +221,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Calypso",
     type: "Phytosanitaire",
+    matiereActive: "Thiaclopride",
+    matiereActiveAr: "ثياكلوبريد",
     solubility: 14.0,
     time: 0,
     note: "Insecticide systémique (Pucerons, Carpocapse du pommier)",
@@ -228,6 +232,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Sivento",
     type: "Phytosanitaire",
+    matiereActive: "Flupyradifurone",
+    matiereActiveAr: "فلوبيراديفورون",
     solubility: 14.0,
     time: 0,
     note: "Excellente systémie (Pucerons, Aleurodes)",
@@ -237,6 +243,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Verlan",
     type: "Phytosanitaire",
+    matiereActive: "Abamectine",
+    matiereActiveAr: "أبامكتين",
     solubility: 14.0,
     time: 0,
     note: "Action translaminaire (Acariens, Mineuses)",
@@ -246,6 +254,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Bellis",
     type: "Phytosanitaire",
+    matiereActive: "Boscalide + Pyraclostrobine",
+    matiereActiveAr: "بوسكاليد + بيراكلوستروبين",
     solubility: 14.0,
     time: 0,
     note: "Spécifique arbres à noyau (Coryneum du nectarinier, Oïdium)",
@@ -255,6 +265,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Erlan",
     type: "Phytosanitaire",
+    matiereActive: "Acétamipride",
+    matiereActiveAr: "أسيتامبريد",
     solubility: 14.0,
     time: 0,
     note: "Insectes piqueurs-suceurs",
@@ -264,6 +276,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Sherpa 25 EC",
     type: "Phytosanitaire",
+    matiereActive: "Cyperméthrine",
+    matiereActiveAr: "سيبيرمثرين",
     solubility: 14.0,
     time: 0,
     note: "Effet de choc par contact (Psylle de l'olivier, Noctuelles)",
@@ -273,6 +287,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Decis Expert",
     type: "Phytosanitaire",
+    matiereActive: "Deltaméthrine",
+    matiereActiveAr: "دلتامثرين",
     solubility: 7.0,
     time: 0,
     note: "Large spectre, action foudroyante",
@@ -282,6 +298,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Acetaplan",
     type: "Phytosanitaire",
+    matiereActive: "Acétamipride",
+    matiereActiveAr: "أسيتامبريد",
     solubility: 14.0,
     time: 0,
     note: "Insecticide systémiques",
@@ -291,6 +309,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Amistar",
     type: "Phytosanitaire",
+    matiereActive: "Azoxystrobine",
+    matiereActiveAr: "أزوكسيستروبين",
     solubility: 14.0,
     time: 0,
     note: "Fongicide préventif large spectre",
@@ -300,6 +320,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Azostar 325SC",
     type: "Phytosanitaire",
+    matiereActive: "Azoxystrobine + Difénoconazole",
+    matiereActiveAr: "أزوكسيستروبين + ديفينوكونازول",
     solubility: 14.0,
     time: 0,
     note: "Double action (Tavelure du pommier, Oïdium)",
@@ -309,6 +331,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Zorro",
     type: "Phytosanitaire",
+    matiereActive: "Abamectine",
+    matiereActiveAr: "أبامكتين",
     solubility: 14.0,
     time: 0,
     note: "Acaricide de référence (Acariens rouges)",
@@ -318,6 +342,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Fosetyl Aluminium",
     type: "Phytosanitaire",
+    matiereActive: "Fosétyl-Aluminium",
+    matiereActiveAr: "فوسيتيل الألومنيوم",
     solubility: 14.0,
     time: 0,
     note: "Systémie ascendante/descendante (Phytophthora, Mildiou)",
@@ -327,6 +353,8 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Luna",
     type: "Phytosanitaire",
+    matiereActive: "Fluopyram + Tébuconazole",
+    matiereActiveAr: "فلوبيرام + تيبوكونازول",
     solubility: 14.0,
     time: 0,
     note: "Très haute efficacité (Monilia, Tavelure, Oïdium)",

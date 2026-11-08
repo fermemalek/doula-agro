@@ -15,7 +15,7 @@ import {
 } from "@/lib/cloud/recommendations";
 import { FERTILIZER_DATABASE } from "@/data/fertilizers";
 import { useProducts, useProductActions } from "@/lib/products-store";
-import { PHYTO_DATABASE } from "@/data/phytosanitaires";
+import { PHYTO_DATABASE, getMatiereActive, getMatiereActiveAr } from "@/data/phytosanitaires";
 import { useTranslation } from "@/lib/i18n";
 import { PhytoHistoryModal } from "@/components/ingenieur/PhytoHistoryModal";
 import { PhytoAdvisorModal } from "@/components/ingenieur/PhytoAdvisorModal";
@@ -155,10 +155,11 @@ export function RecommendationForm({
   }, [products]);
 
   const phytoDropdownOptions = useMemo(() => {
-    const list: { name: string; cible: string; dosage: string; price: string; dar: string }[] = [];
+    const list: { name: string; matiereActive: string; cible: string; dosage: string; price: string; dar: string }[] = [];
     for (const item of PHYTO_DATABASE) {
       list.push({
         name: item.name,
+        matiereActive: item.matiereActive || getMatiereActive(item.name),
         cible: item.cible,
         dosage: item.dosage,
         price: item.price,
@@ -169,6 +170,7 @@ export function RecommendationForm({
       if (!list.some(x => x.name.toLowerCase() === item.name.toLowerCase())) {
         list.push({
           name: item.name,
+          matiereActive: (item as any).matiereActive || getMatiereActive(item.name),
           cible: item.note || "",
           dosage: "",
           price: item.price.toString(),
@@ -180,6 +182,7 @@ export function RecommendationForm({
       if (!list.some(x => x.name.toLowerCase() === ing.name.toLowerCase())) {
         list.push({
           name: ing.name,
+          matiereActive: ing.name,
           cible: ing.codeGroup,
           dosage: ing.standardDose,
           price: "0",
@@ -1618,9 +1621,11 @@ export function RecommendationForm({
                                   <X className="h-4 w-4" />
                                 </button>
 
-                                <span className="font-bold text-muted-foreground">{t("reco.form.activeName")} {idx + 1}</span>
+                                <span className="font-bold text-muted-foreground">
+                                  {isAr ? `المنتج التجاري والمادة الفعالة ${idx + 1}` : `Produit commercial & Matière active ${idx + 1}`}
+                                </span>
 
-                                <div className="space-y-0.5">
+                                <div className="space-y-1">
                                   <select
                                     value={p.product}
                                     onChange={(e) => {
@@ -1636,21 +1641,42 @@ export function RecommendationForm({
                                     }}
                                     className="w-full rounded border bg-background px-2 py-1 text-xs font-semibold"
                                   >
-                                    <option value="">{t("reco.form.chooseActive")}</option>
+                                    <option value="">
+                                      {isAr ? "-- اختيار المنتج التجاري / المادة الفعالة --" : "-- Choisir le produit / matière active --"}
+                                    </option>
                                     {p.product && !phytoDropdownOptions.some(pr => pr.name === p.product) && (
-                                      <option value={p.product}>{p.product}</option>
+                                      <option value={p.product}>
+                                        {p.product} {getMatiereActive(p.product) ? `— (${getMatiereActive(p.product)})` : ""}
+                                      </option>
                                     )}
-                                    {phytoDropdownOptions.map(pr => (
-                                      <option key={pr.name} value={pr.name}>{pr.name}</option>
-                                    ))}
+                                    {phytoDropdownOptions.map(pr => {
+                                      const ma = pr.matiereActive || getMatiereActive(pr.name);
+                                      return (
+                                        <option key={pr.name} value={pr.name}>
+                                          {pr.name} {ma ? `— (${ma})` : ""}
+                                        </option>
+                                      );
+                                    })}
                                   </select>
-                                  {p.product && (
-                                    <span className={`text-[10px] block font-semibold ${getLiveStock(p.product) > 0 ? "text-emerald-600" : "text-amber-600"}`}>
-                                      {getLiveStock(p.product) > 0
-                                        ? `📦 Stock dispo : ${getLiveStock(p.product).toFixed(1)} L`
-                                        : `⚠️ Rupture (0 L) — Achat requis`}
-                                    </span>
-                                  )}
+                                  {p.product && (() => {
+                                    const activeIng = isAr ? getMatiereActiveAr(p.product) || getMatiereActive(p.product) : getMatiereActive(p.product);
+                                    const stock = getLiveStock(p.product);
+                                    return (
+                                      <div className="space-y-1 pt-0.5">
+                                        {activeIng && (
+                                          <span className="text-[10px] font-bold text-primary flex items-center gap-1 bg-primary/10 px-2 py-0.5 rounded-md">
+                                            <span>🧪</span>
+                                            <span>{isAr ? `المادة الفعالة : ${activeIng}` : `Matière active : ${activeIng}`}</span>
+                                          </span>
+                                        )}
+                                        <span className={`text-[10px] block font-semibold ${stock > 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                                          {stock > 0
+                                            ? `📦 Stock dispo : ${stock.toFixed(1)} L`
+                                            : `⚠️ Rupture (0 L) — Achat requis`}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">

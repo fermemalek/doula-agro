@@ -81,7 +81,8 @@ async function fetchOnline() {
       .order("purchase_date" as any, { ascending: false });
     if (!error && dbData) {
       purchases = dbData.map(mapFromDb);
-      persist();
+      purchases = [...purchases];
+  persist();
     }
   } catch (err) {
     console.warn("Erreur lors de la récupération des achats en ligne", err);
@@ -104,20 +105,23 @@ if (typeof window !== "undefined") {
           const mapped = mapFromDb(newRecord);
           if (!purchases.some((p) => p.id === mapped.id)) {
             purchases.unshift(mapped);
-            persist();
+            purchases = [...purchases];
+  persist();
           }
         } else if (eventType === "UPDATE") {
           const mapped = mapFromDb(newRecord);
           const idx = purchases.findIndex((p) => p.id === mapped.id);
           if (idx >= 0) {
             purchases[idx] = mapped;
-            persist();
+            purchases = [...purchases];
+  persist();
           }
         } else if (eventType === "DELETE") {
           const idx = purchases.findIndex((p) => p.id === oldRecord.id);
           if (idx >= 0) {
             purchases.splice(idx, 1);
-            persist();
+            purchases = [...purchases];
+  persist();
           }
         }
       }
@@ -126,7 +130,7 @@ if (typeof window !== "undefined") {
 }
 
 export function useSuppliers(): SupplierPurchase[] {
-  const [, setTick] = useState(0);
+  const [data, setData] = useState<SupplierPurchase[]>(() => [...purchases]);
   useEffect(() => {
     // Initial fetch on mount
     void fetchOnline();
@@ -146,7 +150,7 @@ export function useSuppliers(): SupplierPurchase[] {
     window.addEventListener("visibilitychange", handleFocus);
     window.addEventListener("online", handleOnline);
 
-    const fn = () => setTick((t) => t + 1);
+    const fn = () => setData([...purchases]);
     listeners.add(fn);
 
     return () => {
@@ -155,7 +159,7 @@ export function useSuppliers(): SupplierPurchase[] {
       listeners.delete(fn);
     };
   }, []);
-  return purchases;
+  return data;
 }
 
 /**
@@ -198,6 +202,7 @@ export function debitProductStock(productName: string, quantityToDebit: number) 
     }
   }
   
+  purchases = [...purchases];
   persist();
 
   // Envoi des mises à jour à Supabase (directement si en ligne, sinon file hors-ligne)
@@ -235,7 +240,7 @@ export function useSupplierActions() {
       consumed: 0,
       ...purchase,
     };
-    purchases.unshift(newPurchase);
+    purchases = [newPurchase, ...purchases];
     persist();
 
     void (async () => {
@@ -263,7 +268,7 @@ export function useSupplierActions() {
     const idx = purchases.findIndex((p) => p.id === id);
     if (idx >= 0) {
       const updated = { ...purchases[idx], ...patch };
-      purchases[idx] = updated;
+      purchases = purchases.map((p, i) => (i === idx ? updated : p));
       persist();
 
       void (async () => {
@@ -295,7 +300,7 @@ export function useSupplierActions() {
   const deletePurchase = useCallback((id: string) => {
     const idx = purchases.findIndex((p) => p.id === id);
     if (idx >= 0) {
-      purchases.splice(idx, 1);
+      purchases = purchases.filter((p) => p.id !== id);
       persist();
 
       void (async () => {
@@ -345,6 +350,7 @@ export function resetAllConsumedQuantities() {
     updated.push({ id: p.id, consumed: 0 });
     return { ...p, consumed: 0 };
   });
+  purchases = [...purchases];
   persist();
 
   for (const item of updated) {

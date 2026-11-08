@@ -55,6 +55,7 @@ import { useRecommendations, useRecommendationActions, type Recommendation } fro
 import { useProfilesMap } from "@/lib/cloud/alerts";
 import { RecommendationDetailDialog } from "@/components/RecommendationDetailDialog";
 import { StatsModule } from "@/components/stats/StatsModule";
+import { getMatiereActive } from "@/data/phytosanitaires";
 
 interface IrrRec {
   id: string;
@@ -916,6 +917,16 @@ function ProgrammesPage() {
                       </button>
                     </div>
 
+                    {/* Matière active (Substance active) */}
+                    {(prod.matiereActive || getMatiereActive(prod.name)) && (
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-primary bg-primary/10 px-2.5 py-1 rounded-lg">
+                        <span>🧪</span>
+                        <span className="truncate">
+                          Matière active : {prod.matiereActive || getMatiereActive(prod.name)}
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap gap-1.5">
                       <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase ${badgeColor}`}>
                         {prod.type}
@@ -1600,8 +1611,9 @@ function ProgrammesPage() {
                   const note = (form.elements.namedItem("note") as HTMLTextAreaElement).value || "";
                   const type = (form.elements.namedItem("type") as HTMLInputElement).value || "";
                   const unit = (form.elements.namedItem("unit") as HTMLSelectElement).value as "kg" | "litres";
+                  const matiereActive = (form.elements.namedItem("matiereActive") as HTMLInputElement)?.value.trim() || "";
 
-                  updateProduct(editingProduct.name, { price, solubility, time, note, type, unit });
+                  updateProduct(editingProduct.name, { price, solubility, time, note, type, unit, matiereActive });
                   toast.success("Informations du produit modifiées avec succès !");
                   setEditProductOpen(false);
                   setEditingProduct(null);
@@ -1611,6 +1623,16 @@ function ProgrammesPage() {
                 <div>
                   <Label className="text-xs font-semibold">Nom du Produit (Non modifiable)</Label>
                   <Input value={editingProduct.name} disabled className="mt-1 rounded-xl bg-muted" />
+                </div>
+
+                <div>
+                  <Label className="text-xs font-semibold">Matière Active (Substance active)</Label>
+                  <Input
+                    name="matiereActive"
+                    defaultValue={editingProduct.matiereActive || getMatiereActive(editingProduct.name)}
+                    placeholder="Ex: Boscalide + Pyraclostrobine, Deltaméthrine..."
+                    className="mt-1 rounded-xl font-medium"
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -1691,10 +1713,11 @@ function ProgrammesPage() {
               const solubility = parseFloat((form.elements.namedItem("solubility") as HTMLInputElement).value) || 0;
               const time = parseFloat((form.elements.namedItem("time") as HTMLInputElement).value) || 0;
               const note = (form.elements.namedItem("note") as HTMLTextAreaElement).value.trim();
+              const matiereActive = (form.elements.namedItem("matiereActive") as HTMLInputElement)?.value.trim() || "";
 
               if (!name) return toast.error("Nom du produit requis");
 
-              addProduct({ name, type, unit, price, solubility, time, note });
+              addProduct({ name, type, unit, price, solubility, time, note, matiereActive });
               toast.success("Produit ajouté à la base avec succès !");
               setNewProductOpen(false);
               form.reset();
@@ -1704,6 +1727,11 @@ function ProgrammesPage() {
             <div>
               <Label className="text-xs font-semibold">Nom du Produit</Label>
               <Input name="name" placeholder="ex: Nitrate de Potasse" className="mt-1 rounded-xl" />
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold">Matière Active (Substance active)</Label>
+              <Input name="matiereActive" placeholder="Ex: Boscalide + Pyraclostrobine" className="mt-1 rounded-xl" />
             </div>
 
             <div className="grid grid-cols-2 gap-2">
