@@ -21,7 +21,8 @@ import {
   Clock,
   Send,
   Sparkles,
-  Snowflake
+  Snowflake,
+  Sprout
 } from "lucide-react";
 import { ChillHoursComparator } from "@/components/meteo/ChillHoursComparator";
 import { Card } from "@/components/ui/card";
@@ -247,7 +248,8 @@ export default function MeteoPage() {
   const isAr = lang === "ar";
   const { session } = useRole();
 
-  const [activeTab, setActiveTab] = useState<"realtime" | "monthly" | "chill">("realtime");
+  type MeteoTab = "realtime" | "chill" | "monthly" | "catalog";
+  const [activeTab, setActiveTab] = useState<MeteoTab>("realtime");
   const [selectedMonthIdx, setSelectedMonthIdx] = useState<number>(new Date().getMonth());
 
   // Configuration de l'alerte de température maximale par email
@@ -324,10 +326,10 @@ export default function MeteoPage() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 pb-24 pt-4 space-y-4" dir={isAr ? "rtl" : "ltr"}>
-      {/* En-tête */}
+      {/* En-tête épuré et moderne */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
         <div>
-          <h1 className="text-xl font-black text-foreground flex items-center gap-2">
+          <h1 className="text-xl sm:text-2xl font-black text-foreground flex items-center gap-2">
             <Sun className="h-6 w-6 text-amber-500 animate-spin-slow" />
             <span>{isAr ? "محطة الأرصاد والمناخ الزراعي" : "Météo Agricole & Prévisions"}</span>
           </h1>
@@ -336,46 +338,6 @@ export default function MeteoPage() {
               ? "متابعة درجات الحرارة اللحظية، التوقعات الشهرية، وضبط تنبيهات الحرارة القصوى"
               : "Suivi en temps réel, climatologie mensuelle et alertes canicule par e-mail"}
           </p>
-        </div>
-
-        {/* Boutons d'onglets Temps réel / Heures de froid / Prévisions par mois */}
-        <div className="flex rounded-xl bg-muted p-1 border">
-          <button
-            type="button"
-            onClick={() => setActiveTab("realtime")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "realtime"
-                ? "bg-background text-primary shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Clock className="h-3.5 w-3.5" />
-            <span>{isAr ? "الوقت الحقيقي" : "Temps réel"}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("chill")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "chill"
-                ? "bg-background text-primary shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Snowflake className="h-3.5 w-3.5 text-sky-500" />
-            <span>{isAr ? "ساعات البرودة ❄️" : "Heures de Froid ❄️"}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("monthly")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "monthly"
-                ? "bg-background text-primary shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Calendar className="h-3.5 w-3.5" />
-            <span>{isAr ? "التوقعات الشهرية" : "Mois"}</span>
-          </button>
         </div>
       </div>
 
@@ -407,6 +369,145 @@ export default function MeteoPage() {
           </Button>
         </div>
       )}
+
+      {/* GRILLE D'ACCUEIL : 4 GRANDES ICÔNES VISUELLES & CLAIRES */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+        {/* Tuile 1 : Temps réel */}
+        <button
+          type="button"
+          onClick={() => setActiveTab("realtime")}
+          className={`group text-start p-3.5 sm:p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+            activeTab === "realtime"
+              ? "border-amber-500 bg-amber-500/10 ring-2 ring-amber-500/30 shadow-md scale-[1.02]"
+              : "border-border bg-card hover:border-amber-500/40 hover:bg-muted/40 shadow-xs"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span
+              className={`flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
+                activeTab === "realtime"
+                  ? "bg-amber-500 text-white shadow-sm"
+                  : "bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500 group-hover:text-white"
+              }`}
+            >
+              <Sun className="h-6 w-6" />
+            </span>
+            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
+              {currentTemp.toFixed(1)}°C
+            </span>
+          </div>
+          <div className="mt-3 space-y-0.5">
+            <h3 className="text-sm font-black text-foreground group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+              {isAr ? "الوقت الحقيقي" : "Temps Réel"}
+            </h3>
+            <p className="text-[11px] text-muted-foreground line-clamp-1">
+              {isAr ? "الطقس اللحظي، الرياح ومؤشر الرش" : "Direct, vent & pulvérisation"}
+            </p>
+          </div>
+        </button>
+
+        {/* Tuile 2 : Heures de froid */}
+        <button
+          type="button"
+          onClick={() => setActiveTab("chill")}
+          className={`group text-start p-3.5 sm:p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+            activeTab === "chill"
+              ? "border-sky-500 bg-sky-500/10 ring-2 ring-sky-500/30 shadow-md scale-[1.02]"
+              : "border-border bg-card hover:border-sky-500/40 hover:bg-muted/40 shadow-xs"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span
+              className={`flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
+                activeTab === "chill"
+                  ? "bg-sky-500 text-white shadow-sm"
+                  : "bg-sky-500/15 text-sky-600 dark:text-sky-400 group-hover:bg-sky-500 group-hover:text-white"
+              }`}
+            >
+              <Snowflake className="h-6 w-6" />
+            </span>
+            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300">
+              Weinberger vs Utah
+            </span>
+          </div>
+          <div className="mt-3 space-y-0.5">
+            <h3 className="text-sm font-black text-foreground group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+              {isAr ? "ساعات البرودة ❄️" : "Heures de Froid ❄️"}
+            </h3>
+            <p className="text-[11px] text-muted-foreground line-clamp-1">
+              {isAr ? "النموذج البسيط والفسيولوجي" : "Cumul brut & pénalités chaleur"}
+            </p>
+          </div>
+        </button>
+
+        {/* Tuile 3 : Climat Mensuel */}
+        <button
+          type="button"
+          onClick={() => setActiveTab("monthly")}
+          className={`group text-start p-3.5 sm:p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+            activeTab === "monthly"
+              ? "border-indigo-500 bg-indigo-500/10 ring-2 ring-indigo-500/30 shadow-md scale-[1.02]"
+              : "border-border bg-card hover:border-indigo-500/40 hover:bg-muted/40 shadow-xs"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span
+              className={`flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
+                activeTab === "monthly"
+                  ? "bg-indigo-500 text-white shadow-sm"
+                  : "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white"
+              }`}
+            >
+              <Calendar className="h-6 w-6" />
+            </span>
+            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+              {isAr ? "12 شهراً" : "12 Mois"}
+            </span>
+          </div>
+          <div className="mt-3 space-y-0.5">
+            <h3 className="text-sm font-black text-foreground group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+              {isAr ? "التوقعات الشهرية" : "Climat Mensuel"}
+            </h3>
+            <p className="text-[11px] text-muted-foreground line-clamp-1">
+              {isAr ? "المعدلات السنوية ومخاطر الجليد" : "Moyennes, pluie & alertes"}
+            </p>
+          </div>
+        </button>
+
+        {/* Tuile 4 : Référentiel Variétal & Historique des Campagnes */}
+        <button
+          type="button"
+          onClick={() => setActiveTab("catalog")}
+          className={`group text-start p-3.5 sm:p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+            activeTab === "catalog"
+              ? "border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/30 shadow-md scale-[1.02]"
+              : "border-border bg-card hover:border-emerald-500/40 hover:bg-muted/40 shadow-xs"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <span
+              className={`flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
+                activeTab === "catalog"
+                  ? "bg-emerald-500 text-white shadow-sm"
+                  : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500 group-hover:text-white"
+              }`}
+            >
+              <Sprout className="h-6 w-6" />
+            </span>
+            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+              {isAr ? "4 الأصناف" : "4 Variétés"}
+            </span>
+          </div>
+          <div className="mt-3 space-y-0.5">
+            <h3 className="text-sm font-black text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+              {isAr ? "المرجع الصنفي وساعات البرودة" : "Référentiel Variétal"}
+            </h3>
+            <p className="text-[11px] text-muted-foreground line-clamp-1">
+              {isAr ? "نكتارين، تفاح، زيتون وسجل الحملات" : "Nectarine, Pomme, Olivier & Historique"}
+            </p>
+          </div>
+        </button>
+      </div>
 
       {/* CONTENU ONGLET 1: TEMPS RÉEL & 7 JOURS */}
       {activeTab === "realtime" && (
@@ -631,11 +732,139 @@ export default function MeteoPage() {
               })}
             </div>
           </div>
+
+          {/* SECTION CONFIGURATION ALERTE TEMPÉRATURE MAXIMALE (NOTIFICATION EMAIL) */}
+          <Card className="rounded-3xl border border-amber-500/30 bg-amber-500/[0.03] p-5 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/20 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="p-2 rounded-xl bg-amber-500/10 text-amber-600">
+                  <Bell className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-black text-foreground">
+                    {isAr ? "ضبط تنبيهات درجات الحرارة القصوى بالبريد" : "Alerte Température Maximale par E-mail"}
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    {isAr
+                      ? "تلقي رسالة إلكترونية تلقائية عند تجاوز درجة الحرارة للحد الأقصى المختار"
+                      : "Soyez notifiée automatiquement par e-mail en cas de dépassement du seuil de chaleur"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Toggle Activer/Désactiver */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-muted-foreground">
+                  {alertEnabled ? (isAr ? "التنبيه مفعل" : "Alerte active") : (isAr ? "معطل" : "Désactivé")}
+                </span>
+                <input
+                  type="checkbox"
+                  checked={alertEnabled}
+                  onChange={(e) => saveAlertConfig(maxTempThreshold, alertEmail, e.target.checked)}
+                  className="h-5 w-5 rounded border-input text-primary focus:ring-primary cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Choix du seuil de température max */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-foreground block">
+                  {isAr ? "درجة الحرارة القصوى للتنبيه (°م)" : "Seuil de température maximale (°C)"}
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={25}
+                    max={50}
+                    step={1}
+                    value={maxTempThreshold}
+                    onChange={(e) => {
+                      const val = parseFloat(e.target.value) || 35;
+                      setMaxTempThreshold(val);
+                    }}
+                    className="h-9 font-black text-base w-24 rounded-xl"
+                  />
+                  <span className="text-sm font-bold text-muted-foreground">°C</span>
+
+                  {/* Raccourcis rapides */}
+                  <div className="flex gap-1">
+                    {[32, 35, 38, 40].map((tVal) => (
+                      <button
+                        key={tVal}
+                        type="button"
+                        onClick={() => {
+                          setMaxTempThreshold(tVal);
+                          saveAlertConfig(tVal, alertEmail, alertEnabled);
+                        }}
+                        className={`px-2 py-1 rounded-lg text-xs font-bold border transition ${
+                          maxTempThreshold === tVal
+                            ? "bg-amber-600 text-white border-amber-600"
+                            : "bg-background text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {tVal}°
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Adresse Email destinataire */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-foreground block">
+                  {isAr ? "البريد الإلكتروني المخصص للتنبيه" : "Adresse e-mail de notification"}
+                </label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Mail className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      type="email"
+                      value={alertEmail}
+                      onChange={(e) => setAlertEmail(e.target.value)}
+                      placeholder="ingenieur@ferme.com"
+                      className="pl-8 h-9 text-xs font-semibold rounded-xl"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => saveAlertConfig(maxTempThreshold, alertEmail, alertEnabled)}
+                    className="rounded-xl font-bold text-xs h-9 px-3"
+                  >
+                    {isAr ? "حفظ" : "Sauvegarder"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Bouton de test de l'alerte */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-500/20 pt-3">
+              <p className="text-[11px] text-muted-foreground">
+                {isAr
+                  ? `الحالة الحالية: درجة الحرارة القصوى اليوم هي ${todayMaxTemp.toFixed(1)}°م (الحد: ${maxTempThreshold}°م)`
+                  : `Aujourd'hui : pic prévu à ${todayMaxTemp.toFixed(1)}°C (seuil d'alerte configuré à ${maxTempThreshold}°C)`}
+              </p>
+
+              <Button
+                size="sm"
+                onClick={handleTriggerEmailAlert}
+                disabled={sendingTestEmail}
+                className="rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 shadow-xs"
+              >
+                <Send className="h-3.5 w-3.5" />
+                <span>{isAr ? "تجربة إرسال تنبيه بالبريد الإلكتروني" : "Tester l'envoi de l'alerte par e-mail"}</span>
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
 
-      {/* CONTENU ONGLET 2: COMPARATEUR D'HEURES DE FROID (WEINBERGER VS UTAH) */}
-      {activeTab === "chill" && <ChillHoursComparator />}
+      {/* CONTENU ONGLET 2: COMPARATEUR D'HEURES DE FROID (WEINBERGER VS UTAH - COMPTEURS & DIAGNOSTIC) */}
+      {activeTab === "chill" && <ChillHoursComparator viewMode="counters" />}
+
+      {/* CONTENU ONGLET 4: RÉFÉRENTIEL VARIÉTAL & HISTORIQUE DES CAMPAGNES */}
+      {activeTab === "catalog" && <ChillHoursComparator viewMode="catalog" />}
 
       {/* CONTENU ONGLET 3: PRÉVISIONS ET CLIMATOLOGIE PAR MOIS */}
       {activeTab === "monthly" && (
@@ -748,131 +977,6 @@ export default function MeteoPage() {
           })()}
         </div>
       )}
-
-      {/* SECTION CONFIGURATION ALERTE TEMPÉRATURE MAXIMALE (NOTIFICATION EMAIL) */}
-      <Card className="rounded-3xl border border-amber-500/30 bg-amber-500/[0.03] p-5 shadow-sm space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/20 pb-3">
-          <div className="flex items-center gap-2">
-            <span className="p-2 rounded-xl bg-amber-500/10 text-amber-600">
-              <Bell className="h-5 w-5" />
-            </span>
-            <div>
-              <h2 className="text-sm font-black text-foreground">
-                {isAr ? "ضبط تنبيهات درجات الحرارة القصوى بالبريد" : "Alerte Température Maximale par E-mail"}
-              </h2>
-              <p className="text-[11px] text-muted-foreground">
-                {isAr
-                  ? "تلقي رسالة إلكترونية تلقائية عند تجاوز درجة الحرارة للحد الأقصى المختار"
-                  : "Soyez notifiée automatiquement par e-mail en cas de dépassement du seuil de chaleur"}
-              </p>
-            </div>
-          </div>
-
-          {/* Toggle Activer/Désactiver */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-muted-foreground">
-              {alertEnabled ? (isAr ? "التنبيه مفعل" : "Alerte active") : (isAr ? "معطل" : "Désactivé")}
-            </span>
-            <input
-              type="checkbox"
-              checked={alertEnabled}
-              onChange={(e) => saveAlertConfig(maxTempThreshold, alertEmail, e.target.checked)}
-              className="h-5 w-5 rounded border-input text-primary focus:ring-primary cursor-pointer"
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Choix du seuil de température max */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-foreground block">
-              {isAr ? "درجة الحرارة القصوى للتنبيه (°م)" : "Seuil de température maximale (°C)"}
-            </label>
-            <div className="flex items-center gap-2">
-              <Input
-                type="number"
-                min={25}
-                max={50}
-                step={1}
-                value={maxTempThreshold}
-                onChange={(e) => {
-                  const val = parseFloat(e.target.value) || 35;
-                  setMaxTempThreshold(val);
-                }}
-                className="h-9 font-black text-base w-24 rounded-xl"
-              />
-              <span className="text-sm font-bold text-muted-foreground">°C</span>
-
-              {/* Raccourcis rapides */}
-              <div className="flex gap-1">
-                {[32, 35, 38, 40].map((tVal) => (
-                  <button
-                    key={tVal}
-                    type="button"
-                    onClick={() => {
-                      setMaxTempThreshold(tVal);
-                      saveAlertConfig(tVal, alertEmail, alertEnabled);
-                    }}
-                    className={`px-2 py-1 rounded-lg text-xs font-bold border transition ${
-                      maxTempThreshold === tVal
-                        ? "bg-amber-500 text-white border-amber-500"
-                        : "bg-background border-border text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {tVal}°
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Adresse Email destinataire */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-foreground block">
-              {isAr ? "البريد الإلكتروني المخصص للتنبيه" : "Adresse e-mail de notification"}
-            </label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Mail className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="email"
-                  value={alertEmail}
-                  onChange={(e) => setAlertEmail(e.target.value)}
-                  placeholder="ingenieur@ferme.com"
-                  className="pl-8 h-9 text-xs font-semibold rounded-xl"
-                />
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => saveAlertConfig(maxTempThreshold, alertEmail, alertEnabled)}
-                className="rounded-xl font-bold text-xs h-9 px-3"
-              >
-                {isAr ? "حفظ" : "Sauvegarder"}
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Bouton de test de l'alerte */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-500/20 pt-3">
-          <p className="text-[11px] text-muted-foreground">
-            {isAr
-              ? `الحالة الحالية: درجة الحرارة القصوى اليوم هي ${todayMaxTemp.toFixed(1)}°م (الحد: ${maxTempThreshold}°م)`
-              : `Aujourd'hui : pic prévu à ${todayMaxTemp.toFixed(1)}°C (seuil d'alerte configuré à ${maxTempThreshold}°C)`}
-          </p>
-
-          <Button
-            size="sm"
-            onClick={handleTriggerEmailAlert}
-            disabled={sendingTestEmail}
-            className="rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 shadow-xs"
-          >
-            <Send className="h-3.5 w-3.5" />
-            <span>{isAr ? "تجربة إرسال تنبيه بالبريد الإلكتروني" : "Tester l'envoi de l'alerte par e-mail"}</span>
-          </Button>
-        </div>
-      </Card>
     </main>
   );
 }

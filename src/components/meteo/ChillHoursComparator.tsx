@@ -104,7 +104,11 @@ function loadSavedCatalog(): VarietyProfile[] {
   }
 }
 
-export function ChillHoursComparator() {
+export interface ChillHoursComparatorProps {
+  viewMode?: "counters" | "catalog" | "all";
+}
+
+export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorProps = {}) {
   const { t, lang } = useTranslation();
   const isAr = lang === "ar";
 
@@ -319,29 +323,32 @@ export function ChillHoursComparator() {
 
   return (
     <div className="space-y-4 text-foreground" dir={isAr ? "rtl" : "ltr"}>
-      {/* Entête */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border bg-card p-4 shadow-xs">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
-              <Snowflake className="h-5 w-5" />
-            </span>
-            <div>
-              <h2 className="text-base font-extrabold flex items-center gap-2">
-                <span>{isAr ? "المرجع الصنفي وتتبع ساعات البرودة" : "Référentiel Variétal & Heures de Froid"}</span>
-                <span className="rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-black px-2 py-0.5">
-                  Weinberger vs Utah
+      {/* SECTION 1 : COMPTEURS D'HEURES DE FROID (Affiché si viewMode != 'catalog') */}
+      {viewMode !== "catalog" && (
+        <>
+          {/* Entête */}
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border bg-card p-4 shadow-xs">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
+                  <Snowflake className="h-5 w-5" />
                 </span>
-              </h2>
-              <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                <MapPin className="h-3 w-3" />
-                <span>
-                  GPS : {generalSettings.latitude.toFixed(4)}°N, {generalSettings.longitude.toFixed(4)}°E (Alt. ~762 m) · Ferme Doula Agro
-                </span>
-              </p>
+                <div>
+                  <h2 className="text-base font-extrabold flex items-center gap-2">
+                    <span>{isAr ? "ساعات البرودة الشتوية" : "Cumul des Heures de Froid"}</span>
+                    <span className="rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-black px-2 py-0.5">
+                      Weinberger vs Utah
+                    </span>
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                    <MapPin className="h-3 w-3" />
+                    <span>
+                      GPS : {generalSettings.latitude.toFixed(4)}°N, {generalSettings.longitude.toFixed(4)}°E (Alt. ~762 m) · Ferme Doula Agro
+                    </span>
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
         <div className="flex items-center gap-2">
           <button
@@ -574,17 +581,66 @@ export function ChillHoursComparator() {
           </div>
         </>
       )}
+      </>
+      )}
 
-      {/* Progression & Référentiel des 4 variétés */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <span>{isAr ? "الأصناف الأربعة والتاريخ الفينولوجي للضيعة :" : "Progression & Référentiel Phénologique (4 Variétés)"}</span>
-          </h3>
-          <span className="text-[10px] text-muted-foreground font-semibold">
-            {catalog.length} variétés suivies
-          </span>
-        </div>
+      {/* SECTION 2 : RÉFÉRENTIEL VARIÉTAL & HISTORIQUE DES CAMPAGNES (Affiché si viewMode != 'counters') */}
+      {viewMode !== "counters" && (
+        <div className="space-y-4">
+          {/* Entête spécifique si le mode catalogue est sélectionné isolément */}
+          {viewMode === "catalog" && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-4 shadow-xs">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                  <Sprout className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-base font-black flex items-center gap-2">
+                    <span>{isAr ? "المرجع الصنفي وتتبع ساعات البرودة" : "Référentiel Variétal & Suivi Phénologique"}</span>
+                    <span className="rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] font-black px-2 py-0.5">
+                      Weinberger vs Utah
+                    </span>
+                  </h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    {isAr
+                      ? "المتطلبات الدقيقة لأصناف الضيعة (نكتارين، تفاح، زيتون) والسجل التاريخي لمواعيد التقليم والتزهير والجني"
+                      : "Besoins en froid calibrés, historique réel de floraison et suivi des dates de récolte"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="text-xs bg-muted/60 px-3 py-1.5 rounded-xl border font-bold flex items-center gap-2">
+                  <Snowflake className="h-3.5 w-3.5 text-sky-500" />
+                  <span>
+                    <strong className="text-emerald-600 dark:text-emerald-400">{weinbergerHours}h</strong> <span className="text-[10px] text-muted-foreground font-normal">Weinberger</span>
+                    <span className="mx-1 text-muted-foreground">·</span>
+                    <strong className="text-sky-600 dark:text-sky-400">{utahUnits} CU</strong> <span className="text-[10px] text-muted-foreground font-normal">Utah</span>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchHourlyWeatherData}
+                  disabled={loading}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-xl border bg-background px-2.5 text-xs font-bold text-foreground hover:bg-muted active:scale-95 transition"
+                  title="Rafraîchir"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-primary" : ""}`} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Progression & Référentiel des 4 variétés */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <span>{isAr ? "الأصناف الأربعة والتاريخ الفينولوجي للضيعة :" : "Progression & Référentiel Phénologique (4 Variétés)"}</span>
+              </h3>
+              <span className="text-[10px] text-muted-foreground font-semibold">
+                {catalog.length} {isAr ? "أصناف متابعة" : "variétés suivies"}
+              </span>
+            </div>
 
         <div className="space-y-3">
           {catalog.map((variety) => {
@@ -846,6 +902,8 @@ export function ChillHoursComparator() {
           })}
         </div>
       </div>
+    </div>
+  )}
 
       {/* Modal d'ajout d'observation phénologique de campagne */}
       {editingVariety && (
