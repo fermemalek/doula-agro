@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Snowflake,
   Settings,
@@ -11,77 +11,85 @@ import {
   TrendingDown,
   TrendingUp,
   MapPin,
-  Sparkles
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  Scissors,
+  Flower2,
+  Clock,
+  ShieldAlert,
+  Sprout,
+  Save
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
+import {
+  VARIETIES_CATALOG,
+  recordSeasonPhenology,
+  computePruningToBloomDays,
+  type VarietyProfile,
+  type PhenologyRecord,
+} from "@/lib/chilling/varietiesConfig";
 
-// ========================================================
-// 1. CONFIGURATION & STRUCTURES DE DONNÉES
-// ========================================================
-export interface VarietyRequirements {
-  cropKey: "nectarine" | "pomme" | "olive";
-  nameFr: string;
-  nameAr: string;
-  icon: string;
-  weinbergerReq: number; // Heures < 7.2°C
-  utahReq: number;       // Unités Utah (CU)
-}
+const STORAGE_CATALOG_KEY = "doula_varieties_catalog";
+const STORAGE_SETTINGS_KEY = "doula_chill_hours_settings";
 
-export interface ChillSettings {
+interface GeneralSettings {
   latitude: number;
   longitude: number;
   startDate: string; // Ex: "2026-11-01"
-  crops: VarietyRequirements[];
 }
 
-const DEFAULT_SETTINGS: ChillSettings = {
+const DEFAULT_GENERAL_SETTINGS: GeneralSettings = {
   latitude: 35.286281,
   longitude: 3.103180,
   startDate: "2026-11-01",
-  crops: [
-    {
-      cropKey: "nectarine",
-      nameFr: "Nectarine (Nablara / Redix 25)",
-      nameAr: "نكتارين (نبلارة / ريديكس 25)",
-      icon: "🍑",
-      weinbergerReq: 650,
-      utahReq: 700,
-    },
-    {
-      cropKey: "pomme",
-      nameFr: "Pommier (Gala One)",
-      nameAr: "تفاح (غالا ون)",
-      icon: "🍎",
-      weinbergerReq: 750,
-      utahReq: 850,
-    },
-    {
-      cropKey: "olive",
-      nameFr: "Olivier (Chemlal)",
-      nameAr: "زيتون (شملال)",
-      icon: "🫒",
-      weinbergerReq: 300,
-      utahReq: 350,
-    },
-  ],
 };
 
-const STORAGE_KEY = "doula_chill_hours_settings";
-
-function loadSavedSettings(): ChillSettings {
-  if (typeof window === "undefined") return DEFAULT_SETTINGS;
+function loadSavedGeneralSettings(): GeneralSettings {
+  if (typeof window === "undefined") return DEFAULT_GENERAL_SETTINGS;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
+    const raw = localStorage.getItem(STORAGE_SETTINGS_KEY);
+    if (!raw) return DEFAULT_GENERAL_SETTINGS;
     const parsed = JSON.parse(raw);
-    return {
-      ...DEFAULT_SETTINGS,
-      ...parsed,
-      crops: Array.isArray(parsed.crops) && parsed.crops.length === 3 ? parsed.crops : DEFAULT_SETTINGS.crops,
-    };
+    return { ...DEFAULT_GENERAL_SETTINGS, ...parsed };
   } catch {
-    return DEFAULT_SETTINGS;
+    return DEFAULT_GENERAL_SETTINGS;
+  }
+}
+
+function loadSavedCatalog(): VarietyProfile[] {
+  if (typeof window === "undefined") return VARIETIES_CATALOG;
+  try {
+    const raw = localStorage.getItem(STORAGE_CATALOG_KEY);
+    if (!raw) return VARIETIES_CATALOG;
+    const parsed: VarietyProfile[] = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // S'assurer de conserver les nouvelles propriétés de VARIETIES_CATALOG
+      return VARIETIES_CATALOG.map((v) => {
+        const found = parsed.find((p) => p.id === v.id);
+        if (!found) return v;
+        return {
+          ...v,
+          ...found,
+          chillRequirements: {
+            ...v.chillRequirements,
+            ...(found.chillRequirements || {}),
+          },
+          phenologyReference: {
+            ...v.phenologyReference,
+            ...(found.phenologyReference || {}),
+          },
+          campaignHistory: Array.isArray(found.campaignHistory) && found.campaignHistory.length > 0
+            ? found.campaignHistory
+            : v.campaignHistory,
+        };
+      });
+    }
+    return VARIETIES_CATALOG;
+  } catch {
+    return VARIETIES_CATALOG;
   }
 }
 
@@ -89,9 +97,21 @@ export function ChillHoursComparator() {
   const { t, lang } = useTranslation();
   const isAr = lang === "ar";
 
-  const [settings, setSettings] = useState<ChillSettings>(loadSavedSettings);
+  const [generalSettings, setGeneralSettings] = useState<GeneralSettings>(loadSavedGeneralSettings);
+  const [catalog, setCatalog] = useState<VarietyProfile[]>(loadSavedCatalog);
   const [showConfig, setShowConfig] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // Vue accordéon pour les détails phénologiques de chaque variété
+  const [expandedVarietyId, setExpandedVarietyId] = useState<string | null>("nec_nablara");
+
+  // Modal d'ajout d'observation phénologique
+  const [editingVariety, setEditingVariety] = useState<VarietyProfile | null>(null);
+  const [newRecordYear, setNewRecordYear] = useState<number>(new Date().getFullYear());
+  const [newPruningDate, setNewPruningDate] = useState<string>("");
+  const [newBloomStartDate, setNewBloomStartDate] = useState<string>("");
+  const [newHarvestDate, setNewHarvestDate] = useState<string>("");
+  const [newRecordNotes, setNewRecordNotes] = useState<string>("");
 
   // Valeurs calculées simultanément
   const [weinbergerHours, setWeinbergerHours] = useState<number>(0);
@@ -100,15 +120,22 @@ export function ChillHoursComparator() {
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [totalHoursAnalyzed, setTotalHoursAnalyzed] = useState<number>(0);
 
-  const saveSettings = (newSettings: ChillSettings) => {
-    setSettings(newSettings);
+  const saveGeneralSettings = (settings: GeneralSettings) => {
+    setGeneralSettings(settings);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
+      localStorage.setItem(STORAGE_SETTINGS_KEY, JSON.stringify(settings));
+    } catch {}
+  };
+
+  const saveCatalog = (newCat: VarietyProfile[]) => {
+    setCatalog(newCat);
+    try {
+      localStorage.setItem(STORAGE_CATALOG_KEY, JSON.stringify(newCat));
     } catch {}
   };
 
   // ========================================================
-  // 2. MOTEUR DE CALCUL CONCURRENT DES 2 MODÈLES
+  // MOTEUR DE CALCUL CONCURRENT DES 2 MODÈLES
   // ========================================================
   const computeBothModels = useCallback((temperatures: number[]) => {
     let weinberger = 0;
@@ -121,7 +148,6 @@ export function ChillHoursComparator() {
       count++;
 
       // --- Modèle Weinberger (< 7.2°C) ---
-      // 1 heure comptabilisée pour chaque heure passée entre 0°C et 7.2°C
       if (t > 0 && t <= 7.2) {
         weinberger += 1;
       }
@@ -153,16 +179,16 @@ export function ChillHoursComparator() {
   }, []);
 
   // ========================================================
-  // 3. RÉCUPÉRATION MÉTÉO EN LIGNE (OPEN-METEO)
+  // RÉCUPÉRATION MÉTÉO EN LIGNE (OPEN-METEO)
   // ========================================================
   const fetchHourlyWeatherData = useCallback(async () => {
     setLoading(true);
     try {
       const today = new Date().toISOString().split("T")[0];
-      const start = settings.startDate;
+      const start = generalSettings.startDate;
 
       // 1. Essai sur l'archive historique horaire
-      const urlArchive = `https://archive-api.open-meteo.com/v1/archive?latitude=${settings.latitude}&longitude=${settings.longitude}&start_date=${start}&end_date=${today}&hourly=temperature_2m&timezone=auto`;
+      const urlArchive = `https://archive-api.open-meteo.com/v1/archive?latitude=${generalSettings.latitude}&longitude=${generalSettings.longitude}&start_date=${start}&end_date=${today}&hourly=temperature_2m&timezone=auto`;
 
       let temps: number[] = [];
       let success = false;
@@ -180,9 +206,9 @@ export function ChillHoursComparator() {
         console.warn("Archive fetch skipped or failed, falling back to forecast:", err);
       }
 
-      // 2. Si l'archive récente est vide (délai de consolidation J-1), fallback sur le forecast avec past_days
+      // 2. Si l'archive récente est vide, fallback sur le forecast avec past_days
       if (!success || temps.length === 0) {
-        const urlForecast = `https://api.open-meteo.com/v1/forecast?latitude=${settings.latitude}&longitude=${settings.longitude}&hourly=temperature_2m&past_days=14&timezone=auto`;
+        const urlForecast = `https://api.open-meteo.com/v1/forecast?latitude=${generalSettings.latitude}&longitude=${generalSettings.longitude}&hourly=temperature_2m&past_days=14&timezone=auto`;
         const resForecast = await fetch(urlForecast);
         if (resForecast.ok) {
           const dataForecast = await resForecast.json();
@@ -204,7 +230,7 @@ export function ChillHoursComparator() {
     } finally {
       setLoading(false);
     }
-  }, [settings.latitude, settings.longitude, settings.startDate, computeBothModels, isAr]);
+  }, [generalSettings.latitude, generalSettings.longitude, generalSettings.startDate, computeBothModels, isAr]);
 
   useEffect(() => {
     fetchHourlyWeatherData();
@@ -212,6 +238,58 @@ export function ChillHoursComparator() {
 
   // Différence et ratio entre les deux modèles
   const difference = weinbergerHours - utahUnits;
+
+  // Soumission du formulaire d'observation annuelle
+  const handleSavePhenologyObservation = () => {
+    if (!editingVariety) return;
+    if (!newBloomStartDate && !newPruningDate) {
+      return toast.error("Veuillez renseigner au moins une date de taille ou de début de floraison.");
+    }
+
+    const record: PhenologyRecord = {
+      year: Number(newRecordYear) || new Date().getFullYear(),
+      pruningDate: newPruningDate,
+      bloomStartDate: newBloomStartDate,
+      harvestStartDate: newHarvestDate || undefined,
+      accumulatedHoursAtBloom: weinbergerHours > 0 ? weinbergerHours : undefined,
+      accumulatedUtahAtBloom: utahUnits > 0 ? utahUnits : undefined,
+      notes: newRecordNotes.trim() || undefined,
+    };
+
+    const updated = recordSeasonPhenology(catalog, editingVariety.id, record);
+    saveCatalog(updated);
+    toast.success(isAr ? "تم حفظ تسجيل الملاحظة الفينولوجية بنجاح" : "Observation phénologique enregistrée avec succès !");
+    setEditingVariety(null);
+    setNewPruningDate("");
+    setNewBloomStartDate("");
+    setNewHarvestDate("");
+    setNewRecordNotes("");
+  };
+
+  const getFrostBadge = (level: VarietyProfile["phenologyReference"]["frostSensitivity"]) => {
+    switch (level) {
+      case "très forte":
+        return {
+          label: isAr ? "حساسية شديدة للجليد" : "Sensibilité gel très forte",
+          tone: "border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+        };
+      case "forte":
+        return {
+          label: isAr ? "حساسية مرتفعة للجليد" : "Sensibilité gel forte",
+          tone: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+        };
+      case "moyenne":
+        return {
+          label: isAr ? "حساسية متوسطة" : "Sensibilité gel moyenne",
+          tone: "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+        };
+      default:
+        return {
+          label: isAr ? "مقاوم للبرد" : "Résistant au froid",
+          tone: "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+        };
+    }
+  };
 
   return (
     <div className="space-y-4 text-foreground" dir={isAr ? "rtl" : "ltr"}>
@@ -224,7 +302,7 @@ export function ChillHoursComparator() {
             </span>
             <div>
               <h2 className="text-base font-extrabold flex items-center gap-2">
-                <span>{isAr ? "مقارن ساعات البرودة (وينبرجر مقابل يوتا)" : "Comparateur d'Heures de Froid"}</span>
+                <span>{isAr ? "المرجع الصنفي وتتبع ساعات البرودة" : "Référentiel Variétal & Heures de Froid"}</span>
                 <span className="rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-black px-2 py-0.5">
                   Weinberger vs Utah
                 </span>
@@ -232,7 +310,7 @@ export function ChillHoursComparator() {
               <p className="text-[11px] text-muted-foreground flex items-center gap-1">
                 <MapPin className="h-3 w-3" />
                 <span>
-                  GPS : {settings.latitude.toFixed(4)}°N, {settings.longitude.toFixed(4)}°E (Alt. ~762 m) · Ferme Doula Agro
+                  GPS : {generalSettings.latitude.toFixed(4)}°N, {generalSettings.longitude.toFixed(4)}°E (Alt. ~762 m) · Ferme Doula Agro
                 </span>
               </p>
             </div>
@@ -276,7 +354,8 @@ export function ChillHoursComparator() {
             <button
               type="button"
               onClick={() => {
-                saveSettings(DEFAULT_SETTINGS);
+                saveGeneralSettings(DEFAULT_GENERAL_SETTINGS);
+                saveCatalog(VARIETIES_CATALOG);
                 toast.success(isAr ? "تمت استعادة القيم الافتراضية" : "Paramètres par défaut réinitialisés !");
               }}
               className="text-[10px] font-bold text-muted-foreground hover:text-foreground underline"
@@ -290,14 +369,12 @@ export function ChillHoursComparator() {
               <label className="block text-[11px] font-bold text-muted-foreground mb-1">
                 {isAr ? "تاريخ بداية التراكم الشتوي :" : "Date de début du cumul hivernal :"}
               </label>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={settings.startDate}
-                  onChange={(e) => saveSettings({ ...settings, startDate: e.target.value })}
-                  className="w-full rounded-xl border bg-background px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
+              <input
+                type="date"
+                value={generalSettings.startDate}
+                onChange={(e) => saveGeneralSettings({ ...generalSettings, startDate: e.target.value })}
+                className="w-full rounded-xl border bg-background px-3 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary"
+              />
             </div>
             <div>
               <label className="block text-[11px] font-bold text-muted-foreground mb-1">
@@ -310,28 +387,28 @@ export function ChillHoursComparator() {
             </div>
           </div>
 
-          {/* Besoins par culture */}
+          {/* Calibrage des 4 variétés */}
           <div className="space-y-2 pt-2 border-t text-xs">
             <p className="text-[11px] font-bold text-muted-foreground uppercase">
-              {isAr ? "احتياجات الأصناف (Weinberger h / Utah CU) :" : "Besoins par culture (Weinberger h / Utah CU) :"}
+              {isAr ? "احتياجات الأصناف الأربعة (Weinberger h / Utah CU) :" : "Calibrage des besoins en froid (Weinberger h / Utah CU) :"}
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {settings.crops.map((crop, idx) => (
-                <div key={crop.cropKey} className="rounded-xl border bg-muted/30 p-2.5 space-y-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {catalog.map((v, idx) => (
+                <div key={v.id} className="rounded-xl border bg-muted/30 p-2.5 space-y-1.5">
                   <p className="font-bold text-xs flex items-center gap-1">
-                    <span>{crop.icon}</span>
-                    <span className="truncate">{isAr ? crop.nameAr : crop.nameFr}</span>
+                    <span>{v.icon}</span>
+                    <span className="truncate">{isAr ? v.nameAr : v.nameFr}</span>
                   </p>
                   <div className="grid grid-cols-2 gap-1.5">
                     <div>
                       <span className="text-[9px] font-bold text-muted-foreground uppercase">Weinb. (h)</span>
                       <input
                         type="number"
-                        value={crop.weinbergerReq}
+                        value={v.chillRequirements.weinbergerHours}
                         onChange={(e) => {
-                          const updated = [...settings.crops];
-                          updated[idx].weinbergerReq = Number(e.target.value) || 0;
-                          saveSettings({ ...settings, crops: updated });
+                          const updated = [...catalog];
+                          updated[idx].chillRequirements.weinbergerHours = Number(e.target.value) || 0;
+                          saveCatalog(updated);
                         }}
                         className="w-full rounded-lg border bg-background px-2 py-1 text-xs font-bold"
                       />
@@ -340,11 +417,11 @@ export function ChillHoursComparator() {
                       <span className="text-[9px] font-bold text-muted-foreground uppercase">Utah (CU)</span>
                       <input
                         type="number"
-                        value={crop.utahReq}
+                        value={v.chillRequirements.utahUnits}
                         onChange={(e) => {
-                          const updated = [...settings.crops];
-                          updated[idx].utahReq = Number(e.target.value) || 0;
-                          saveSettings({ ...settings, crops: updated });
+                          const updated = [...catalog];
+                          updated[idx].chillRequirements.utahUnits = Number(e.target.value) || 0;
+                          saveCatalog(updated);
                         }}
                         className="w-full rounded-lg border bg-background px-2 py-1 text-xs font-bold"
                       />
@@ -473,85 +550,351 @@ export function ChillHoursComparator() {
         </>
       )}
 
-      {/* Progression comparée par culture */}
+      {/* Progression & Référentiel des 4 variétés */}
       <div className="space-y-3">
-        <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
-          {isAr ? "مستوى تقدم تلبية احتياجات كل محصول :" : "Progression Comparée par Culture"}
-        </h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <span>{isAr ? "الأصناف الأربعة والتاريخ الفينولوجي للضيعة :" : "Progression & Référentiel Phénologique (4 Variétés)"}</span>
+          </h3>
+          <span className="text-[10px] text-muted-foreground font-semibold">
+            {catalog.length} variétés suivies
+          </span>
+        </div>
 
-        <div className="space-y-2.5">
-          {settings.crops.map((crop) => {
-            const pctW = Math.min(100, Math.round((weinbergerHours / crop.weinbergerReq) * 100));
-            const pctU = Math.min(100, Math.round((utahUnits / crop.utahReq) * 100));
+        <div className="space-y-3">
+          {catalog.map((variety) => {
+            const reqW = variety.chillRequirements.weinbergerHours;
+            const reqU = variety.chillRequirements.utahUnits;
+            const pctW = Math.min(100, Math.round((weinbergerHours / (reqW || 1)) * 100));
+            const pctU = Math.min(100, Math.round((utahUnits / (reqU || 1)) * 100));
+            const isExpanded = expandedVarietyId === variety.id;
+            const frostBadge = getFrostBadge(variety.phenologyReference.frostSensitivity);
 
             return (
               <div
-                key={crop.cropKey}
-                className="rounded-2xl border bg-card p-4 shadow-xs space-y-3 hover:border-primary/40 transition"
+                key={variety.id}
+                className="rounded-2xl border bg-card shadow-xs overflow-hidden transition-all hover:border-primary/40"
               >
-                <div className="flex items-center justify-between border-b pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{crop.icon}</span>
-                    <span className="font-bold text-sm text-foreground">
-                      {isAr ? crop.nameAr : crop.nameFr}
-                    </span>
-                  </div>
-                  <span className="text-xs font-extrabold text-muted-foreground">
-                    {pctU >= 100 ? (
-                      <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        {isAr ? "مكتمل" : "Besoins comblés"}
+                {/* En-tête de la variété */}
+                <div className="p-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2 border-b pb-2.5">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-2xl">{variety.icon}</span>
+                        <div>
+                          <h4 className="font-bold text-sm text-foreground">
+                            {isAr ? variety.nameAr : variety.nameFr}
+                          </h4>
+                          <p className="text-[11px] text-muted-foreground">
+                            {variety.pedigree}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className={`rounded-full border text-[10px] font-bold px-2 py-0.5 ${frostBadge.tone}`}>
+                        {frostBadge.label}
                       </span>
-                    ) : (
-                      `${pctU}% Utah`
-                    )}
-                  </span>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedVarietyId(isExpanded ? null : variety.id)}
+                        className="inline-flex items-center gap-1 rounded-xl border bg-muted/40 hover:bg-muted px-2.5 py-1 text-xs font-bold text-muted-foreground hover:text-foreground transition active:scale-95"
+                      >
+                        <span>{isExpanded ? "Masquer détails" : "Historique & Fiche"}</span>
+                        {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Ligne Weinberger */}
+                  <div className="space-y-1 text-xs">
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="font-semibold text-muted-foreground flex items-center gap-1">
+                        <span>Weinberger (&le; 7.2°C) :</span>
+                      </span>
+                      <span className="font-black text-foreground">
+                        {weinbergerHours} / {reqW} h ({pctW}%)
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          pctW >= 100 ? "bg-emerald-600" : "bg-emerald-500"
+                        }`}
+                        style={{ width: `${pctW}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Ligne Utah */}
+                  <div className="space-y-1 text-xs pt-0.5">
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="font-semibold text-muted-foreground flex items-center gap-1">
+                        <span>Utah (Unités CU) :</span>
+                      </span>
+                      <span className="font-black text-sky-600 dark:text-sky-400">
+                        {utahUnits} / {reqU} CU ({pctU}%)
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          pctU >= 100 ? "bg-sky-600" : "bg-sky-500"
+                        }`}
+                        style={{ width: `${pctU}%` }}
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Ligne Weinberger */}
-                <div className="space-y-1 text-xs">
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span className="font-semibold text-muted-foreground">
-                      Weinberger (&le; 7.2°C) :
-                    </span>
-                    <span className="font-black text-foreground">
-                      {weinbergerHours} / {crop.weinbergerReq} h ({pctW}%)
-                    </span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        pctW >= 100 ? "bg-emerald-600" : "bg-emerald-500"
-                      }`}
-                      style={{ width: `${pctW}%` }}
-                    />
-                  </div>
-                </div>
+                {/* Section détaillée : Fiche phénologique & Campagnes réelles */}
+                {isExpanded && (
+                  <div className="bg-muted/20 border-t p-4 space-y-4 animate-in fade-in-50 duration-200 text-xs">
+                    {/* Caractéristiques de référence */}
+                    <div className="rounded-xl border bg-card p-3 space-y-2">
+                      <p className="font-black uppercase tracking-wider text-[10px] text-muted-foreground flex items-center gap-1">
+                        <Flower2 className="h-3.5 w-3.5 text-primary" />
+                        <span>{isAr ? "الخصائص المرجعية للصنف" : "Caractéristiques Phénologiques de Référence"}</span>
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                        <div className="rounded-lg border bg-muted/30 p-2">
+                          <span className="text-[10px] text-muted-foreground uppercase font-bold block">
+                            {isAr ? "فترة الإزهار :" : "Période Floraison :"}
+                          </span>
+                          <span className="font-bold text-foreground">
+                            {isAr ? variety.phenologyReference.bloomPeriodAr : variety.phenologyReference.bloomPeriodFr}
+                          </span>
+                        </div>
+                        <div className="rounded-lg border bg-muted/30 p-2">
+                          <span className="text-[10px] text-muted-foreground uppercase font-bold block">
+                            {isAr ? "فترة النضج والجني :" : "Époque Maturité :"}
+                          </span>
+                          <span className="font-bold text-foreground">
+                            {variety.phenologyReference.maturityPeriodFr}
+                          </span>
+                        </div>
+                        <div className="rounded-lg border bg-muted/30 p-2">
+                          <span className="text-[10px] text-muted-foreground uppercase font-bold block">
+                            {isAr ? "قوة النمو :" : "Vigueur & Port :"}
+                          </span>
+                          <span className="font-bold text-foreground">
+                            {variety.phenologyReference.vigor}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
-                {/* Ligne Utah */}
-                <div className="space-y-1 text-xs pt-1">
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span className="font-semibold text-muted-foreground">
-                      Utah (Unités CU) :
-                    </span>
-                    <span className="font-black text-sky-600 dark:text-sky-400">
-                      {utahUnits} / {crop.utahReq} CU ({pctU}%)
-                    </span>
+                    {/* Historique réel des campagnes de la ferme */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="font-black uppercase tracking-wider text-[10px] text-muted-foreground flex items-center gap-1">
+                          <Calendar className="h-3.5 w-3.5 text-sky-500" />
+                          <span>{isAr ? "السجل التاريخي لسنوات الضيعة (Taille & Floraison) :" : "Historique Réel des Campagnes (Constats Terrain)"}</span>
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingVariety(variety);
+                            setNewRecordYear(new Date().getFullYear());
+                            setNewPruningDate("");
+                            setNewBloomStartDate("");
+                            setNewHarvestDate("");
+                            setNewRecordNotes("");
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border bg-primary/10 hover:bg-primary/20 text-primary px-2 py-0.5 text-[10px] font-bold active:scale-95 transition"
+                        >
+                          <Plus className="h-3 w-3" />
+                          <span>{isAr ? "إضافة ملاحظة سنة" : "Ajouter observation"}</span>
+                        </button>
+                      </div>
+
+                      {variety.campaignHistory.length === 0 ? (
+                        <p className="text-[11px] text-muted-foreground italic">
+                          Aucun constat enregistré pour cette variété.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {variety.campaignHistory.map((h, hIdx) => {
+                            const intervalDays = computePruningToBloomDays(h.pruningDate, h.bloomStartDate);
+
+                            return (
+                              <div
+                                key={hIdx}
+                                className="rounded-xl border bg-card p-3 space-y-2 shadow-2xs"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-1.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="rounded-md bg-primary text-primary-foreground font-black text-[10px] px-2 py-0.5">
+                                      {h.year}
+                                    </span>
+                                    {intervalDays !== null && (
+                                      <span className="rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-extrabold text-[10px] px-2 py-0.5 flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        <span>Délai taille &rarr; floraison : {intervalDays} jours</span>
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+                                    {h.accumulatedHoursAtBloom && (
+                                      <span>Cumul réveil : <strong>{h.accumulatedHoursAtBloom} h</strong></span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                                    <Scissors className="h-3.5 w-3.5 text-muted-foreground" />
+                                    <span>Date de taille :</span>
+                                    <strong className="text-foreground">{h.pruningDate || "—"}</strong>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                                    <Flower2 className="h-3.5 w-3.5 text-rose-500" />
+                                    <span>Début floraison :</span>
+                                    <strong className="text-foreground">{h.bloomStartDate || "—"}</strong>
+                                  </div>
+                                </div>
+
+                                {h.notes && (
+                                  <p className="text-[11px] bg-muted/40 p-2 rounded-lg text-muted-foreground italic">
+                                    &laquo; {h.notes} &raquo;
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        pctU >= 100 ? "bg-sky-600" : "bg-sky-500"
-                      }`}
-                      style={{ width: `${pctU}%` }}
-                    />
-                  </div>
-                </div>
+                )}
               </div>
             );
           })}
         </div>
       </div>
+
+      {/* Modal d'ajout d'observation phénologique de campagne */}
+      {editingVariety && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-xs p-4">
+          <div className="w-full max-w-md rounded-2xl border bg-card p-4 shadow-xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{editingVariety.icon}</span>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground">
+                    Nouvelle observation : {editingVariety.nameFr}
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground">
+                    Enrichissement de l'historique phénologique de la ferme
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingVariety(null)}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-muted-foreground mb-1">
+                    Année de campagne :
+                  </label>
+                  <input
+                    type="number"
+                    value={newRecordYear}
+                    onChange={(e) => setNewRecordYear(Number(e.target.value) || new Date().getFullYear())}
+                    className="w-full rounded-xl border bg-background px-3 py-2 text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-muted-foreground mb-1">
+                    Date de récolte (optionnel) :
+                  </label>
+                  <input
+                    type="date"
+                    value={newHarvestDate}
+                    onChange={(e) => setNewHarvestDate(e.target.value)}
+                    className="w-full rounded-xl border bg-background px-3 py-2 text-xs font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-muted-foreground mb-1">
+                    Date de taille :
+                  </label>
+                  <input
+                    type="date"
+                    value={newPruningDate}
+                    onChange={(e) => setNewPruningDate(e.target.value)}
+                    className="w-full rounded-xl border bg-background px-3 py-2 text-xs font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase text-muted-foreground mb-1">
+                    Début floraison :
+                  </label>
+                  <input
+                    type="date"
+                    value={newBloomStartDate}
+                    onChange={(e) => setNewBloomStartDate(e.target.value)}
+                    className="w-full rounded-xl border bg-background px-3 py-2 text-xs font-semibold"
+                  />
+                </div>
+              </div>
+
+              {/* Aperçu du délai automatique si les 2 dates sont saisies */}
+              {newPruningDate && newBloomStartDate && (
+                <div className="rounded-xl border border-primary/30 bg-primary/10 p-2.5 flex items-center justify-between text-xs">
+                  <span className="font-semibold text-primary">Délai taille &rarr; floraison calculé :</span>
+                  <span className="font-black text-primary">
+                    {computePruningToBloomDays(newPruningDate, newBloomStartDate)} jours
+                  </span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase text-muted-foreground mb-1">
+                  Observations de terrain / vigueur / nouaison :
+                </label>
+                <textarea
+                  rows={2}
+                  value={newRecordNotes}
+                  onChange={(e) => setNewRecordNotes(e.target.value)}
+                  placeholder="Ex : Réveil régulier, 17 jours après la taille, pas de dégât de gel."
+                  className="w-full rounded-xl border bg-background px-3 py-2 text-xs font-medium"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t pt-3">
+              <button
+                type="button"
+                onClick={() => setEditingVariety(null)}
+                className="rounded-xl border px-3 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePhenologyObservation}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary text-primary-foreground px-4 py-1.5 text-xs font-bold active:scale-95 shadow-xs"
+              >
+                <Save className="h-3.5 w-3.5" />
+                <span>Enregistrer observation</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
