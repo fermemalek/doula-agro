@@ -151,6 +151,28 @@ export function useAllModuleRecords<T = any>(mod: ModuleName): Array<T & { parce
   }, [tick, mod]);
 }
 
+export function removeModuleRecordsByRecoId(recoId: string) {
+  let changed = false;
+  for (const pid of Object.keys(data)) {
+    if (!data[pid]) continue;
+    for (const mod of Object.keys(data[pid]) as ModuleName[]) {
+      if (Array.isArray(data[pid][mod])) {
+        const initialLen = data[pid][mod].length;
+        data[pid][mod] = data[pid][mod].filter(
+          (r: any) => r.reco_id !== recoId && r.payload?.reco_id !== recoId
+        );
+        if (data[pid][mod].length !== initialLen) {
+          changed = true;
+        }
+      }
+    }
+  }
+  if (changed) {
+    persist();
+    listeners.forEach((fn) => fn());
+  }
+}
+
 export function useModuleActions() {
   const add = useCallback((parcelId: string, mod: ModuleName, record: any) => {
     const enriched = { id: crypto.randomUUID(), createdAt: Date.now(), ...record };

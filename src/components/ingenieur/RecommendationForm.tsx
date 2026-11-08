@@ -665,6 +665,8 @@ export function RecommendationForm({
           };
         }
 
+        const shouldReValidate = autoValidate || recoToEdit.status === "acceptee";
+
         await update.mutateAsync({
           id: recoToEdit.id,
           title: currentTitle,
@@ -672,8 +674,10 @@ export function RecommendationForm({
           parcel_ids: [],
           payload: currentPayload,
           photo_urls: [...recoToEdit.photo_urls, ...photo_urls],
+          status: shouldReValidate ? "acceptee" : recoToEdit.status,
         });
-        if (autoValidate) {
+
+        if (shouldReValidate) {
           const updatedReco: Recommendation = {
             ...recoToEdit,
             title: currentTitle,
@@ -692,7 +696,7 @@ export function RecommendationForm({
               markAsExecutedIfPast: true,
             },
           });
-          toast.success("✅ Recommandation modifiée et validée avec succès ! Achats et stock mis à jour.");
+          toast.success("✅ Recommandation modifiée et mise à jour avec succès !");
         } else {
           toast.success(t("reco.form.successModified"));
         }
@@ -1616,67 +1620,92 @@ export function RecommendationForm({
 
                                 <span className="font-bold text-muted-foreground">{t("reco.form.activeName")} {idx + 1}</span>
 
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div className="col-span-2 space-y-0.5">
-                                    <select
-                                      value={p.product}
-                                      onChange={(e) => {
-                                        const pName = e.target.value;
-                                        const details = getPhytoProductDetails(pName, products);
-                                        updatePhyItem(idx, {
-                                          product: pName,
-                                          price: details ? details.price : "0",
-                                          dar: details ? details.dar : "",
-                                          cible: details ? details.cible : "",
-                                          dosage: details ? details.dosage : "",
-                                        });
-                                      }}
-                                      className="w-full rounded border bg-background px-2 py-1 text-xs font-semibold"
-                                    >
-                                      <option value="">{t("reco.form.chooseActive")}</option>
-                                      {p.product && !phytoDropdownOptions.some(pr => pr.name === p.product) && (
-                                        <option value={p.product}>{p.product}</option>
-                                      )}
-                                      {phytoDropdownOptions.map(pr => (
-                                        <option key={pr.name} value={pr.name}>{pr.name}</option>
-                                      ))}
-                                    </select>
-                                    {p.product && (
-                                      <span className={`text-[10px] block font-semibold ${getLiveStock(p.product) > 0 ? "text-emerald-600" : "text-amber-600"}`}>
-                                        {getLiveStock(p.product) > 0
-                                          ? `📦 Stock dispo : ${getLiveStock(p.product).toFixed(1)} L`
-                                          : `⚠️ Rupture (0 L) — Achat requis`}
-                                      </span>
+                                <div className="space-y-0.5">
+                                  <select
+                                    value={p.product}
+                                    onChange={(e) => {
+                                      const pName = e.target.value;
+                                      const details = getPhytoProductDetails(pName, products);
+                                      updatePhyItem(idx, {
+                                        product: pName,
+                                        price: details ? details.price : "0",
+                                        dar: details ? details.dar : "",
+                                        cible: details ? details.cible : "",
+                                        dosage: details ? details.dosage : "",
+                                      });
+                                    }}
+                                    className="w-full rounded border bg-background px-2 py-1 text-xs font-semibold"
+                                  >
+                                    <option value="">{t("reco.form.chooseActive")}</option>
+                                    {p.product && !phytoDropdownOptions.some(pr => pr.name === p.product) && (
+                                      <option value={p.product}>{p.product}</option>
                                     )}
+                                    {phytoDropdownOptions.map(pr => (
+                                      <option key={pr.name} value={pr.name}>{pr.name}</option>
+                                    ))}
+                                  </select>
+                                  {p.product && (
+                                    <span className={`text-[10px] block font-semibold ${getLiveStock(p.product) > 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                                      {getLiveStock(p.product) > 0
+                                        ? `📦 Stock dispo : ${getLiveStock(p.product).toFixed(1)} L`
+                                        : `⚠️ Rupture (0 L) — Achat requis`}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1">
+                                      <span>🎯</span>
+                                      <span>{isAr ? "الهدف (المرض / الآفة) :" : "Cible (Maladie / Ravageur) :"}</span>
+                                    </label>
+                                    <input
+                                      placeholder={isAr ? "مثال: تثقب، بياض دقيقي، جرب..." : "Ex: Coryneum, Oïdium, Tavelure..."}
+                                      value={p.cible}
+                                      onChange={(e) => updatePhyItem(idx, { cible: e.target.value })}
+                                      className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-xs font-semibold"
+                                    />
                                   </div>
-                                  <input
-                                    placeholder={t("reco.form.cible")}
-                                    value={p.cible}
-                                    onChange={(e) => updatePhyItem(idx, { cible: e.target.value })}
-                                    className="rounded border bg-background px-2 py-1 text-xs"
-                                  />
-                                  <input
-                                    placeholder={t("reco.form.dosageEx")}
-                                    inputMode="decimal"
-                                    value={p.dosage}
-                                    onChange={(e) => updatePhyItem(idx, { dosage: e.target.value })}
-                                    className="rounded border bg-background px-2 py-1 text-xs"
-                                  />
-                                  <input
-                                    placeholder={t("reco.form.volume")}
-                                    inputMode="decimal"
-                                    value={p.volume}
-                                    onChange={(e) => updatePhyItem(idx, { volume: e.target.value })}
-                                    className="rounded border bg-background px-2 py-1 text-xs"
-                                  />
-                                  <input
-                                    placeholder={t("reco.form.darLabel")}
-                                    inputMode="numeric"
-                                    pattern="[0-9]*"
-                                    value={p.dar}
-                                    onChange={(e) => updatePhyItem(idx, { dar: e.target.value })}
-                                    className="rounded border bg-background px-2 py-1 text-xs"
-                                  />
+
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1">
+                                      <span>⚖️</span>
+                                      <span>{isAr ? "الجرعة (لكل 100 لتر ماء أو للهكتار) :" : "Dose (par hl ou par ha) :"}</span>
+                                    </label>
+                                    <input
+                                      placeholder={isAr ? "مثال: 30 إلى 50 غ / 100 لتر" : "Ex: 30 à 50 g / hl"}
+                                      value={p.dosage}
+                                      onChange={(e) => updatePhyItem(idx, { dosage: e.target.value })}
+                                      className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-xs font-semibold"
+                                    />
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1">
+                                      <span>💧</span>
+                                      <span>{isAr ? "حجم الماء / المحلول (لتر) :" : "Volume de bouillie (Litres) :"}</span>
+                                    </label>
+                                    <input
+                                      placeholder={isAr ? "مثال: 1000 لتر" : "Ex: 1000"}
+                                      inputMode="decimal"
+                                      value={p.volume}
+                                      onChange={(e) => updatePhyItem(idx, { volume: e.target.value })}
+                                      className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-xs font-semibold"
+                                    />
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-muted-foreground flex items-center gap-1">
+                                      <span>⏳</span>
+                                      <span>{isAr ? "فترة الأمان قبل الجني (DAR بالأيام) :" : "Délai Avant Récolte (DAR en jours) :"}</span>
+                                    </label>
+                                    <input
+                                      placeholder={isAr ? "مثال: 7 أو 14 يوم" : "Ex: 7j"}
+                                      value={p.dar}
+                                      onChange={(e) => updatePhyItem(idx, { dar: e.target.value })}
+                                      className="w-full rounded-lg border bg-background px-2.5 py-1.5 text-xs font-semibold"
+                                    />
+                                  </div>
                                 </div>
                               </div>
                             ))}

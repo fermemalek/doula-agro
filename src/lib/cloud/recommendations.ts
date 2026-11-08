@@ -240,27 +240,56 @@ export function useRecommendationActions() {
       parcel_ids: string[];
       payload?: Record<string, unknown>;
       photo_urls?: string[];
+      status?: RecoStatus;
     }) => {
-      const { enqueueOp } = await import("@/lib/offline/sync-engine");
-      const cur = qc.getQueryData<Recommendation[]>(KEY)?.find((r) => r.id === input.id);
-      await enqueueOp({
-        op: "recommendation.update",
-        table: "recommendations",
-        record_id: input.id,
-        base_updated_at: cur?.updated_at ?? null,
-        payload: {
-          id: input.id,
-          base_updated_at: cur?.updated_at ?? null,
-          patch: {
-            title: input.title,
-            comment: input.comment ?? null,
-            parcel_ids: input.parcel_ids,
-            payload: input.payload ?? {},
-            photo_urls: input.photo_urls ?? [],
-          },
-        },
+      const nowIso = new Date().toISOString();
+      const patch: Record<string, unknown> = {
+        title: input.title,
+        comment: input.comment ?? null,
+        parcel_ids: input.parcel_ids,
+        payload: input.payload ?? {},
+        photo_urls: input.photo_urls ?? [],
+        ...(input.status ? { status: input.status } : {}),
+        updated_at: nowIso,
+      };
+
+      // 1. Mise à jour optimiste immédiate dans React Query cache
+      qc.setQueryData<Recommendation[]>(KEY, (old) => {
+        if (!old) return old;
+        return old.map((r) => (r.id === input.id ? { ...r, ...patch } : r));
       });
-      return { id: input.id } as Recommendation;
+
+      // 2. Écriture directe immédiate dans Supabase
+      let directUpdated = false;
+      try {
+        const { error } = await supabase
+          .from("recommendations")
+          .update(patch as never)
+          .eq("id", input.id);
+        if (!error) directUpdated = true;
+      } catch (err) {
+        console.warn("Direct update to recommendations failed:", err);
+      }
+
+      // 3. File d'attente hors-ligne seulement si l'écriture directe a échoué
+      if (!directUpdated) {
+        const { enqueueOp, scheduleSync } = await import("@/lib/offline/sync-engine");
+        const cur = qc.getQueryData<Recommendation[]>(KEY)?.find((r) => r.id === input.id);
+        await enqueueOp({
+          op: "recommendation.update",
+          table: "recommendations",
+          record_id: input.id,
+          base_updated_at: cur?.updated_at ?? null,
+          payload: {
+            id: input.id,
+            base_updated_at: cur?.updated_at ?? null,
+            patch,
+          },
+        });
+        scheduleSync();
+      }
+
+      return { id: input.id, ...patch } as unknown as Recommendation;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });

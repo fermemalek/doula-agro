@@ -2,6 +2,7 @@ import type { Recommendation } from "@/lib/cloud/recommendations";
 import type { Parcel } from "@/data/parcels";
 import { type SupplierPurchase, debitProductStock } from "@/lib/suppliers-store";
 import { checkRecoStock, getTargetParcelsForReco, safeParseFloat } from "@/lib/stock-alerts";
+import { removeModuleRecordsByRecoId } from "@/lib/modules-store";
 
 export function parseDurationToMinutes(durationStr: string): number {
   if (!durationStr) return 90;
@@ -91,6 +92,8 @@ export async function validateRecommendationAndPurchases({
   await acceptReco(reco.id);
 
   // 3. Débiter le stock et créer les programmes correspondants
+  // Nettoyer les anciens enregistrements de parcelles associés à cette reco pour éviter les doublons lors d'une modification
+  removeModuleRecordsByRecoId(reco.id);
   let clonedCount = 0;
 
   if (program && targetParcels.length > 0) {
