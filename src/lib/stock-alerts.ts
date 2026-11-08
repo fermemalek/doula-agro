@@ -50,8 +50,8 @@ export function parsePhytoProductQuantity(
   if (!unitHint) {
     const knownProd = FERTILIZER_DATABASE.find(
       (fp) => fp.name.trim().toLowerCase() === prodName.toLowerCase() ||
-              prodName.toLowerCase().includes(fp.name.trim().toLowerCase()) ||
-              fp.name.trim().toLowerCase().includes(prodName.toLowerCase())
+        prodName.toLowerCase().includes(fp.name.trim().toLowerCase()) ||
+        fp.name.trim().toLowerCase().includes(prodName.toLowerCase())
     );
     if (knownProd) {
       unit = knownProd.unit;
@@ -74,7 +74,7 @@ export function parsePhytoProductQuantity(
   // 2. Extraire les nombres du dosage (gère virgules, tirets, "à", "إلى")
   const normalized = rawDosage.replace(/,/g, ".");
   const numbers = normalized.match(/\d+(\.\d+)?/g)?.map(Number) || [];
-  
+
   // Si l'un des nombres est 100 et qu'il s'agit du volume de référence (/ 100 l ou / 100 لتر), on l'exclut
   const filteredNumbers = numbers.filter((n) => {
     if (n === 100 && (
@@ -125,12 +125,12 @@ export function parsePhytoProductQuantity(
 
   const isGramsOrMl =
     (normalized.includes("g") ||
-     normalized.includes("cc") ||
-     normalized.includes("ml") ||
-     normalized.includes("غ") ||
-     normalized.includes("غم") ||
-     normalized.includes("غرام") ||
-     normalized.includes("مل")) &&
+      normalized.includes("cc") ||
+      normalized.includes("ml") ||
+      normalized.includes("غ") ||
+      normalized.includes("غم") ||
+      normalized.includes("غرام") ||
+      normalized.includes("مل")) &&
     !normalized.includes("kg") &&
     !normalized.includes("كغ") &&
     !normalized.includes("كلغ") &&
@@ -182,8 +182,8 @@ export function getTargetParcelsForReco(reco: Recommendation, parcels: Parcel[] 
   const groups: string[] = Array.isArray(rawGroups)
     ? rawGroups
     : rawGroups
-    ? [rawGroups]
-    : [];
+      ? [rawGroups]
+      : [];
 
   if (groups.length === 0) return parcels;
 

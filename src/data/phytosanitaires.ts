@@ -2,6 +2,7 @@ export interface PhytoProductInfo {
   name: string;
   matiereActive?: string;
   matiereActiveAr?: string;
+  codeGroup?: string;
   cible: string;
   dosage: string;
   volume: string;
@@ -9,48 +10,68 @@ export interface PhytoProductInfo {
   dar: string;
 }
 
-export const COMMERCIAL_TO_ACTIVE: Record<string, { activeFr: string; activeAr: string }> = {
-  "Bellis": { activeFr: "Boscalide + Pyraclostrobine", activeAr: "بوسكاليد + بيراكلوستروبين" },
-  "Signum WG": { activeFr: "Boscalide + Pyraclostrobine", activeAr: "بوسكاليد + بيراكلوستروبين" },
-  "Decis Expert": { activeFr: "Deltaméthrine", activeAr: "دلتامثرين" },
-  "Deltacal": { activeFr: "Deltaméthrine", activeAr: "دلتامثرين" },
-  "Sivento": { activeFr: "Flupyradifurone", activeAr: "فلوبيراديفورون" },
-  "Calypso": { activeFr: "Thiaclopride", activeAr: "ثياكلوبريد" },
-  "Sherpa 25 EC": { activeFr: "Cyperméthrine", activeAr: "سيبيرمثرين" },
-  "Verlan": { activeFr: "Abamectine", activeAr: "أبامكتين" },
-  "Erlan": { activeFr: "Acétamipride", activeAr: "أسيتامبريد" },
-  "Acetaplan": { activeFr: "Acétamipride", activeAr: "أسيتامبريد" },
-  "Aceplan": { activeFr: "Acétamipride", activeAr: "أسيتامبريد" },
-  "Mospilan 20 SP": { activeFr: "Acétamipride", activeAr: "أسيتامبريد" },
-  "Amistar": { activeFr: "Azoxystrobine", activeAr: "أزوكسيستروبين" },
-  "Azostar 325SC": { activeFr: "Azoxystrobine + Difénoconazole", activeAr: "أزوكسيستروبين + ديفينوكونازول" },
-  "Zorro": { activeFr: "Abamectine", activeAr: "أبامكتين" },
-  "Fosetyl Aluminium": { activeFr: "Fosétyl-Aluminium", activeAr: "فوسيتيل الألومنيوم" },
-  "Aliette Flash": { activeFr: "Fosétyl-Aluminium", activeAr: "فوسيتيل الألومنيوم" },
-  "Luna": { activeFr: "Fluopyram + Tébuconazole", activeAr: "فلوبيرام + تيبوكونازول" },
-  "Luna Experience": { activeFr: "Fluopyram + Tébuconazole", activeAr: "فلوبيرام + تيبوكونازول" },
-  "Criptan": { activeFr: "Captane", activeAr: "كابتان" },
-  "Phytocap": { activeFr: "Captane", activeAr: "كابتان" },
-  "Captan 50": { activeFr: "Captane", activeAr: "كابتان" },
-  "Extrachim": { activeFr: "Matières actives diverses", activeAr: "مواد فعالة متعددة" },
-  "Rustilan": { activeFr: "Acétamipride", activeAr: "أسيتامبريد" },
-  "Tachigazol": { activeFr: "Hymexazol", activeAr: "هيميكسازول" },
-  "Score 250 EC": { activeFr: "Difénoconazole", activeAr: "ديفينوكونازول" },
-  "Folicur 250 EW": { activeFr: "Tébuconazole", activeAr: "تيبوكونازول" },
-  "Topas 100 EC": { activeFr: "Penconazole", activeAr: "بنكونازول" },
-  "Movento 100 SC": { activeFr: "Spirotétramate", activeAr: "سبيروتتراماط" },
-  "Coragen 20 SC": { activeFr: "Chlorantraniliprole", activeAr: "كلورانترانيليبرول" },
-  "Delan 70 WG": { activeFr: "Dithianon", activeAr: "ديثيانون" },
-  "Vertimec 018 EC": { activeFr: "Abamectine", activeAr: "أبامكتين" },
-  "Bactimec": { activeFr: "Abamectine", activeAr: "أبامكتين" },
-  "Nucop 35 WG": { activeFr: "Oxychlorure de cuivre", activeAr: "أوكسيكلورور النحاس" },
-  "Curenox 50": { activeFr: "Oxychlorure de cuivre", activeAr: "أوكسيكلورور النحاس" },
-  "Nativo 75 WG": { activeFr: "Tébuconazole + Trifloxystrobine", activeAr: "تيبوكونازول + تريفلوكسيستروبين" },
-  "Exirel": { activeFr: "Cyantraniliprole", activeAr: "سيانترانيليبرول" },
-  "Tracer 480 SC": { activeFr: "Spinosad", activeAr: "سبينوساد" },
-  "Spintor": { activeFr: "Spinosad", activeAr: "سبينوساد" },
-  "Teldor 500 SC": { activeFr: "Fenhexamide", activeAr: "فينهكساميد" },
+export interface ActiveSubstanceDetail {
+  activeFr: string;
+  activeAr: string;
+  codeGroup?: string;
+  type?: "FRAC" | "IRAC";
+}
+
+export const COMMERCIAL_TO_ACTIVE: Record<string, ActiveSubstanceDetail> = {
+  "Bellis": { activeFr: "Boscalide + Pyraclostrobine", activeAr: "بوسكاليد + بيراكلوستروبين", codeGroup: "FRAC 7 + FRAC 11", type: "FRAC" },
+  "Signum WG": { activeFr: "Boscalide + Pyraclostrobine", activeAr: "بوسكاليد + بيراكلوستروبين", codeGroup: "FRAC 7 + FRAC 11", type: "FRAC" },
+  "Decis Expert": { activeFr: "Deltaméthrine", activeAr: "دلتامثرين", codeGroup: "IRAC 3A", type: "IRAC" },
+  "Deltacal": { activeFr: "Deltaméthrine", activeAr: "دلتامثرين", codeGroup: "IRAC 3A", type: "IRAC" },
+  "Sivento": { activeFr: "Flupyradifurone", activeAr: "فلوبيراديفورون", codeGroup: "IRAC 4D", type: "IRAC" },
+  "Calypso": { activeFr: "Thiaclopride", activeAr: "ثياكلوبريد", codeGroup: "IRAC 4A", type: "IRAC" },
+  "Sherpa 25 EC": { activeFr: "Cyperméthrine", activeAr: "سيبيرمثرين", codeGroup: "IRAC 3A", type: "IRAC" },
+  "Verlan": { activeFr: "Abamectine", activeAr: "أبامكتين", codeGroup: "IRAC 6", type: "IRAC" },
+  "Erlan": { activeFr: "Acétamipride", activeAr: "أسيتامبريد", codeGroup: "IRAC 4A", type: "IRAC" },
+  "Acetaplan": { activeFr: "Acétamipride", activeAr: "أسيتامبريد", codeGroup: "IRAC 4A", type: "IRAC" },
+  "Aceplan": { activeFr: "Acétamipride", activeAr: "أسيتامبريد", codeGroup: "IRAC 4A", type: "IRAC" },
+  "Mospilan 20 SP": { activeFr: "Acétamipride", activeAr: "أسيتامبريد", codeGroup: "IRAC 4A", type: "IRAC" },
+  "Amistar": { activeFr: "Azoxystrobine", activeAr: "أزوكسيستروبين", codeGroup: "FRAC 11", type: "FRAC" },
+  "Azostar 325SC": { activeFr: "Azoxystrobine + Difénoconazole", activeAr: "أزوكسيستروبين + ديفينوكونازول", codeGroup: "FRAC 11 + FRAC 3", type: "FRAC" },
+  "Zorro": { activeFr: "Abamectine", activeAr: "أبامكتين", codeGroup: "IRAC 6", type: "IRAC" },
+  "Fosetyl Aluminium": { activeFr: "Fosétyl-Aluminium", activeAr: "فوسيتيل الألومنيوم", codeGroup: "FRAC P07", type: "FRAC" },
+  "Aliette Flash": { activeFr: "Fosétyl-Aluminium", activeAr: "فوسيتيل الألومنيوم", codeGroup: "FRAC P07", type: "FRAC" },
+  "Luna": { activeFr: "Fluopyram + Tébuconazole", activeAr: "فلوبيرام + تيبوكونازول", codeGroup: "FRAC 7 + FRAC 3", type: "FRAC" },
+  "Luna Experience": { activeFr: "Fluopyram + Tébuconazole", activeAr: "فلوبيرام + تيبوكونازول", codeGroup: "FRAC 7 + FRAC 3", type: "FRAC" },
+  "Criptan": { activeFr: "Captane", activeAr: "كابتان", codeGroup: "FRAC M04", type: "FRAC" },
+  "Phytocap": { activeFr: "Captane", activeAr: "كابتان", codeGroup: "FRAC M04", type: "FRAC" },
+  "Captan 50": { activeFr: "Captane", activeAr: "كابتان", codeGroup: "FRAC M04", type: "FRAC" },
+  "Extrachim": { activeFr: "Matières actives diverses", activeAr: "مواد فعالة متعددة", codeGroup: "Divers", type: "FRAC" },
+  "Rustilan": { activeFr: "Acétamipride", activeAr: "أسيتامبريد", codeGroup: "IRAC 4A", type: "IRAC" },
+  "Tachigazol": { activeFr: "Hymexazol", activeAr: "هيميكسازول", codeGroup: "FRAC 32", type: "FRAC" },
+  "Score 250 EC": { activeFr: "Difénoconazole", activeAr: "ديفينوكونازول", codeGroup: "FRAC 3", type: "FRAC" },
+  "Folicur 250 EW": { activeFr: "Tébuconazole", activeAr: "تيبوكونازول", codeGroup: "FRAC 3", type: "FRAC" },
+  "Topas 100 EC": { activeFr: "Penconazole", activeAr: "بنكونازول", codeGroup: "FRAC 3", type: "FRAC" },
+  "Movento 100 SC": { activeFr: "Spirotétramate", activeAr: "سبيروتتراماط", codeGroup: "IRAC 23", type: "IRAC" },
+  "Coragen 20 SC": { activeFr: "Chlorantraniliprole", activeAr: "كلورانترانيليبرول", codeGroup: "IRAC 28", type: "IRAC" },
+  "Delan 70 WG": { activeFr: "Dithianon", activeAr: "ديثيانون", codeGroup: "FRAC M09", type: "FRAC" },
+  "Vertimec 018 EC": { activeFr: "Abamectine", activeAr: "أبامكتين", codeGroup: "IRAC 6", type: "IRAC" },
+  "Bactimec": { activeFr: "Abamectine", activeAr: "أبامكتين", codeGroup: "IRAC 6", type: "IRAC" },
+  "Nucop 35 WG": { activeFr: "Oxychlorure de cuivre", activeAr: "أوكسيكلورور النحاس", codeGroup: "FRAC M01", type: "FRAC" },
+  "Curenox 50": { activeFr: "Oxychlorure de cuivre", activeAr: "أوكسيكلورور النحاس", codeGroup: "FRAC M01", type: "FRAC" },
+  "Nativo 75 WG": { activeFr: "Tébuconazole + Trifloxystrobine", activeAr: "تيبوكونازول + تريفلوكسيستروبين", codeGroup: "FRAC 3 + FRAC 11", type: "FRAC" },
+  "Exirel": { activeFr: "Cyantraniliprole", activeAr: "سيانترانيليبرول", codeGroup: "IRAC 28", type: "IRAC" },
+  "Tracer 480 SC": { activeFr: "Spinosad", activeAr: "سبينوساد", codeGroup: "IRAC 5", type: "IRAC" },
+  "Spintor": { activeFr: "Spinosad", activeAr: "سبينوساد", codeGroup: "IRAC 5", type: "IRAC" },
+  "Teldor 500 SC": { activeFr: "Fenhexamide", activeAr: "فينهكساميد", codeGroup: "FRAC 17", type: "FRAC" },
 };
+
+export function getIracFracCode(productName: string): string {
+  if (!productName) return "";
+  const clean = productName.trim();
+  if (COMMERCIAL_TO_ACTIVE[clean]?.codeGroup) return COMMERCIAL_TO_ACTIVE[clean].codeGroup!;
+  const lower = clean.toLowerCase();
+  for (const [k, v] of Object.entries(COMMERCIAL_TO_ACTIVE)) {
+    if (k.toLowerCase() === lower || lower.includes(k.toLowerCase()) || k.toLowerCase().includes(lower)) {
+      return v.codeGroup || "";
+    }
+  }
+  return "";
+}
 
 export function getMatiereActive(productName: string): string {
   if (!productName) return "";

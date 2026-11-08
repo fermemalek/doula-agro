@@ -15,7 +15,7 @@ import {
 } from "@/lib/cloud/recommendations";
 import { FERTILIZER_DATABASE } from "@/data/fertilizers";
 import { useProducts, useProductActions } from "@/lib/products-store";
-import { PHYTO_DATABASE, getMatiereActive, getMatiereActiveAr } from "@/data/phytosanitaires";
+import { PHYTO_DATABASE, getMatiereActive, getMatiereActiveAr, getIracFracCode } from "@/data/phytosanitaires";
 import { useTranslation } from "@/lib/i18n";
 import { PhytoHistoryModal } from "@/components/ingenieur/PhytoHistoryModal";
 import { PhytoAdvisorModal } from "@/components/ingenieur/PhytoAdvisorModal";
@@ -1646,29 +1646,52 @@ export function RecommendationForm({
                                     </option>
                                     {p.product && !phytoDropdownOptions.some(pr => pr.name === p.product) && (
                                       <option value={p.product}>
-                                        {p.product} {getMatiereActive(p.product) ? `— (${getMatiereActive(p.product)})` : ""}
+                                        {p.product} {getMatiereActive(p.product) ? `— (${getMatiereActive(p.product)})` : ""} {getIracFracCode(p.product) ? `[${getIracFracCode(p.product)}]` : ""}
                                       </option>
                                     )}
                                     {phytoDropdownOptions.map(pr => {
                                       const ma = pr.matiereActive || getMatiereActive(pr.name);
+                                      const code = getIracFracCode(pr.name);
                                       return (
                                         <option key={pr.name} value={pr.name}>
-                                          {pr.name} {ma ? `— (${ma})` : ""}
+                                          {pr.name} {ma ? `— (${ma})` : ""} {code ? `[${code}]` : ""}
                                         </option>
                                       );
                                     })}
                                   </select>
                                   {p.product && (() => {
                                     const activeIng = isAr ? getMatiereActiveAr(p.product) || getMatiereActive(p.product) : getMatiereActive(p.product);
+                                    const iracFrac = getIracFracCode(p.product);
+                                    const isFrac = iracFrac.includes("FRAC");
+                                    const isMultiSite = iracFrac.includes("M0") || iracFrac.includes("M") || iracFrac.includes("M01") || iracFrac.includes("M04") || iracFrac.includes("M09");
                                     const stock = getLiveStock(p.product);
                                     return (
-                                      <div className="space-y-1 pt-0.5">
-                                        {activeIng && (
-                                          <span className="text-[10px] font-bold text-primary flex items-center gap-1 bg-primary/10 px-2 py-0.5 rounded-md">
-                                            <span>🧪</span>
-                                            <span>{isAr ? `المادة الفعالة : ${activeIng}` : `Matière active : ${activeIng}`}</span>
-                                          </span>
-                                        )}
+                                      <div className="space-y-1.5 pt-0.5">
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                          {activeIng && (
+                                            <span className="text-[10px] font-bold text-primary flex items-center gap-1 bg-primary/10 px-2 py-0.5 rounded-md">
+                                              <span>🧪</span>
+                                              <span>{isAr ? `المادة الفعالة : ${activeIng}` : `Matière active : ${activeIng}`}</span>
+                                            </span>
+                                          )}
+                                          {iracFrac && (
+                                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 border shadow-xs ${
+                                              isMultiSite
+                                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                                : isFrac
+                                                ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30"
+                                                : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                                            }`}>
+                                              <span>🛡️</span>
+                                              <span>{isAr ? `تصنيف المقاومة : ${iracFrac}` : `Groupe : ${iracFrac}`}</span>
+                                              {isMultiSite && (
+                                                <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400">
+                                                  ({isAr ? "متعدد المواقع / آمن" : "Multi-site"})
+                                                </span>
+                                              )}
+                                            </span>
+                                          )}
+                                        </div>
                                         <span className={`text-[10px] block font-semibold ${stock > 0 ? "text-emerald-600" : "text-amber-600"}`}>
                                           {stock > 0
                                             ? `📦 Stock dispo : ${stock.toFixed(1)} L`
