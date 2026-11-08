@@ -20,8 +20,10 @@ import {
   Info,
   Clock,
   Send,
-  Sparkles
+  Sparkles,
+  Snowflake
 } from "lucide-react";
+import { ChillHoursComparator } from "@/components/meteo/ChillHoursComparator";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -245,7 +247,7 @@ export default function MeteoPage() {
   const isAr = lang === "ar";
   const { session } = useRole();
 
-  const [activeTab, setActiveTab] = useState<"realtime" | "monthly">("realtime");
+  const [activeTab, setActiveTab] = useState<"realtime" | "monthly" | "chill">("realtime");
   const [selectedMonthIdx, setSelectedMonthIdx] = useState<number>(new Date().getMonth());
 
   // Configuration de l'alerte de température maximale par email
@@ -336,7 +338,7 @@ export default function MeteoPage() {
           </p>
         </div>
 
-        {/* Boutons d'onglets Temps réel / Prévisions par mois */}
+        {/* Boutons d'onglets Temps réel / Heures de froid / Prévisions par mois */}
         <div className="flex rounded-xl bg-muted p-1 border">
           <button
             type="button"
@@ -348,7 +350,19 @@ export default function MeteoPage() {
             }`}
           >
             <Clock className="h-3.5 w-3.5" />
-            <span>{isAr ? "الوقت الحقيقي (7 أيام)" : "Temps réel & 7 Jours"}</span>
+            <span>{isAr ? "الوقت الحقيقي" : "Temps réel"}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("chill")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "chill"
+                ? "bg-background text-primary shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Snowflake className="h-3.5 w-3.5 text-sky-500" />
+            <span>{isAr ? "ساعات البرودة ❄️" : "Heures de Froid ❄️"}</span>
           </button>
           <button
             type="button"
@@ -360,7 +374,7 @@ export default function MeteoPage() {
             }`}
           >
             <Calendar className="h-3.5 w-3.5" />
-            <span>{isAr ? "التوقعات الشهرية" : "Prévisions par Mois"}</span>
+            <span>{isAr ? "التوقعات الشهرية" : "Mois"}</span>
           </button>
         </div>
       </div>
@@ -620,7 +634,10 @@ export default function MeteoPage() {
         </div>
       )}
 
-      {/* CONTENU ONGLET 2: PRÉVISIONS ET CLIMATOLOGIE PAR MOIS */}
+      {/* CONTENU ONGLET 2: COMPARATEUR D'HEURES DE FROID (WEINBERGER VS UTAH) */}
+      {activeTab === "chill" && <ChillHoursComparator />}
+
+      {/* CONTENU ONGLET 3: PRÉVISIONS ET CLIMATOLOGIE PAR MOIS */}
       {activeTab === "monthly" && (
         <div className="space-y-4">
           {/* Sélecteur des 12 mois */}
