@@ -20,7 +20,8 @@ import {
   Sparkles,
   Layers,
   ShoppingCart,
-  Check
+  Check,
+  X
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -106,6 +107,209 @@ const CROP_GROUP_LABELS: Record<string, string> = {
   casuarina: "Casuarina",
   autres: "Autres",
 };
+
+function EditPurchaseInlineForm({
+  purchase,
+  onSave,
+  onCancel,
+}: {
+  purchase: SupplierPurchase;
+  onSave: (id: string, patch: Partial<SupplierPurchase>) => void;
+  onCancel: () => void;
+}) {
+  const [supplierName, setSupplierName] = useState(purchase.supplierName);
+  const [purchaseDate, setPurchaseDate] = useState(purchase.purchaseDate);
+  const [productName, setProductName] = useState(purchase.productName);
+  const [quantity, setQuantity] = useState<number | string>(purchase.quantity);
+  const [unit, setUnit] = useState<"kg" | "litres">(purchase.unit || "kg");
+  const initialPu = purchase.pricePerUnit > 0
+    ? purchase.pricePerUnit
+    : purchase.quantity > 0
+    ? Math.round((purchase.totalCost / purchase.quantity) * 100) / 100
+    : 0;
+  const [pricePerUnit, setPricePerUnit] = useState<number | string>(initialPu);
+  const [consumed, setConsumed] = useState<number | string>(purchase.consumed ?? 0);
+  const [paidAmount, setPaidAmount] = useState<number | string>(purchase.paidAmount ?? 0);
+
+  const numQty = parseFloat(String(quantity)) || 0;
+  const numPu = parseFloat(String(pricePerUnit)) || 0;
+  const numConsumed = parseFloat(String(consumed)) || 0;
+  const numPaid = parseFloat(String(paidAmount)) || 0;
+
+  const totalCost = parseFloat((numQty * numPu).toFixed(2));
+  const remainingPay = parseFloat((totalCost - numPaid).toFixed(2));
+  const remainingQty = parseFloat((numQty - numConsumed).toFixed(2));
+
+  const handleSolder = () => {
+    setPaidAmount(totalCost);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productName.trim()) return toast.error("Nom du produit requis");
+    if (numQty <= 0) return toast.error("La quantité achetée doit être supérieure à 0");
+    if (numPu < 0) return toast.error("Le prix unitaire ne peut pas être négatif");
+
+    onSave(purchase.id, {
+      supplierName: supplierName.trim() || purchase.supplierName,
+      purchaseDate,
+      productName: productName.trim(),
+      quantity: numQty,
+      unit,
+      pricePerUnit: numPu,
+      totalCost,
+      consumed: numConsumed,
+      paidAmount: numPaid,
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="p-3.5 mb-3 rounded-2xl border-2 border-primary/40 bg-primary/5 space-y-3 shadow-md animate-in fade-in">
+      <div className="flex items-center justify-between border-b border-primary/20 pb-2">
+        <div className="flex items-center gap-2">
+          <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+            <Pencil className="h-4 w-4" />
+          </div>
+          <div>
+            <h4 className="font-bold text-sm text-foreground flex items-center gap-1.5">
+              <span>Modifier la ligne :</span>
+              <span className="text-primary font-black underline">{purchase.productName}</span>
+            </h4>
+            <p className="text-[10px] text-muted-foreground">
+              Ajustez la quantité, le prix unitaire ou la situation de paiement. Les totaux sont recalculés en direct.
+            </p>
+          </div>
+        </div>
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel} className="h-7 w-7 p-0 rounded-full hover:bg-muted" title="Fermer">
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+        <div>
+          <Label className="text-[10px] font-bold text-muted-foreground">Date d'achat</Label>
+          <Input
+            type="date"
+            value={purchaseDate}
+            onChange={(e) => setPurchaseDate(e.target.value)}
+            className="mt-1 h-8 rounded-lg bg-background text-xs"
+            required
+          />
+        </div>
+
+        <div>
+          <Label className="text-[10px] font-bold text-muted-foreground">Nom du Produit</Label>
+          <Input
+            value={productName}
+            onChange={(e) => setProductName(e.target.value)}
+            className="mt-1 h-8 rounded-lg bg-background text-xs font-semibold"
+            required
+          />
+        </div>
+
+        <div>
+          <Label className="text-[10px] font-bold text-muted-foreground">Quantité Achetée</Label>
+          <div className="flex gap-1 mt-1">
+            <Input
+              type="number"
+              step="any"
+              min="0.001"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="h-8 rounded-lg bg-background text-xs font-bold text-foreground"
+              required
+            />
+            <select
+              value={unit}
+              onChange={(e) => setUnit(e.target.value as "kg" | "litres")}
+              className="h-8 rounded-lg border bg-background px-2 text-xs font-semibold"
+            >
+              <option value="kg">kg</option>
+              <option value="litres">L</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <Label className="text-[10px] font-bold text-primary flex items-center justify-between">
+            <span>Prix Unitaire (DA)</span>
+            <span className="text-[9px] font-mono text-muted-foreground">P.U.</span>
+          </Label>
+          <Input
+            type="number"
+            step="any"
+            min="0"
+            value={pricePerUnit}
+            onChange={(e) => setPricePerUnit(e.target.value)}
+            className="mt-1 h-8 rounded-lg bg-background font-mono font-bold text-primary text-xs"
+            required
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs pt-1">
+        <div>
+          <Label className="text-[10px] font-bold text-amber-700 dark:text-amber-400 flex items-center justify-between">
+            <span>Quantité Consommée</span>
+            <span className="text-[9px] text-muted-foreground font-mono">Restant : {remainingQty} {unit}</span>
+          </Label>
+          <Input
+            type="number"
+            step="any"
+            min="0"
+            value={consumed}
+            onChange={(e) => setConsumed(e.target.value)}
+            className="mt-1 h-8 rounded-lg bg-background font-medium text-xs"
+          />
+        </div>
+
+        <div>
+          <Label className="text-[10px] font-bold text-emerald-600 flex items-center justify-between">
+            <span>Montant Payé / Avance (DA)</span>
+            <button
+              type="button"
+              onClick={handleSolder}
+              className="text-[9px] underline text-emerald-600 hover:text-emerald-700 font-bold"
+            >
+              Tout solder
+            </button>
+          </Label>
+          <Input
+            type="number"
+            step="any"
+            min="0"
+            value={paidAmount}
+            onChange={(e) => setPaidAmount(e.target.value)}
+            className="mt-1 h-8 rounded-lg bg-background font-mono font-semibold text-xs"
+          />
+        </div>
+
+        <div className="p-2 rounded-xl bg-background border flex flex-col justify-center text-xs space-y-0.5">
+          <div className="flex justify-between items-center text-[11px]">
+            <span className="text-muted-foreground font-medium">Total Facturé :</span>
+            <span className="font-mono font-black text-foreground">{formatMoney(totalCost)}</span>
+          </div>
+          <div className="flex justify-between items-center text-[11px]">
+            <span className="text-muted-foreground font-medium">Reste à payer :</span>
+            <span className={`font-mono font-black ${remainingPay > 0 ? "text-destructive" : "text-emerald-600"}`}>
+              {formatMoney(remainingPay)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end items-center gap-2 pt-2 border-t border-primary/20">
+        <Button type="button" variant="outline" size="sm" onClick={onCancel} className="rounded-xl h-8 px-3 text-xs font-medium">
+          Annuler
+        </Button>
+        <Button type="submit" size="sm" className="rounded-xl h-8 px-4 font-bold bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 text-xs shadow-xs">
+          <Check className="h-3.5 w-3.5" />
+          Enregistrer les modifications
+        </Button>
+      </div>
+    </form>
+  );
+}
 
 function ProgrammesPage() {
   const irr = useAllModuleRecords<IrrRec>("irrigation");
@@ -1199,7 +1403,12 @@ function ProgrammesPage() {
       )}
 
       {/* SUPPLIER DETAILS DIALOG */}
-      <Dialog open={selectedSupplier !== null} onOpenChange={(open) => !open && setSelectedSupplier(null)}>
+      <Dialog open={selectedSupplier !== null} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedSupplier(null);
+          setEditingPurchase(null);
+        }
+      }}>
         {selectedSupplier && (() => {
           const supplierPurchases = purchases.filter(p => p.supplierName.trim().toLowerCase() === selectedSupplier.trim().toLowerCase());
           const totalCost = supplierPurchases.reduce((sum, p) => sum + p.totalCost, 0);
@@ -1207,7 +1416,7 @@ function ProgrammesPage() {
           const remainingDebt = totalCost - totalPaid;
 
           return (
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl rounded-2xl bg-card text-card-foreground">
+            <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl md:max-w-6xl w-[96vw] rounded-2xl bg-card text-card-foreground">
               <DialogHeader className="border-b pb-2">
                 <DialogTitle className="text-base font-black uppercase tracking-wide flex justify-between items-center">
                   <span>Détails Fournisseur — {selectedSupplier}</span>
@@ -1239,21 +1448,35 @@ function ProgrammesPage() {
                 </div>
               </div>
 
+              {/* Panneau de modification de ligne sélectionnée */}
+              {editingPurchase && (
+                <EditPurchaseInlineForm
+                  purchase={editingPurchase}
+                  onSave={(id, patch) => {
+                    updatePurchase(id, patch);
+                    toast.success("Ligne d'achat modifiée avec succès !");
+                    setEditingPurchase(null);
+                  }}
+                  onCancel={() => setEditingPurchase(null)}
+                />
+              )}
+
               {/* Table of purchased products */}
-              <div className="overflow-x-auto rounded-xl border bg-muted/10">
+              <div className="overflow-x-auto rounded-xl border bg-muted/10 shadow-xs">
                 <table className="w-full text-xs text-left border-collapse">
                   <thead>
                     <tr className="bg-muted text-muted-foreground border-b uppercase font-bold text-[9px]">
-                      <th className="p-2 border">Date</th>
+                      <th className="p-2 border whitespace-nowrap">Date</th>
                       <th className="p-2 border">Produit</th>
-                      <th className="p-2 border text-center">Acheté</th>
-                      <th className="p-2 border text-center">Consommé</th>
-                      <th className="p-2 border text-center">Restant</th>
-                      <th className="p-2 border text-right">Total (DA)</th>
-                      <th className="p-2 border text-right">Payé / Avance</th>
-                      <th className="p-2 border text-right">Reste</th>
-                      <th className="p-2 border text-center">Action/Statut</th>
-                      <th className="p-2 border text-center">Actions</th>
+                      <th className="p-2 border text-right whitespace-nowrap bg-primary/5 text-primary font-black">P.U. (DA)</th>
+                      <th className="p-2 border text-center whitespace-nowrap">Acheté</th>
+                      <th className="p-2 border text-center whitespace-nowrap">Consommé</th>
+                      <th className="p-2 border text-center whitespace-nowrap">Restant</th>
+                      <th className="p-2 border text-right whitespace-nowrap">Total (DA)</th>
+                      <th className="p-2 border text-right whitespace-nowrap">Payé / Avance</th>
+                      <th className="p-2 border text-right whitespace-nowrap">Reste</th>
+                      <th className="p-2 border text-center whitespace-nowrap">Statut</th>
+                      <th className="p-2 border text-center whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y font-medium text-foreground">
@@ -1261,24 +1484,34 @@ function ProgrammesPage() {
                       const remainingQty = parseFloat((p.quantity - p.consumed).toFixed(2));
                       const remainingPay = parseFloat((p.totalCost - p.paidAmount).toFixed(2));
                       const isSolded = p.paidAmount >= p.totalCost;
-                      const actionText = isSolded ? "Solder" : "Dette";
+                      const actionText = isSolded ? "Soldé" : "Dette";
+                      const pu = p.pricePerUnit > 0 ? p.pricePerUnit : (p.quantity > 0 ? Math.round((p.totalCost / p.quantity) * 100) / 100 : 0);
+                      const isEditing = editingPurchase?.id === p.id;
 
                       return (
-                        <tr key={p.id} className="hover:bg-muted/30">
-                          <td className="p-2 border whitespace-nowrap">{p.purchaseDate}</td>
-                          <td className="p-2 border font-semibold truncate max-w-[150px]" title={p.productName}>
+                        <tr
+                          key={p.id}
+                          className={`hover:bg-muted/40 transition-colors ${isEditing ? "bg-primary/10 ring-2 ring-primary/40 font-bold" : ""}`}
+                          onDoubleClick={() => setEditingPurchase(p)}
+                          title="Double-cliquer pour modifier cette ligne"
+                        >
+                          <td className="p-2 border whitespace-nowrap font-mono text-[11px]">{p.purchaseDate}</td>
+                          <td className="p-2 border font-bold truncate max-w-[170px]" title={p.productName}>
                             {p.productName.split("/")[0]}
                           </td>
-                          <td className="p-2 border text-center whitespace-nowrap">
+                          <td className="p-2 border text-right font-mono font-bold text-primary whitespace-nowrap bg-primary/5">
+                            {formatMoney(pu)}
+                          </td>
+                          <td className="p-2 border text-center whitespace-nowrap font-semibold">
                             {p.quantity} {p.unit}
                           </td>
-                          <td className="p-2 border text-center text-amber-700 whitespace-nowrap">
+                          <td className="p-2 border text-center text-amber-700 whitespace-nowrap font-semibold">
                             {p.consumed} {p.unit}
                           </td>
                           <td className={`p-2 border text-center whitespace-nowrap font-bold ${remainingQty > 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
                             {remainingQty} {p.unit}
                           </td>
-                          <td className="p-2 border text-right font-mono font-bold">
+                          <td className="p-2 border text-right font-mono font-bold whitespace-nowrap">
                             {formatMoney(p.totalCost)}
                           </td>
                           <td className="p-2 border text-right font-mono text-emerald-600 font-bold whitespace-nowrap">
@@ -1287,31 +1520,39 @@ function ProgrammesPage() {
                           <td className={`p-2 border text-right font-mono font-bold whitespace-nowrap ${remainingPay > 0 ? "text-destructive" : "text-emerald-600"}`}>
                             {formatMoney(remainingPay)}
                           </td>
-                          <td className="p-2 border text-center">
+                          <td className="p-2 border text-center whitespace-nowrap">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isSolded ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"}`}>
                               {actionText}
                             </span>
                           </td>
                           <td className="p-2 border text-center whitespace-nowrap">
-                            <button
-                              onClick={() => setEditingPurchase(p)}
-                              className="mr-1.5 p-1 rounded hover:bg-primary/10 text-muted-foreground hover:text-primary inline-flex items-center"
-                              title="Modifier la transaction"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (window.confirm("Voulez-vous vraiment supprimer cet achat ?")) {
-                                  deletePurchase(p.id);
-                                  toast.success("Achat supprimé avec succès !");
-                                }
-                              }}
-                              className="p-1 rounded hover:bg-destructive/10 text-destructive hover:text-destructive/80 inline-flex items-center"
-                              title="Supprimer la transaction"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <Button
+                                size="sm"
+                                variant={isEditing ? "default" : "outline"}
+                                onClick={() => setEditingPurchase(isEditing ? null : p)}
+                                className={`h-7 px-2.5 text-[11px] font-bold gap-1 rounded-lg ${isEditing ? "bg-primary text-primary-foreground shadow-xs" : "bg-primary/10 border-primary/20 text-primary hover:bg-primary hover:text-white"}`}
+                                title="Modifier cette transaction"
+                              >
+                                <Pencil className="h-3 w-3" />
+                                {isEditing ? "En cours" : "Modifier"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  if (window.confirm(`Voulez-vous vraiment supprimer l'achat de "${p.productName}" ?`)) {
+                                    deletePurchase(p.id);
+                                    if (editingPurchase?.id === p.id) setEditingPurchase(null);
+                                    toast.success("Achat supprimé avec succès !");
+                                  }
+                                }}
+                                className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                title="Supprimer la transaction"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1744,159 +1985,6 @@ function ProgrammesPage() {
               Continuer
             </Button>
           </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* EDIT PURCHASE DIALOG */}
-      <Dialog open={editingPurchase !== null} onOpenChange={(open) => !open && setEditingPurchase(null)}>
-        <DialogContent className="rounded-2xl bg-card text-card-foreground">
-          <DialogHeader>
-            <DialogTitle className="text-base font-black uppercase tracking-wide flex items-center gap-1.5 text-emerald-600">
-              <Pencil className="h-4 w-4" /> Modifier l'Achat Fournisseur
-            </DialogTitle>
-          </DialogHeader>
-          {editingPurchase && (() => {
-            return (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const form = e.currentTarget;
-                  const supplierName = (form.elements.namedItem("supplierName") as HTMLInputElement).value.trim();
-                  const purchaseDate = (form.elements.namedItem("purchaseDate") as HTMLInputElement).value;
-                  const productName = (form.elements.namedItem("productName") as HTMLInputElement).value.trim();
-                  const quantity = parseFloat((form.elements.namedItem("quantity") as HTMLInputElement).value) || 0;
-                  const consumed = parseFloat((form.elements.namedItem("consumed") as HTMLInputElement).value) || 0;
-                  const pricePerUnit = parseFloat((form.elements.namedItem("pricePerUnit") as HTMLInputElement).value) || 0;
-                  const paidAmount = parseFloat((form.elements.namedItem("paidAmount") as HTMLInputElement).value) || 0;
-                  const unit = (form.elements.namedItem("unit") as HTMLSelectElement).value as "kg" | "litres";
-
-                  if (!supplierName) return toast.error("Nom du fournisseur requis");
-                  if (!productName) return toast.error("Nom du produit requis");
-                  if (quantity <= 0) return toast.error("Quantité achetée invalide");
-                  if (pricePerUnit <= 0) return toast.error("Prix unitaire invalide");
-
-                  const totalCost = quantity * pricePerUnit;
-
-                  updatePurchase(editingPurchase.id, {
-                    supplierName,
-                    purchaseDate,
-                    productName,
-                    quantity,
-                    consumed,
-                    pricePerUnit,
-                    totalCost,
-                    paidAmount,
-                    unit,
-                  });
-
-                  toast.success("Achat modifié avec succès !");
-                  setEditingPurchase(null);
-                }}
-                className="space-y-3 text-xs"
-              >
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-semibold">Nom du Fournisseur</Label>
-                    <Input
-                      name="supplierName"
-                      defaultValue={editingPurchase.supplierName}
-                      className="mt-1 rounded-xl"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">Date d'achat</Label>
-                    <Input
-                      type="date"
-                      name="purchaseDate"
-                      defaultValue={editingPurchase.purchaseDate}
-                      className="mt-1 rounded-xl"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-xs font-semibold">Nom du Produit</Label>
-                  <Input
-                    name="productName"
-                    defaultValue={editingPurchase.productName}
-                    className="mt-1 rounded-xl"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-semibold">Quantité Achetée</Label>
-                    <Input
-                      type="number"
-                      step="any"
-                      name="quantity"
-                      defaultValue={editingPurchase.quantity}
-                      className="mt-1 rounded-xl"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">Unité</Label>
-                    <select
-                      name="unit"
-                      defaultValue={editingPurchase.unit}
-                      className="mt-1 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none"
-                    >
-                      <option value="kg">kg</option>
-                      <option value="litres">litres</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <Label className="text-xs font-semibold">Prix Unitaire (DA)</Label>
-                    <Input
-                      type="number"
-                      step="any"
-                      name="pricePerUnit"
-                      defaultValue={editingPurchase.pricePerUnit}
-                      className="mt-1 rounded-xl"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">Quantité Consommée</Label>
-                    <Input
-                      type="number"
-                      step="any"
-                      name="consumed"
-                      defaultValue={editingPurchase.consumed}
-                      className="mt-1 rounded-xl"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-semibold">Montant Payé / Avance (DA)</Label>
-                    <Input
-                      type="number"
-                      step="any"
-                      name="paidAmount"
-                      defaultValue={editingPurchase.paidAmount}
-                      className="mt-1 rounded-xl"
-                    />
-                  </div>
-                </div>
-
-                <DialogFooter className="mt-4 gap-2">
-                  <Button type="button" variant="outline" onClick={() => setEditingPurchase(null)} className="rounded-xl">
-                    Annuler
-                  </Button>
-                  <Button type="submit" className="rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white">
-                    Enregistrer les modifications
-                  </Button>
-                </DialogFooter>
-              </form>
-            );
-          })()}
         </DialogContent>
       </Dialog>
 
