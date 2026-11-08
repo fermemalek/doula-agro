@@ -248,7 +248,7 @@ export default function MeteoPage() {
   const isAr = lang === "ar";
   const { session } = useRole();
 
-  type MeteoTab = "realtime" | "chill" | "monthly" | "catalog";
+  type MeteoTab = "realtime" | "chill" | "monthly";
   const [activeTab, setActiveTab] = useState<MeteoTab>("realtime");
   const [selectedMonthIdx, setSelectedMonthIdx] = useState<number>(new Date().getMonth());
 
@@ -370,13 +370,13 @@ export default function MeteoPage() {
         </div>
       )}
 
-      {/* GRILLE D'ACCUEIL : 4 GRANDES ICÔNES VISUELLES & CLAIRES */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
-        {/* Tuile 1 : Temps réel */}
+      {/* GRILLE D'ACCUEIL : 3 GRANDES RUBRIQUES VISUELLES & CLAIRES */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1">
+        {/* Rubrique 1 : Temps réel */}
         <button
           type="button"
           onClick={() => setActiveTab("realtime")}
-          className={`group text-start p-3.5 sm:p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+          className={`group text-start p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
             activeTab === "realtime"
               ? "border-amber-500 bg-amber-500/10 ring-2 ring-amber-500/30 shadow-md scale-[1.02]"
               : "border-border bg-card hover:border-amber-500/40 hover:bg-muted/40 shadow-xs"
@@ -384,7 +384,7 @@ export default function MeteoPage() {
         >
           <div className="flex items-start justify-between gap-2">
             <span
-              className={`flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
                 activeTab === "realtime"
                   ? "bg-amber-500 text-white shadow-sm"
                   : "bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500 group-hover:text-white"
@@ -392,25 +392,25 @@ export default function MeteoPage() {
             >
               <Sun className="h-6 w-6" />
             </span>
-            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
+            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300">
               {currentTemp.toFixed(1)}°C
             </span>
           </div>
-          <div className="mt-3 space-y-0.5">
-            <h3 className="text-sm font-black text-foreground group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+          <div className="mt-3.5 space-y-1">
+            <h3 className="text-base font-black text-foreground group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
               {isAr ? "الوقت الحقيقي" : "Temps Réel"}
             </h3>
-            <p className="text-[11px] text-muted-foreground line-clamp-1">
+            <p className="text-xs text-muted-foreground line-clamp-1">
               {isAr ? "الطقس اللحظي، الرياح ومؤشر الرش" : "Direct, vent & pulvérisation"}
             </p>
           </div>
         </button>
 
-        {/* Tuile 2 : Heures de froid */}
+        {/* Rubrique 2 : Heures de froid & Référentiel Variétal (Fusionnées) */}
         <button
           type="button"
           onClick={() => setActiveTab("chill")}
-          className={`group text-start p-3.5 sm:p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+          className={`group text-start p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
             activeTab === "chill"
               ? "border-sky-500 bg-sky-500/10 ring-2 ring-sky-500/30 shadow-md scale-[1.02]"
               : "border-border bg-card hover:border-sky-500/40 hover:bg-muted/40 shadow-xs"
@@ -418,7 +418,7 @@ export default function MeteoPage() {
         >
           <div className="flex items-start justify-between gap-2">
             <span
-              className={`flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
                 activeTab === "chill"
                   ? "bg-sky-500 text-white shadow-sm"
                   : "bg-sky-500/15 text-sky-600 dark:text-sky-400 group-hover:bg-sky-500 group-hover:text-white"
@@ -426,25 +426,25 @@ export default function MeteoPage() {
             >
               <Snowflake className="h-6 w-6" />
             </span>
-            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300">
-              Weinberger vs Utah
+            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300">
+              {isAr ? "Weinberger vs Utah · 4 أصناف" : "Weinberger vs Utah · 4 Variétés"}
             </span>
           </div>
-          <div className="mt-3 space-y-0.5">
-            <h3 className="text-sm font-black text-foreground group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
-              {isAr ? "ساعات البرودة ❄️" : "Heures de Froid ❄️"}
+          <div className="mt-3.5 space-y-1">
+            <h3 className="text-base font-black text-foreground group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+              {isAr ? "ساعات البرودة والمرجع الصنفي ❄️" : "Heures de Froid & Variétés ❄️"}
             </h3>
-            <p className="text-[11px] text-muted-foreground line-clamp-1">
-              {isAr ? "النموذج البسيط والفسيولوجي" : "Cumul brut & pénalités chaleur"}
+            <p className="text-xs text-muted-foreground line-clamp-1">
+              {isAr ? "النماذج الفسيولوجية، نكتارين، تفاح، زيتون وسجل الحملات" : "Modèles, Nectarine, Pomme, Olivier & Historique"}
             </p>
           </div>
         </button>
 
-        {/* Tuile 3 : Climat Mensuel */}
+        {/* Rubrique 3 : Climat Mensuel */}
         <button
           type="button"
           onClick={() => setActiveTab("monthly")}
-          className={`group text-start p-3.5 sm:p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
+          className={`group text-start p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
             activeTab === "monthly"
               ? "border-indigo-500 bg-indigo-500/10 ring-2 ring-indigo-500/30 shadow-md scale-[1.02]"
               : "border-border bg-card hover:border-indigo-500/40 hover:bg-muted/40 shadow-xs"
@@ -452,7 +452,7 @@ export default function MeteoPage() {
         >
           <div className="flex items-start justify-between gap-2">
             <span
-              className={`flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
                 activeTab === "monthly"
                   ? "bg-indigo-500 text-white shadow-sm"
                   : "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white"
@@ -460,50 +460,16 @@ export default function MeteoPage() {
             >
               <Calendar className="h-6 w-6" />
             </span>
-            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
+            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300">
               {isAr ? "12 شهراً" : "12 Mois"}
             </span>
           </div>
-          <div className="mt-3 space-y-0.5">
-            <h3 className="text-sm font-black text-foreground group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+          <div className="mt-3.5 space-y-1">
+            <h3 className="text-base font-black text-foreground group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
               {isAr ? "التوقعات الشهرية" : "Climat Mensuel"}
             </h3>
-            <p className="text-[11px] text-muted-foreground line-clamp-1">
+            <p className="text-xs text-muted-foreground line-clamp-1">
               {isAr ? "المعدلات السنوية ومخاطر الجليد" : "Moyennes, pluie & alertes"}
-            </p>
-          </div>
-        </button>
-
-        {/* Tuile 4 : Référentiel Variétal & Historique des Campagnes */}
-        <button
-          type="button"
-          onClick={() => setActiveTab("catalog")}
-          className={`group text-start p-3.5 sm:p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
-            activeTab === "catalog"
-              ? "border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/30 shadow-md scale-[1.02]"
-              : "border-border bg-card hover:border-emerald-500/40 hover:bg-muted/40 shadow-xs"
-          }`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <span
-              className={`flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
-                activeTab === "catalog"
-                  ? "bg-emerald-500 text-white shadow-sm"
-                  : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-500 group-hover:text-white"
-              }`}
-            >
-              <Sprout className="h-6 w-6" />
-            </span>
-            <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
-              {isAr ? "4 الأصناف" : "4 Variétés"}
-            </span>
-          </div>
-          <div className="mt-3 space-y-0.5">
-            <h3 className="text-sm font-black text-foreground group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-              {isAr ? "المرجع الصنفي وساعات البرودة" : "Référentiel Variétal"}
-            </h3>
-            <p className="text-[11px] text-muted-foreground line-clamp-1">
-              {isAr ? "نكتارين، تفاح، زيتون وسجل الحملات" : "Nectarine, Pomme, Olivier & Historique"}
             </p>
           </div>
         </button>
@@ -860,11 +826,8 @@ export default function MeteoPage() {
         </div>
       )}
 
-      {/* CONTENU ONGLET 2: COMPARATEUR D'HEURES DE FROID (WEINBERGER VS UTAH - COMPTEURS & DIAGNOSTIC) */}
-      {activeTab === "chill" && <ChillHoursComparator viewMode="counters" />}
-
-      {/* CONTENU ONGLET 4: RÉFÉRENTIEL VARIÉTAL & HISTORIQUE DES CAMPAGNES */}
-      {activeTab === "catalog" && <ChillHoursComparator viewMode="catalog" />}
+      {/* CONTENU ONGLET 2: COMPARATEUR D'HEURES DE FROID & RÉFÉRENTIEL VARIÉTAL (FUSIONNÉS) */}
+      {activeTab === "chill" && <ChillHoursComparator viewMode="all" />}
 
       {/* CONTENU ONGLET 3: PRÉVISIONS ET CLIMATOLOGIE PAR MOIS */}
       {activeTab === "monthly" && (

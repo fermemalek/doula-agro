@@ -335,7 +335,11 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
                 </span>
                 <div>
                   <h2 className="text-base font-extrabold flex items-center gap-2">
-                    <span>{isAr ? "ساعات البرودة الشتوية" : "Cumul des Heures de Froid"}</span>
+                    <span>
+                      {viewMode === "counters"
+                        ? (isAr ? "ساعات البرودة الشتوية" : "Cumul des Heures de Froid")
+                        : (isAr ? "ساعات البرودة والمرجع الصنفي" : "Heures de Froid & Référentiel Variétal")}
+                    </span>
                     <span className="rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-black px-2 py-0.5">
                       Weinberger vs Utah
                     </span>
