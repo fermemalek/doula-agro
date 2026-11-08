@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "./realtime";
+import { deletePurchasesForReco } from "@/lib/suppliers-store";
 
 export type RecoKind = "fertilisation" | "phytosanitaire" | "irrigation";
 export type RecoMethod = "pulverisation" | "irrigation";
@@ -298,6 +299,22 @@ export function useRecommendationActions() {
     mutationFn: async (id: string) => {
       // 1. Enregistrer immédiatement dans le cache local permanent
       addLocalDeletedRecoId(id);
+
+      // Nettoyer aussi les achats fournisseurs générés par cette recommandation
+      try {
+        const targetReco = qc.getQueryData<Recommendation[]>(KEY)?.find((r) => r.id === id);
+        const productNames: string[] = [];
+        const pProgram = (targetReco?.payload as any)?.program;
+        if (Array.isArray(pProgram?.products)) {
+          for (const pr of pProgram.products) {
+            const n = (pr.product || pr.name)?.trim();
+            if (n) productNames.push(n);
+          }
+        }
+        deletePurchasesForReco(id, productNames);
+      } catch (err) {
+        console.warn("deletePurchasesForReco error:", err);
+      }
 
       // 2. Nettoyer aussi les modules et l'historique phyto locaux
       if (typeof window !== "undefined") {

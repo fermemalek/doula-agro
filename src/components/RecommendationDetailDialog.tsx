@@ -14,7 +14,7 @@ import { useRole } from "@/lib/role";
 import { useModuleActions, useAllModuleRecords } from "@/lib/modules-store";
 import { debitProductStock, useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useTranslation } from "@/lib/i18n";
-import { checkRecoStock, computeScheduledDates, computePureIrrigationDates, getTargetParcelsForReco, type RecoProductStockItem } from "@/lib/stock-alerts";
+import { checkRecoStock, computeScheduledDates, computePureIrrigationDates, getTargetParcelsForReco, parsePhytoProductQuantity, type RecoProductStockItem } from "@/lib/stock-alerts";
 import { validateRecommendationAndPurchases } from "@/lib/reco-validation";
 
 const KIND_LABEL: Record<Recommendation["kind"], string> = {
@@ -1119,10 +1119,11 @@ export function RecommendationDetailDialog({
                             } else if (reco.kind === "phytosanitaire") {
                               for (const parcel of targetParcels) {
                                 clonedCount++;
+                                const surface = safeParseFloat(parcel?.info?.surface) || 1;
                                 if (Array.isArray(program.products)) {
                                   for (const p of program.products) {
-                                    const qty = safeParseFloat(p.volume) || safeParseFloat(p.dosage) || 0;
-                                    debitProductStock(p.product, qty);
+                                    const parsed = parsePhytoProductQuantity(p, surface);
+                                    debitProductStock(p.product, parsed.quantity);
                                   }
                                 }
                                 addModuleRecord(parcel.id, "phytosanitaire", { ...program, reco_id: reco.id, date: dateItem });

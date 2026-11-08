@@ -1,7 +1,7 @@
 import type { Recommendation } from "@/lib/cloud/recommendations";
 import type { Parcel } from "@/data/parcels";
-import { type SupplierPurchase, debitProductStock } from "@/lib/suppliers-store";
-import { checkRecoStock, getTargetParcelsForReco, safeParseFloat } from "@/lib/stock-alerts";
+import { type SupplierPurchase, debitProductStock, deletePurchasesForReco } from "@/lib/suppliers-store";
+import { checkRecoStock, getTargetParcelsForReco, safeParseFloat, parsePhytoProductQuantity } from "@/lib/stock-alerts";
 import { removeModuleRecordsByRecoId } from "@/lib/modules-store";
 
 export function parseDurationToMinutes(durationStr: string): number {
@@ -64,17 +64,23 @@ export async function validateRecommendationAndPurchases({
   const todayStr = new Date().toISOString().slice(0, 10);
   const isPast = options.markAsExecutedIfPast !== false && recoDate < todayStr;
 
+  // 0. Nettoyer les achats précédents associés à cette recommandation pour éviter les doublons
+  deletePurchasesForReco(reco.id);
+
   // 1. Détection et création automatique des achats pour les produits en rupture de stock
   const stockReport = checkRecoStock(reco, suppliers, parcels, 1, targetParcels);
   let createdPurchasesCount = 0;
 
   if (stockReport.hasMissingStock && stockReport.missingItems.length > 0) {
     for (const item of stockReport.missingItems) {
-      const missingQty = Math.max(0.1, parseFloat(item.missing.toFixed(2)));
+      const missingQty = Math.max(0.01, parseFloat(item.missing.toFixed(2)));
       const unitPrice = item.price || 0;
       const totalCost = parseFloat((missingQty * unitPrice).toFixed(2));
+      const purchaseId = `p-reco-${reco.id}-${item.name.replace(/[^a-zA-Z0-9]/g, "_")}`;
 
       addPurchase({
+        id: purchaseId,
+        recoId: reco.id,
         supplierName: options.supplierName || "Achat Validé (Historique Ingénieur)",
         productName: item.name,
         purchaseDate: recoDate,
@@ -83,7 +89,7 @@ export async function validateRecommendationAndPurchases({
         pricePerUnit: unitPrice,
         totalCost,
         paidAmount: totalCost,
-      });
+      } as any);
       createdPurchasesCount++;
     }
   }
@@ -174,8 +180,8 @@ export async function validateRecommendationAndPurchases({
       } else if (reco.kind === "phytosanitaire") {
         if (Array.isArray(program.products)) {
           for (const p of program.products) {
-            const qty = safeParseFloat(p.volume) || safeParseFloat(p.dosage) || 0;
-            debitProductStock(p.product, qty);
+            const parsed = parsePhytoProductQuantity(p, surface);
+            debitProductStock(p.product, parsed.quantity);
           }
         }
 

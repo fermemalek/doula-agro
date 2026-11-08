@@ -1,6 +1,8 @@
 import type { Recommendation } from "@/lib/cloud/recommendations";
 import type { SupplierPurchase } from "@/lib/suppliers-store";
 import type { Parcel } from "@/data/parcels";
+import { FERTILIZER_DATABASE } from "@/data/fertilizers";
+import { PHYTO_DATABASE } from "@/data/phytosanitaires";
 
 export interface RecoProductStockItem {
   name: string;
@@ -26,6 +28,132 @@ export function safeParseFloat(val: unknown): number {
   const str = String(val).trim().replace(",", ".");
   const parsed = parseFloat(str);
   return isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * Calcule avec précision la quantité réelle de produit phytosanitaire nécessaire
+ * en fonction de la dose agronomique (par ha ou par hl), de la surface et du volume d'eau.
+ * Évite rigoureusement de confondre le volume de bouillie (ex: 1000 L d'eau) avec la quantité de produit !
+ */
+export function parsePhytoProductQuantity(
+  p: { product?: string; name?: string; dosage?: string; volume?: string | number },
+  surface: number = 1,
+  unitHint?: "kg" | "litres"
+): { quantity: number; unit: "kg" | "litres" } {
+  const prodName = (p.product || p.name || "").trim();
+  const rawDosage = (p.dosage || "").trim().toLowerCase();
+  const waterVolume = safeParseFloat(p.volume) || 1000;
+  const safeSurface = Math.max(0.01, surface || 1);
+
+  // 1. Déterminer l'unité réelle du produit (kg vs litres) depuis le catalogue si disponible
+  let unit: "kg" | "litres" = unitHint || "litres";
+  if (!unitHint) {
+    const knownProd = FERTILIZER_DATABASE.find(
+      (fp) => fp.name.trim().toLowerCase() === prodName.toLowerCase() ||
+              prodName.toLowerCase().includes(fp.name.trim().toLowerCase()) ||
+              fp.name.trim().toLowerCase().includes(prodName.toLowerCase())
+    );
+    if (knownProd) {
+      unit = knownProd.unit;
+    } else {
+      const isKgDetected =
+        rawDosage.includes("kg") ||
+        rawDosage.includes("كغ") ||
+        rawDosage.includes("كلغ") ||
+        rawDosage.includes("كيلو") ||
+        rawDosage.includes(" g ") ||
+        rawDosage.includes("g/") ||
+        rawDosage.includes("gramme") ||
+        rawDosage.includes("غ") ||
+        rawDosage.includes("غم") ||
+        rawDosage.includes("غرام");
+      unit = isKgDetected ? "kg" : "litres";
+    }
+  }
+
+  // 2. Extraire les nombres du dosage (gère virgules, tirets, "à", "إلى")
+  const normalized = rawDosage.replace(/,/g, ".");
+  const numbers = normalized.match(/\d+(\.\d+)?/g)?.map(Number) || [];
+  
+  // Si l'un des nombres est 100 et qu'il s'agit du volume de référence (/ 100 l ou / 100 لتر), on l'exclut
+  const filteredNumbers = numbers.filter((n) => {
+    if (n === 100 && (
+      normalized.includes("/ 100") ||
+      normalized.includes("/100") ||
+      normalized.includes("100 l") ||
+      normalized.includes("100l") ||
+      normalized.includes("100لتر") ||
+      normalized.includes("100 لتر") ||
+      normalized.includes("100ل") ||
+      normalized.includes("100 ل")
+    )) {
+      return false;
+    }
+    return true;
+  });
+
+  let doseValue = 0;
+  if (filteredNumbers.length === 1) {
+    doseValue = filteredNumbers[0];
+  } else if (filteredNumbers.length >= 2) {
+    doseValue = (filteredNumbers[0] + filteredNumbers[1]) / 2;
+  } else if (numbers.length > 0) {
+    doseValue = numbers[0];
+  }
+
+  if (doseValue <= 0) {
+    const staticPhyto = PHYTO_DATABASE.find(
+      (sp) => sp.name.toLowerCase() === prodName.toLowerCase()
+    );
+    if (staticPhyto && staticPhyto.dosage) {
+      return parsePhytoProductQuantity({ ...p, dosage: staticPhyto.dosage }, safeSurface, unit);
+    }
+    return { quantity: parseFloat((1 * safeSurface).toFixed(2)), unit };
+  }
+
+  // 3. Cas A : Dosage par hectolitre (/ hl, / 100 l, 100 لتر)
+  const isPerHl =
+    normalized.includes("/ hl") ||
+    normalized.includes("/hl") ||
+    normalized.includes("hl") ||
+    normalized.includes("/ 100") ||
+    normalized.includes("/100") ||
+    normalized.includes("100 لتر") ||
+    normalized.includes("100لتر") ||
+    normalized.includes("100ل") ||
+    normalized.includes("100 ل");
+
+  const isGramsOrMl =
+    (normalized.includes("g") ||
+     normalized.includes("cc") ||
+     normalized.includes("ml") ||
+     normalized.includes("غ") ||
+     normalized.includes("غم") ||
+     normalized.includes("غرام") ||
+     normalized.includes("مل")) &&
+    !normalized.includes("kg") &&
+    !normalized.includes("كغ") &&
+    !normalized.includes("كلغ") &&
+    !normalized.includes("كيلو");
+
+  if (isPerHl) {
+    const hlCount = waterVolume / 100;
+    let qtyPerHl = doseValue;
+    if (isGramsOrMl) {
+      qtyPerHl = doseValue / 1000;
+    }
+    const totalQty = parseFloat((qtyPerHl * hlCount).toFixed(2));
+    return { quantity: Math.max(0.01, totalQty), unit };
+  }
+
+  // 4. Cas B : Dosage par hectare (/ ha ou /ha ou هكتار) ou valeur directe
+  let qtyPerHa = doseValue;
+  if (isGramsOrMl) {
+    qtyPerHa = doseValue / 1000;
+  }
+
+  const totalQty = parseFloat((qtyPerHa * safeSurface).toFixed(2));
+  return { quantity: Math.max(0.01, totalQty), unit };
 }
 
 export function matchProductName(a: string, b: string): boolean {
@@ -159,16 +287,20 @@ export function checkRecoStock(
       }
     } else if (reco.kind === "phytosanitaire") {
       if (Array.isArray(program.products)) {
+        const totalSurface = targetParcels.reduce(
+          (sum, parcel) => sum + (safeParseFloat(parcel?.info?.surface) || 1),
+          0
+        ) || 1;
+
         for (const p of program.products) {
           const name = (p.product || p.name)?.trim();
           if (!name) continue;
-          const qty = safeParseFloat(p.volume) || safeParseFloat(p.dosage) || 1;
+          const parsed = parsePhytoProductQuantity(p, totalSurface);
           const price = safeParseFloat(p.price);
-          const unit: "kg" | "litres" = "litres";
           if (!sumsMap[name]) {
-            sumsMap[name] = { name, neededPerPassage: 0, unit, price };
+            sumsMap[name] = { name, neededPerPassage: 0, unit: parsed.unit, price };
           }
-          sumsMap[name].neededPerPassage += qty;
+          sumsMap[name].neededPerPassage += parsed.quantity;
         }
       }
     }

@@ -6,6 +6,7 @@ const KEY = "doula-suppliers";
 
 export interface SupplierPurchase {
   id: string;
+  recoId?: string;
   supplierName: string;
   productName: string;
   purchaseDate: string;
@@ -23,6 +24,7 @@ const listeners = new Set<() => void>();
 function mapFromDb(dbItem: any): SupplierPurchase {
   return {
     id: dbItem.id,
+    recoId: dbItem.reco_id || (dbItem.id && dbItem.id.startsWith("p-reco-") ? dbItem.id.split("-")[2] : undefined),
     supplierName: dbItem.supplier_name,
     productName: dbItem.product_name,
     purchaseDate: dbItem.purchase_date,
@@ -51,6 +53,20 @@ function mapToDb(p: SupplierPurchase) {
   };
 }
 
+function cleanBuggyPurchases(sourceList: SupplierPurchase[]): { clean: SupplierPurchase[]; removed: SupplierPurchase[] } {
+  const removed: SupplierPurchase[] = [];
+  const clean = sourceList.filter((p) => {
+    const isRecoPurchase = p.supplierName.includes("Achat Validé") || (p.id && p.id.startsWith("p-reco-"));
+    const isAbnormalVolume = p.quantity >= 500;
+    if (isRecoPurchase && isAbnormalVolume) {
+      removed.push(p);
+      return false;
+    }
+    return true;
+  });
+  return { clean, removed };
+}
+
 function load() {
   if (typeof window === "undefined") return;
   try {
@@ -63,8 +79,64 @@ function load() {
   } catch {
     purchases = [];
   }
+
+  // Nettoyage automatique des enregistrements aberrants générés par l'ancien bug de volume
+  const { clean, removed } = cleanBuggyPurchases(purchases);
+  if (removed.length > 0) {
+    purchases = clean;
+    if (typeof window !== "undefined") {
+      localStorage.setItem(KEY, JSON.stringify(purchases));
+    }
+    for (const b of removed) {
+      void (async () => {
+        try {
+          await supabase.from("supplier_purchases" as any).delete().eq("id" as never, b.id as never);
+        } catch {}
+      })();
+    }
+  }
 }
 load();
+
+/**
+ * Supprime tous les achats fournisseurs générés par une recommandation
+ * (utilisé lors de la suppression ou ré-évaluation d'une recommandation).
+ */
+export function deletePurchasesForReco(recoId: string, recoProductNames?: string[]) {
+  const toDelete = purchases.filter((p) => {
+    if (p.recoId && p.recoId === recoId) return true;
+    if (p.id.includes(recoId)) return true;
+    if (recoProductNames && recoProductNames.length > 0 && p.supplierName.includes("Achat Validé")) {
+      const pNorm = p.productName.trim().toLowerCase();
+      if (recoProductNames.some((rName) => rName.trim().toLowerCase() === pNorm || pNorm.includes(rName.trim().toLowerCase()))) {
+        return true;
+      }
+    }
+    return false;
+  });
+
+  if (toDelete.length > 0) {
+    const deleteIds = new Set(toDelete.map((p) => p.id));
+    purchases = purchases.filter((p) => !deleteIds.has(p.id));
+    persist();
+
+    for (const p of toDelete) {
+      void (async () => {
+        try {
+          await supabase.from("supplier_purchases" as any).delete().eq("id" as never, p.id as never);
+        } catch (err) {
+          console.warn("Direct delete of reco purchase failed:", err);
+        }
+        void enqueueOp({
+          op: "purchase.delete",
+          table: "supplier_purchases",
+          record_id: p.id,
+          payload: { id: p.id },
+        });
+      })();
+    }
+  }
+}
 
 function persist() {
   if (typeof window !== "undefined") {
@@ -80,9 +152,18 @@ async function fetchOnline() {
       .select("*")
       .order("purchase_date" as any, { ascending: false });
     if (!error && dbData) {
-      purchases = dbData.map(mapFromDb);
-      purchases = [...purchases];
-  persist();
+      const mapped = dbData.map(mapFromDb);
+      const { clean, removed } = cleanBuggyPurchases(mapped);
+      purchases = [...clean];
+      persist();
+
+      if (removed.length > 0) {
+        for (const b of removed) {
+          try {
+            await supabase.from("supplier_purchases" as any).delete().eq("id" as never, b.id as never);
+          } catch {}
+        }
+      }
     }
   } catch (err) {
     console.warn("Erreur lors de la récupération des achats en ligne", err);

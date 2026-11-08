@@ -47,7 +47,7 @@ import {
 import { useDisplayRole } from "@/lib/display-role";
 import { useProducts, useProductActions } from "@/lib/products-store";
 import { useSuppliers, useSupplierActions, type SupplierPurchase, debitProductStock } from "@/lib/suppliers-store";
-import { checkRecoStock } from "@/lib/stock-alerts";
+import { checkRecoStock, parsePhytoProductQuantity, safeParseFloat } from "@/lib/stock-alerts";
 import { SPECIES_SUMMARIES } from "@/data/extra_farm_data";
 import { type FertilizerProduct } from "@/data/fertilizers";
 import { toast } from "sonner";
@@ -481,9 +481,10 @@ function ProgrammesPage() {
           } else if (reco.kind === "phytosanitaire") {
             // 1. Débiter le stock en FIFO
             if (Array.isArray(program.products)) {
+              const surface = safeParseFloat(parcel?.info?.surface) || 1;
               for (const p of program.products) {
-                const qty = safeParseFloat(p.volume) || safeParseFloat(p.dosage) || 0;
-                debitProductStock(p.product, qty);
+                const parsed = parsePhytoProductQuantity(p, surface);
+                debitProductStock(p.product, parsed.quantity);
               }
             }
             // 2. Envoyer le programme à l'exécutant
