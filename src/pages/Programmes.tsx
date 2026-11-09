@@ -21,7 +21,8 @@ import {
   Layers,
   ShoppingCart,
   Check,
-  X
+  X,
+  Calendar,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ import { useProfilesMap } from "@/lib/cloud/alerts";
 import { RecommendationDetailDialog } from "@/components/RecommendationDetailDialog";
 import { StatsModule } from "@/components/stats/StatsModule";
 import { getMatiereActive } from "@/data/phytosanitaires";
+import { AgronomicPlanningCalendar } from "@/components/programs/AgronomicPlanningCalendar";
 
 interface IrrRec {
   id: string;
@@ -347,11 +349,11 @@ function ProgrammesPage() {
   // Dashboard Tabs
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
-  const isValidTab = ["archive", "database", "suppliers", "species", "purchase", "stats"].includes(tabParam || "");
-  const initialTab = isAdmin && isValidTab ? (tabParam as "archive" | "database" | "suppliers" | "species" | "purchase" | "stats") : "archive";
+  const isValidTab = ["planning", "archive", "database", "suppliers", "species", "purchase", "stats"].includes(tabParam || "");
+  const initialTab = isValidTab ? (tabParam as "planning" | "archive" | "database" | "suppliers" | "species" | "purchase" | "stats") : "planning";
 
-  const [activeTab, setActiveTab] = useState<"archive" | "database" | "suppliers" | "species" | "purchase" | "stats">(initialTab);
-  const effectiveTab = isAdmin ? activeTab : "archive";
+  const [activeTab, setActiveTab] = useState<"planning" | "archive" | "database" | "suppliers" | "species" | "purchase" | "stats">(initialTab);
+  const effectiveTab = activeTab;
 
   // State for detail dialog & helper actions
   const [selectedReco, setSelectedReco] = useState<Recommendation | null>(null);
@@ -704,63 +706,84 @@ function ProgrammesPage() {
     <ListPageShell title="Programmation & Agronomie">
 
       {/* Premium Segmented Controls Top Tabs */}
-      {isAdmin && (
-        <div className="mb-4 grid grid-cols-2 min-[400px]:grid-cols-3 gap-1 rounded-2xl bg-muted p-1 sm:flex sm:grid-cols-none">
-          <button
-            onClick={() => setActiveTab("archive")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "archive"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-              }`}
-          >
-            Programmes Archivés
-          </button>
-          <button
-            onClick={() => setActiveTab("database")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "database"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-              }`}
-          >
-            Base Produits
-          </button>
-          <button
-            onClick={() => setActiveTab("suppliers")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "suppliers"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-              }`}
-          >
-            Dépenses Fournisseurs
-          </button>
-          <button
-            onClick={() => setActiveTab("species")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "species"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-              }`}
-          >
-            Coûts par Espèce
-          </button>
-          <button
-            onClick={() => setActiveTab("purchase")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "purchase"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-              }`}
-          >
-            Achats
-          </button>
-          <button
-            onClick={() => setActiveTab("stats")}
-            className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "stats"
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-              }`}
-          >
-            Statistiques & Graphes
-          </button>
-        </div>
+      <div className="mb-4 grid grid-cols-2 min-[400px]:grid-cols-3 gap-1 rounded-2xl bg-muted p-1 sm:flex sm:grid-cols-none">
+        <button
+          onClick={() => setActiveTab("planning")}
+          className={`flex-1 sm:flex-initial px-3.5 py-2 text-center text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${effectiveTab === "planning"
+              ? "bg-emerald-600 text-white shadow-xs"
+              : "text-muted-foreground hover:text-foreground"
+            }`}
+        >
+          <Calendar className="h-4 w-4" />
+          <span>Planning</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("archive")}
+          className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "archive"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+            }`}
+        >
+          Programmes Archivés
+        </button>
+        <button
+          onClick={() => setActiveTab("database")}
+          className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "database"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+            }`}
+        >
+          Base Produits
+        </button>
+        {isAdmin && (
+          <>
+            <button
+              onClick={() => setActiveTab("suppliers")}
+              className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "suppliers"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                }`}
+            >
+              Dépenses Fournisseurs
+            </button>
+            <button
+              onClick={() => setActiveTab("species")}
+              className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "species"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                }`}
+            >
+              Coûts par Espèce
+            </button>
+            <button
+              onClick={() => setActiveTab("purchase")}
+              className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "purchase"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                }`}
+            >
+              Achats
+            </button>
+            <button
+              onClick={() => setActiveTab("stats")}
+              className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "stats"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+                }`}
+            >
+              Statistiques & Graphes
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* TAB 0: PLANNING AGRONOMIQUE */}
+      {effectiveTab === "planning" && (
+        <AgronomicPlanningCalendar
+          recos={recos}
+          parcels={parcels}
+          onSelectReco={(r) => setSelectedReco(r)}
+        />
       )}
 
       {/* TAB 1: ARCHIVE */}
