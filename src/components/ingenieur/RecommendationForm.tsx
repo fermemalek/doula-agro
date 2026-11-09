@@ -573,10 +573,30 @@ export function RecommendationForm({
 
   // Phytosanitaire handlers
   function addPhyRow() {
-    setPhyProducts(prev => [...prev, { product: "", cible: "", dosage: "", volume: "1000", price: "", dar: "" }]);
+    const baseVolume = phyProducts[0]?.volume || "1000";
+    setPhyProducts(prev => [...prev, { product: "", cible: "", dosage: "", volume: baseVolume, price: "", dar: "" }]);
+  }
+  function addSecondPhyProduct() {
+    const baseVolume = phyProducts[0]?.volume || "1000";
+    setPhyProducts(prev => [
+      ...prev,
+      { product: "", cible: "", dosage: "", volume: baseVolume, price: "", dar: "" }
+    ]);
+    toast.info(
+      isAr
+        ? "🧪 تمت إضافة خانة للمنتج الثاني (مادة فعالة مختلفة في نفس خليط الرش)."
+        : "🧪 2ème produit ajouté ! Sélectionnez une matière active différente pour ce mélange."
+    );
   }
   function updatePhyItem(idx: number, patch: any) {
-    setPhyProducts(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
+    setPhyProducts(prev => prev.map((it, i) => {
+      if (i === idx) return { ...it, ...patch };
+      // Synchroniser le volume d'eau si modifié pour un traitement combiné dans la même cuve
+      if (patch.volume !== undefined && it.volume !== patch.volume) {
+        return { ...it, volume: patch.volume };
+      }
+      return it;
+    }));
   }
   function removePhyRow(idx: number) {
     setPhyProducts(prev => prev.filter((_, i) => i !== idx));
@@ -662,7 +682,10 @@ export function RecommendationForm({
             return toast.error(t("reco.form.errorNoPhytoProduct"));
           }
           currentKind = "phytosanitaire";
-          currentTitle = `${autoBaseTitle} (${currentPhyPassage.label || "Phyto"})`;
+          const prodsLabel = activeProducts.map(p => p.product).filter(Boolean).join(" + ");
+          currentTitle = prodsLabel
+            ? `${autoBaseTitle} (${prodsLabel})`
+            : `${autoBaseTitle} (${currentPhyPassage.label || "Phyto"})`;
           currentPayload = {
             method: "pulverisation",
             crop_group: cropGroups,
@@ -835,7 +858,10 @@ export function RecommendationForm({
               const activeProducts = traitItem.products.filter(p => p.product);
               if (activeProducts.length === 0) continue;
 
-              const currentTitle = `${autoBaseTitle} (${traitItem.label || "Phyto"})`;
+              const prodsLabel = activeProducts.map(p => p.product).filter(Boolean).join(" + ");
+              const currentTitle = prodsLabel
+                ? `${autoBaseTitle} (${prodsLabel})`
+                : `${autoBaseTitle} (${traitItem.label || "Phyto"})`;
               const currentPayload = {
                 method: "pulverisation",
                 crop_group: cropGroups,
@@ -1672,23 +1698,59 @@ export function RecommendationForm({
                           <div className="space-y-3">
                             <div className="flex justify-between items-center border-b pb-1">
                               <span className="font-extrabold uppercase text-primary text-[10px]">{t("reco.form.phytoActives")}</span>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setNewProductType("phyto");
-                                  setNewProductName("");
-                                  setNewProductPrice("");
-                                  setNewProductCible("");
-                                  setNewProductDosage("");
-                                  setNewProductDar("");
-                                  setNewProductUnit("kg");
-                                  setNewProductDialogOpen(true);
-                                }}
-                                className="bg-primary/10 hover:bg-primary/20 text-primary px-2 py-0.5 rounded font-bold text-[10px]"
-                              >
-                                {t("reco.form.newPhyto")}
-                              </button>
+                              <div className="flex items-center gap-1.5">
+                                {phyProducts.length === 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={addSecondPhyProduct}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-2 py-0.5 rounded font-bold text-[10px] flex items-center gap-1 shadow-xs transition active:scale-95"
+                                    title="Associer un 2ème produit (mélange dans la même bouillie)"
+                                  >
+                                    <span>🧪</span>
+                                    <span>{isAr ? "+ إضافة منتج ثانٍ (مادة مختلفة)" : "+ 2ème Produit"}</span>
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setNewProductType("phyto");
+                                    setNewProductName("");
+                                    setNewProductPrice("");
+                                    setNewProductCible("");
+                                    setNewProductDosage("");
+                                    setNewProductDar("");
+                                    setNewProductUnit("kg");
+                                    setNewProductDialogOpen(true);
+                                  }}
+                                  className="bg-primary/10 hover:bg-primary/20 text-primary px-2 py-0.5 rounded font-bold text-[10px]"
+                                >
+                                  {t("reco.form.newPhyto")}
+                                </button>
+                              </div>
                             </div>
+
+                            {phyProducts.length >= 2 && (
+                              <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-2.5 flex items-center justify-between text-indigo-900 dark:text-indigo-200">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">🧪</span>
+                                  <div>
+                                    <p className="font-bold text-xs">
+                                      {isAr
+                                        ? "معاملة مشتركة بمنتجين (مادتان فعالتان مختلفتان في نفس الرش)"
+                                        : "Recommandation à 2 produits (Mélange de 2 matières actives)"}
+                                    </p>
+                                    <p className="text-[10px] opacity-80">
+                                      {isAr
+                                        ? "يتم تطبيق المنتجين معاً في نفس خزان الماء (Bouillie commune)"
+                                        : "Les 2 produits sont préparés ensemble dans la même cuve / bouillie"}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-[10px] font-bold bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30">
+                                  {isAr ? "خلط مشترك" : "Mélange 2 produits"}
+                                </span>
+                              </div>
+                            )}
 
                             {phyProducts.map((p, idx) => (
                               <div key={idx} className="p-3 border rounded-xl bg-card space-y-2 relative">
@@ -1700,9 +1762,28 @@ export function RecommendationForm({
                                   <X className="h-4 w-4" />
                                 </button>
 
-                                <span className="font-bold text-muted-foreground">
-                                  {isAr ? `المنتج التجاري والمادة الفعالة ${idx + 1}` : `Produit commercial & Matière active ${idx + 1}`}
-                                </span>
+                                <div className="flex items-center justify-between pr-6">
+                                  {idx === 0 ? (
+                                    <span className="font-extrabold text-primary flex items-center gap-1.5 text-xs">
+                                      <span className="h-5 w-5 rounded-md bg-primary/10 flex items-center justify-center text-[10px] font-bold">1</span>
+                                      <span>{isAr ? "المنتج الأول (المادة الفعالة الأولى)" : "Produit 1 (Matière active 1)"}</span>
+                                    </span>
+                                  ) : idx === 1 ? (
+                                    <span className="font-extrabold text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 text-xs">
+                                      <span className="h-5 w-5 rounded-md bg-indigo-500/20 flex items-center justify-center text-[10px] font-bold">2</span>
+                                      <span>{isAr ? "المنتج الثاني (مادة فعالة مختلفة)" : "Produit 2 (Matière active différente)"}</span>
+                                    </span>
+                                  ) : (
+                                    <span className="font-bold text-muted-foreground text-xs">
+                                      {isAr ? `المنتج ${idx + 1}` : `Produit ${idx + 1}`}
+                                    </span>
+                                  )}
+                                  {idx === 1 && (
+                                    <span className="text-[10px] bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 font-bold px-2 py-0.5 rounded-full border border-indigo-500/30">
+                                      {isAr ? "خلط مشترك" : "Association"}
+                                    </span>
+                                  )}
+                                </div>
 
                                 <div className="space-y-1">
                                   <select
@@ -1837,13 +1918,29 @@ export function RecommendationForm({
                               </div>
                             ))}
 
-                            <button
-                              type="button"
-                              onClick={addPhyRow}
-                              className="bg-primary/5 hover:bg-primary/10 text-primary border border-dashed px-3 py-1.5 rounded-lg w-full font-bold text-[10px]"
-                            >
-                              {t("reco.form.addActive")}
-                            </button>
+                            {phyProducts.length === 1 ? (
+                              <button
+                                type="button"
+                                onClick={addSecondPhyProduct}
+                                className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-2 border-dashed border-indigo-500/40 p-2.5 rounded-xl w-full font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition active:scale-95"
+                              >
+                                <span className="text-base">🧪</span>
+                                <span>
+                                  {isAr
+                                    ? "+ إضافة منتج ثانٍ بمادة فعالة مختلفة (معاملة ثنائية / خلط مشترك)"
+                                    : "+ Ajouter un 2ème produit avec une matière active différente (Traitement combiné)"}
+                                </span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={addPhyRow}
+                                className="bg-primary/5 hover:bg-primary/10 text-primary border border-dashed px-3 py-1.5 rounded-lg w-full font-bold text-[10px] flex items-center justify-center gap-1"
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                <span>{isAr ? "+ إضافة مادة فعالة أخرى" : "+ Ajouter une autre matière active"}</span>
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
