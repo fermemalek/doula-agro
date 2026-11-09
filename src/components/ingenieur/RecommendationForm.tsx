@@ -1132,6 +1132,7 @@ export function RecommendationForm({
                                 onChange={(e) => setFertFrequency(e.target.value)}
                                 className="mt-1 w-full rounded border border-input bg-background px-3 py-1.5 text-xs font-semibold"
                               >
+                                <option value="3">{t("reco.freq.3perWeek", "3 fois par semaine")}</option>
                                 <option value="2">{t("reco.freq.2perWeek", "2 fois par semaine")}</option>
                                 <option value="1">{t("reco.freq.1perWeek", "1 fois par semaine")}</option>
                                 <option value="3.5">{t("reco.freq.every2")}</option>

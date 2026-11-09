@@ -205,7 +205,7 @@ export function RecommendationDetailDialog({
       const prog = payload.program ?? {};
       setSelectedDate(prog.date || new Date().toISOString().slice(0, 10));
       const freq = parseFloat(String(prog.frequency)) || 1;
-      setWeeklyFrequency(freq >= 2 ? 2 : 1);
+      setWeeklyFrequency(Math.min(7, Math.max(1, Math.round(freq))));
       const pureFreq = parseFloat(String(prog.pureIrrigationFrequency));
       setPureWeeklyFrequency(isNaN(pureFreq) ? 1 : pureFreq);
       setPureIrrigationDuration(prog.pureIrrigationTime || "1h30");
@@ -444,6 +444,7 @@ export function RecommendationDetailDialog({
                         if (freqVal === 7) return lang === "ar" ? "كل يوم" : "Chaque jour";
                         if (freqVal === 3.5) return lang === "ar" ? "يوما بعد يوم" : "Un jour sur deux";
                         if (freqVal === 2.3) return lang === "ar" ? "كل ثلاثة أيام" : "Un jour sur trois";
+                        if (freqVal === 3) return lang === "ar" ? "3 مرات في الأسبوع" : "3 fois par semaine";
                         if (freqVal === 2) return lang === "ar" ? "مرتان في الأسبوع" : "2 fois par semaine";
                         if (freqVal === 1) return lang === "ar" ? "مرة في الأسبوع" : "1 fois par semaine";
                         return lang === "ar" ? `${program.frequency} مرات/أسبوع` : `${program.frequency} passages/semaine`;

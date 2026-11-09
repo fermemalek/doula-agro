@@ -389,13 +389,33 @@ export function computeScheduledDates(
       dates.push(iso1);
     }
 
-    // 2ème passage si 2x par semaine (ex: Samedi = Mardi + 4 jours)
-    if (effectivePassages >= 2) {
+    // Passages supplémentaires dans la semaine
+    if (effectivePassages === 2) {
       const d2 = new Date(d1);
       d2.setDate(d1.getDate() + secondDayOffset);
       const iso2 = `${d2.getFullYear()}-${String(d2.getMonth() + 1).padStart(2, "0")}-${String(d2.getDate()).padStart(2, "0")}`;
       if (!dates.includes(iso2)) {
         dates.push(iso2);
+      }
+    } else if (effectivePassages === 3) {
+      // 3 passages par semaine (ex: J0, J+2, J+4)
+      for (const off of [2, 4]) {
+        const dX = new Date(d1);
+        dX.setDate(d1.getDate() + off);
+        const isoX = `${dX.getFullYear()}-${String(dX.getMonth() + 1).padStart(2, "0")}-${String(dX.getDate()).padStart(2, "0")}`;
+        if (!dates.includes(isoX)) {
+          dates.push(isoX);
+        }
+      }
+    } else if (effectivePassages > 3) {
+      for (let p = 1; p < effectivePassages; p++) {
+        const off = Math.round((p * 7) / effectivePassages);
+        const dX = new Date(d1);
+        dX.setDate(d1.getDate() + off);
+        const isoX = `${dX.getFullYear()}-${String(dX.getMonth() + 1).padStart(2, "0")}-${String(dX.getDate()).padStart(2, "0")}`;
+        if (!dates.includes(isoX)) {
+          dates.push(isoX);
+        }
       }
     }
   }
