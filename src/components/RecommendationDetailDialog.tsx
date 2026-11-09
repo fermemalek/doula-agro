@@ -578,8 +578,7 @@ export function RecommendationDetailDialog({
                           },
                         });
                         toast.success(
-                          `Recommandation et achats validés avec succès ! (${res.clonedCount} tâches créées${
-                            res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats enregistrés` : ""
+                          `Recommandation et achats validés avec succès ! (${res.clonedCount} tâches créées${res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats enregistrés` : ""
                           }).`
                         );
                         onOpenChange(false);

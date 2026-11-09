@@ -907,10 +907,39 @@ export function RecommendationForm({
 
   const currentBacEntry = fertEntries.find(e => e.bac === fertBac) || { bac: fertBac, items: [] };
 
+  const handleSafeClose = (newOpen: boolean) => {
+    if (!newOpen) {
+      const hasData =
+        cropGroups.length > 0 ||
+        appDate !== "" ||
+        comment.trim() !== "" ||
+        fertEntries.some((e) => e.items.length > 0) ||
+        pulvItems.some((it) => it.name) ||
+        phyProducts.some((p) => p.product);
+
+      if (hasData && !submitting) {
+        const confirmClose = window.confirm(
+          isAr
+            ? "هل أنت متأكد من إغلاق التوصية؟ ستفقد البيانات التي قمت بإدخالها."
+            : "Êtes-vous sûr de vouloir fermer ce formulaire ? Les données saisies seront perdues."
+        );
+        if (!confirmClose) return;
+      }
+      onOpenChange(false);
+    } else {
+      onOpenChange(true);
+    }
+  };
+
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl bg-card text-card-foreground">
+      <Dialog open={open} onOpenChange={handleSafeClose}>
+        <DialogContent
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          className="max-h-[90vh] overflow-y-auto sm:max-w-2xl bg-card text-card-foreground"
+        >
           <DialogHeader className="border-b pb-2">
             <DialogTitle className="text-base font-black uppercase tracking-wide flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1936,13 +1965,25 @@ export function RecommendationForm({
                 <Trash2 className="h-4 w-4" /> Supprimer cette recommandation
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => handleSafeClose(false)}
+              className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-muted-foreground/20 text-muted-foreground hover:bg-muted/30 text-xs font-semibold active:scale-95 transition"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span>{isAr ? "إلغاء وإغلاق" : "Annuler et fermer"}</span>
+            </button>
           </div>
         </DialogContent>
       </Dialog>
 
       {/* Product Creation Dialog */}
       <Dialog open={newProductDialogOpen} onOpenChange={setNewProductDialogOpen}>
-        <DialogContent className="max-w-md bg-card text-card-foreground text-xs">
+        <DialogContent
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          className="max-w-md bg-card text-card-foreground text-xs"
+        >
           <DialogHeader>
             <DialogTitle className="text-sm font-black uppercase tracking-wide">
               {newProductType === "foliar" ? t("reco.form.createFoliar") : t("reco.form.createPhyto")}
