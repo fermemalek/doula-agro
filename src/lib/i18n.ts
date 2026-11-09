@@ -51,6 +51,9 @@ export const translations = {
     // Reco Form Labels
     "reco.form.new": "Nouvelle Recommandation",
     "reco.form.edit": "Modifier la Recommandation",
+    "reco.form.duplicate": "Dupliquer la Recommandation",
+    "reco.form.duplicateShort": "Dupliquer",
+    "reco.form.duplicateDesc": "Pré-rempli avec les données d'origine. Modifiez la date ou les dosages puis enregistrez pour créer une nouvelle recommandation.",
     "reco.form.prescriptionType": "Type de prescription (Choix multiple)",
     "reco.form.cropTargeted": "Espèce ciblée",
     "reco.form.title": "Titre de la prescription",
@@ -233,6 +236,9 @@ export const translations = {
     // Reco Form Labels
     "reco.form.new": "توصية جديدة",
     "reco.form.edit": "تعديل التوصية",
+    "reco.form.duplicate": "نسخ وإنشاء توصية جديدة",
+    "reco.form.duplicateShort": "نسخ",
+    "reco.form.duplicateDesc": "تم تعبئة النموذج بنفس البيانات الأصلية. يمكنك تعديل التاريخ أو الجرعات ثم الحفظ لإنشاء توصية جديدة.",
     "reco.form.prescriptionType": "نوع الوصفة (خيارات متعددة)",
     "reco.form.cropTargeted": "الفئة المستهدفة",
     "reco.form.title": "عنوان الوصفة",

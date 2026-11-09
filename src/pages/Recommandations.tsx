@@ -1,6 +1,6 @@
 import { useNavigate } from "@/lib/router-compat";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Plus, Sprout, FlaskConical, AlertTriangle, SprayCan, Droplet, Trash2, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Plus, Sprout, FlaskConical, AlertTriangle, SprayCan, Droplet, Trash2, CheckCircle2, Copy } from "lucide-react";
 import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
 import { useRole } from "@/lib/role";
 import { useDisplayRole } from "@/lib/display-role";
@@ -41,6 +41,7 @@ function RecommandationsPageContent() {
   const [formOpen, setFormOpen] = useState(false);
   const [detail, setDetail] = useState<Recommendation | null>(null);
   const [editingReco, setEditingReco] = useState<Recommendation | null>(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
   const { create, remove, accept } = useRecommendationActions();
   const { addPurchase } = useSupplierActions();
   const { add: addModuleRecord } = useModuleActions();
@@ -183,6 +184,7 @@ function RecommandationsPageContent() {
             <button
               onClick={() => {
                 setEditingReco(null);
+                setIsDuplicate(false);
                 setFormOpen(true);
               }}
               className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-primary px-3 text-sm font-bold text-primary-foreground active:scale-95"
@@ -216,6 +218,7 @@ function RecommandationsPageContent() {
                 onClick={() => {
                   if (displayRole === "ingenieur") {
                     setEditingReco(r);
+                    setIsDuplicate(false);
                     setFormOpen(true);
                   } else {
                     setDetail(r);
@@ -294,8 +297,23 @@ function RecommandationsPageContent() {
                     {(displayRole === "ingenieur" || displayRole === "admin") && (
                       <button
                         type="button"
-                        onClick={async (e) => {
+                        onClick={(e) => {
                           e.stopPropagation();
+                          setEditingReco(r);
+                          setIsDuplicate(true);
+                          setFormOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition"
+                        title="Dupliquer cette recommandation pour une nouvelle date"
+                      >
+                        <Copy className="h-3 w-3" />
+                        <span>Dupliquer</span>
+                      </button>
+                    )}
+                    {(displayRole === "ingenieur" || displayRole === "admin") && (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
                           if (!window.confirm(`Supprimer définitivement la recommandation "${r.title}" ?`)) return;
                           try {
                             await remove.mutateAsync(r.id);
@@ -318,8 +336,21 @@ function RecommandationsPageContent() {
         </ul>
       )}
 
-      <RecommendationForm open={formOpen} onOpenChange={setFormOpen} recoToEdit={editingReco} />
-      <RecommendationDetailDialog reco={detail} onOpenChange={(o) => !o && setDetail(null)} />
+      <RecommendationForm
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        recoToEdit={editingReco}
+        isDuplicate={isDuplicate}
+      />
+      <RecommendationDetailDialog
+        reco={detail}
+        onOpenChange={(o) => !o && setDetail(null)}
+        onDuplicate={(r) => {
+          setEditingReco(r);
+          setIsDuplicate(true);
+          setFormOpen(true);
+        }}
+      />
     </main>
   );
 }

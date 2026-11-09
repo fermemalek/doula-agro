@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Droplet, FlaskConical, Sprout, CloudSun, ArrowRight, SprayCan } from "lucide-react";
+import { Plus, Droplet, FlaskConical, Sprout, CloudSun, ArrowRight, SprayCan, Copy } from "lucide-react";
 import { useParcels } from "@/lib/parcel-store";
 import { getTargetParcelsForReco } from "@/lib/stock-alerts";
 import { useNavigate } from "@/lib/router-compat";
@@ -19,6 +19,7 @@ export function IngenieurHome() {
   const parcels = useParcels();
   const [formOpen, setFormOpen] = useState(false);
   const [editingReco, setEditingReco] = useState<Recommendation | null>(null);
+  const [isDuplicate, setIsDuplicate] = useState(false);
 
   // Passer automatiquement l'interface en Arabe dès l'ouverture de l'espace Ingénieur
   useEffect(() => {
@@ -162,6 +163,7 @@ export function IngenieurHome() {
       <button
         onClick={() => {
           setEditingReco(null);
+          setIsDuplicate(false);
           setFormOpen(true);
         }}
         className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-bold uppercase text-primary-foreground active:scale-95 shadow-sm hover:opacity-95 transition-all"
@@ -208,6 +210,7 @@ export function IngenieurHome() {
                   key={r.id}
                   onClick={() => {
                     setEditingReco(r);
+                    setIsDuplicate(false);
                     setFormOpen(true);
                   }}
                   className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition hover:opacity-90 ${statusInfo.tone}`}
@@ -221,9 +224,25 @@ export function IngenieurHome() {
                       {typeLabel} · {parcelLabel}
                     </p>
                   </div>
-                  <span className="rounded-full border bg-background/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase">
-                    {statusInfo.label}
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      title={currentLang === "ar" ? "نسخ هذه التوصية" : "Dupliquer cette recommandation"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingReco(r);
+                        setIsDuplicate(true);
+                        setFormOpen(true);
+                      }}
+                      className="inline-flex h-7 px-2 items-center gap-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-bold active:scale-90 transition"
+                    >
+                      <Copy className="h-3 w-3" />
+                      <span>{currentLang === "ar" ? "نسخ" : "Dupliquer"}</span>
+                    </button>
+                    <span className="rounded-full border bg-background/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase">
+                      {statusInfo.label}
+                    </span>
+                  </div>
                 </li>
               );
             })}
@@ -231,7 +250,12 @@ export function IngenieurHome() {
         )}
       </section>
 
-      <RecommendationForm open={formOpen} onOpenChange={setFormOpen} recoToEdit={editingReco} />
+      <RecommendationForm
+        open={formOpen}
+        onOpenChange={setFormOpen}
+        recoToEdit={editingReco}
+        isDuplicate={isDuplicate}
+      />
     </main>
   );
 }

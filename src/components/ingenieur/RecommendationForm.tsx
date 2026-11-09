@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Droplet, FlaskConical, SprayCan, Send, Camera, X, Plus, Trash2, Info, AlertTriangle, Sparkles, CheckCircle2 } from "lucide-react";
+import { Droplet, FlaskConical, SprayCan, Send, Camera, X, Plus, Trash2, Info, AlertTriangle, Sparkles, CheckCircle2, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -118,10 +118,12 @@ export function RecommendationForm({
   open,
   onOpenChange,
   recoToEdit = null,
+  isDuplicate = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   recoToEdit?: Recommendation | null;
+  isDuplicate?: boolean;
 }) {
   const { create, update, remove, accept } = useRecommendationActions();
   const products = useProducts();
@@ -132,6 +134,11 @@ export function RecommendationForm({
   const { add: addProduct } = useProductActions();
   const { t, lang } = useTranslation();
   const isAr = lang === "ar";
+  const [duplicateMode, setDuplicateMode] = useState(isDuplicate);
+
+  useEffect(() => {
+    setDuplicateMode(isDuplicate);
+  }, [isDuplicate, open]);
 
   const getLiveStock = (prodName: string): number => {
     if (!prodName) return 0;
@@ -419,7 +426,11 @@ export function RecommendationForm({
           .replace(" (Phyto)", "")
       );
       setComment(recoToEdit.comment || "");
-      setCreatedAtDate(recoToEdit.created_at.slice(0, 10));
+      if (isDuplicate) {
+        setCreatedAtDate(new Date().toISOString().slice(0, 10));
+      } else {
+        setCreatedAtDate(recoToEdit.created_at.slice(0, 10));
+      }
 
       const payload = (recoToEdit.payload || {}) as any;
       const cropGroup = payload.crop_group;
@@ -586,7 +597,7 @@ export function RecommendationForm({
       const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
       const createdAtIso = new Date(`${createdAtDate}T${timeString}`).toISOString();
 
-      if (recoToEdit) {
+      if (recoToEdit && !duplicateMode) {
         const presc = selectedPrescriptions[0];
         let currentKind: RecoKind = "fertilisation";
         let currentPayload: any = null;
@@ -870,7 +881,13 @@ export function RecommendationForm({
           }
         }
 
-        if (autoValidate) {
+        if (duplicateMode) {
+          toast.success(
+            isAr
+              ? `✅ تم نسخ التوصية بنجاح وإنشاء برنامج جديد ! ${totalCreatedPurchases > 0 ? `(${totalCreatedPurchases} مشتريات مسجلة)` : ""}`
+              : `✅ Recommandation dupliquée avec succès comme nouveau programme ! ${totalCreatedPurchases > 0 ? `(${totalCreatedPurchases} achats créés)` : ""}`
+          );
+        } else if (autoValidate) {
           toast.success(
             `✅ Recommandation passée validée avec succès ! ${totalCreatedPurchases > 0 ? `${totalCreatedPurchases} achat(s) de produits créé(s) et ` : ""}programmes parcelles enregistrés.`
           );
@@ -895,12 +912,44 @@ export function RecommendationForm({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl bg-card text-card-foreground">
           <DialogHeader className="border-b pb-2">
-            <DialogTitle className="text-base font-black uppercase tracking-wide flex items-center gap-2">
-              <Plus className="h-5 w-5 text-primary" /> {recoToEdit ? t("reco.form.edit") : t("reco.form.new")}
+            <DialogTitle className="text-base font-black uppercase tracking-wide flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {duplicateMode ? (
+                  <Copy className="h-5 w-5 text-amber-500" />
+                ) : (
+                  <Plus className="h-5 w-5 text-primary" />
+                )}
+                <span>
+                  {duplicateMode
+                    ? t("reco.form.duplicate")
+                    : recoToEdit
+                    ? t("reco.form.edit")
+                    : t("reco.form.new")}
+                </span>
+              </div>
+              {duplicateMode && (
+                <span className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-bold px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1">
+                  <Copy className="h-3 w-3" />
+                  <span>{isAr ? "وضع النسخ والتكرار" : "Mode Duplication"}</span>
+                </span>
+              )}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4 text-xs">
+            {duplicateMode && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 flex items-start gap-2.5 text-amber-900 dark:text-amber-200">
+                <Copy className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                <div>
+                  <p className="font-bold text-xs">
+                    {isAr ? "وضع النسخ مفعل (Duplication)" : "Mode Duplication actif"}
+                  </p>
+                  <p className="text-[11px] opacity-90 mt-0.5">
+                    {t("reco.form.duplicateDesc")}
+                  </p>
+                </div>
+              </div>
+            )}
             {/* 1. Kinds Selectors */}
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -950,8 +999,8 @@ export function RecommendationForm({
                         );
                       }}
                       className={`rounded-full border px-2.5 py-1.5 font-bold text-[10px] uppercase transition-all ${cropGroups.includes(g.v)
-                          ? "border-primary bg-primary text-primary-foreground shadow-xs"
-                          : "border-input bg-background hover:bg-muted"
+                        ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                        : "border-input bg-background hover:bg-muted"
                         }`}
                     >
                       {t(`crop.${g.v}`)}
@@ -1055,8 +1104,8 @@ export function RecommendationForm({
                                 type="button"
                                 onClick={() => setActiveFertProgIndex(idx)}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${activeFertProgIndex === idx
-                                    ? "bg-primary text-primary-foreground shadow-xs"
-                                    : "text-muted-foreground hover:bg-muted"
+                                  ? "bg-primary text-primary-foreground shadow-xs"
+                                  : "text-muted-foreground hover:bg-muted"
                                   }`}
                               >
                                 <span>{fp.label}</span>
@@ -1105,8 +1154,8 @@ export function RecommendationForm({
                                     setFertPrograms(prev => prev.map((p, i) => i === activeFertProgIndex ? { ...p, period: "matin" } : p));
                                   }}
                                   className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${(currentFertProg.period || "matin") === "matin"
-                                      ? "bg-amber-500/20 border-amber-500 text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
-                                      : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                    ? "bg-amber-500/20 border-amber-500 text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
                                   <span>🌅</span> Matin / صباحاً
@@ -1117,8 +1166,8 @@ export function RecommendationForm({
                                     setFertPrograms(prev => prev.map((p, i) => i === activeFertProgIndex ? { ...p, period: "soir" } : p));
                                   }}
                                   className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${currentFertProg.period === "soir"
-                                      ? "bg-indigo-500/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-extrabold shadow-xs"
-                                      : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                    ? "bg-indigo-500/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
                                   <span>🌙</span> Soir / مساءً
@@ -1200,10 +1249,10 @@ export function RecommendationForm({
                                     type="button"
                                     onClick={() => setFertBac(b)}
                                     className={`rounded-lg border py-2 font-black transition-all ${fertBac === b
-                                        ? "border-primary bg-primary text-primary-foreground shadow-xs"
-                                        : filled
-                                          ? "border-olive-mid bg-olive-mid/10 text-olive-dark"
-                                          : "border-input bg-background text-muted-foreground hover:bg-muted"
+                                      ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                                      : filled
+                                        ? "border-olive-mid bg-olive-mid/10 text-olive-dark"
+                                        : "border-input bg-background text-muted-foreground hover:bg-muted"
                                       }`}
                                   >
                                     {t("reco.form.bac")} {b}
@@ -1314,8 +1363,8 @@ export function RecommendationForm({
                                 type="button"
                                 onClick={() => setActivePulvIndex(idx)}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${activePulvIndex === idx
-                                    ? "bg-emerald-600 text-white shadow-xs"
-                                    : "text-muted-foreground hover:bg-muted"
+                                  ? "bg-emerald-600 text-white shadow-xs"
+                                  : "text-muted-foreground hover:bg-muted"
                                   }`}
                               >
                                 <span>{pp.label}</span>
@@ -1364,8 +1413,8 @@ export function RecommendationForm({
                                     setPulvPassages(prev => prev.map((p, i) => i === activePulvIndex ? { ...p, period: "matin" } : p));
                                   }}
                                   className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${(currentPulvPassage.period || "matin") === "matin"
-                                      ? "bg-amber-500/20 border-amber-500 text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
-                                      : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                    ? "bg-amber-500/20 border-amber-500 text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
                                   <span>🌅</span> Matin / صباحاً
@@ -1376,8 +1425,8 @@ export function RecommendationForm({
                                     setPulvPassages(prev => prev.map((p, i) => i === activePulvIndex ? { ...p, period: "soir" } : p));
                                   }}
                                   className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${currentPulvPassage.period === "soir"
-                                      ? "bg-indigo-500/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-extrabold shadow-xs"
-                                      : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                    ? "bg-indigo-500/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
                                   <span>🌙</span> Soir / مساءً
@@ -1519,8 +1568,8 @@ export function RecommendationForm({
                                 type="button"
                                 onClick={() => setActivePhyIndex(idx)}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-black transition-all flex items-center gap-1.5 ${activePhyIndex === idx
-                                    ? "bg-violet-600 text-white shadow-xs"
-                                    : "text-muted-foreground hover:bg-muted"
+                                  ? "bg-violet-600 text-white shadow-xs"
+                                  : "text-muted-foreground hover:bg-muted"
                                   }`}
                               >
                                 <span>{ph.label}</span>
@@ -1569,8 +1618,8 @@ export function RecommendationForm({
                                     setPhyPassages(prev => prev.map((p, i) => i === activePhyIndex ? { ...p, period: "matin" } : p));
                                   }}
                                   className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${currentPhyPassage.period === "matin"
-                                      ? "bg-amber-500/20 border-amber-500 text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
-                                      : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                    ? "bg-amber-500/20 border-amber-500 text-amber-700 dark:text-amber-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
                                   <span>🌅</span> Matin / صباحاً
@@ -1581,8 +1630,8 @@ export function RecommendationForm({
                                     setPhyPassages(prev => prev.map((p, i) => i === activePhyIndex ? { ...p, period: "soir" } : p));
                                   }}
                                   className={`flex-1 py-1.5 px-2 rounded-lg border text-xs font-bold flex items-center justify-center gap-1 transition-all ${(currentPhyPassage.period || "soir") === "soir"
-                                      ? "bg-indigo-500/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-extrabold shadow-xs"
-                                      : "bg-background border-input text-muted-foreground hover:bg-muted"
+                                    ? "bg-indigo-500/20 border-indigo-500 text-indigo-700 dark:text-indigo-300 font-extrabold shadow-xs"
+                                    : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
                                   <span>🌙</span> Soir / مساءً
@@ -1676,13 +1725,12 @@ export function RecommendationForm({
                                             </span>
                                           )}
                                           {iracFrac && (
-                                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 border shadow-xs ${
-                                              isMultiSite
+                                            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 border shadow-xs ${isMultiSite
                                                 ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
                                                 : isFrac
-                                                ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30"
-                                                : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
-                                            }`}>
+                                                  ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30"
+                                                  : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                                              }`}>
                                               <span>🛡️</span>
                                               <span>{isAr ? `تصنيف المقاومة : ${iracFrac}` : `Groupe : ${iracFrac}`}</span>
                                               {isMultiSite && (
@@ -1823,7 +1871,13 @@ export function RecommendationForm({
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase active:scale-95 disabled:opacity-50 shadow-md transition"
               >
                 <CheckCircle2 className="h-4 w-4" />
-                <span>{submitting ? "Validation en cours..." : "Valider Recommandation & Achats (Mois précédent)"}</span>
+                <span>
+                  {submitting
+                    ? "Validation en cours..."
+                    : duplicateMode
+                    ? (isAr ? "تفعيل التوصية المنسوخة مع الشراء" : "Valider la copie & ses Achats")
+                    : "Valider Recommandation & Achats (Mois précédent)"}
+                </span>
               </button>
 
               <button
@@ -1833,11 +1887,38 @@ export function RecommendationForm({
                 className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold uppercase active:scale-95 disabled:opacity-50 transition"
               >
                 <Send className="h-3.5 w-3.5" />
-                <span>{submitting ? t("gen.sending") : (recoToEdit ? t("reco.form.saveChanges") : `${t("reco.form.submit")} (En attente)`)}</span>
+                <span>
+                  {submitting
+                    ? t("gen.sending")
+                    : duplicateMode
+                    ? (isAr ? "حفظ التوصية المنسوخة (قيد الانتظار)" : "Créer la recommandation dupliquée (En attente)")
+                    : recoToEdit
+                    ? t("reco.form.saveChanges")
+                    : `${t("reco.form.submit")} (En attente)`}
+                </span>
               </button>
+
+              {recoToEdit && !duplicateMode && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDuplicateMode(true);
+                    setCreatedAtDate(new Date().toISOString().slice(0, 10));
+                    toast.info(
+                      isAr
+                        ? "تم تفعيل وضع النسخ! يمكنك تعديل التاريخ أو القيم ثم الحفظ لإنشاء توصية جديدة."
+                        : "Mode duplication activé ! Modifiez la date ou les valeurs puis enregistrez pour créer une nouvelle recommandation."
+                    );
+                  }}
+                  className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold uppercase active:scale-95 transition"
+                >
+                  <Copy className="h-4 w-4" />
+                  <span>{isAr ? "نسخ كتوصية جديدة (Dupliquer)" : "Dupliquer comme nouvelle recommandation"}</span>
+                </button>
+              )}
             </div>
 
-            {recoToEdit && (
+            {recoToEdit && !duplicateMode && (
               <button
                 type="button"
                 onClick={async () => {

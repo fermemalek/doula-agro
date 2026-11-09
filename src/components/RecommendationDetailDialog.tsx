@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Droplet, Sprout, FlaskConical, Check, X, MapPin, Calendar, User, ShoppingCart, AlertTriangle, Repeat, CalendarDays, RefreshCw, Trash2, CheckCircle2 } from "lucide-react";
+import { Droplet, Sprout, FlaskConical, Check, X, MapPin, Calendar, User, ShoppingCart, AlertTriangle, Repeat, CalendarDays, RefreshCw, Trash2, CheckCircle2, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "@/lib/router-compat";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -175,9 +175,11 @@ function addMinutesToTime(timeStr: string, minutes: number): string {
 export function RecommendationDetailDialog({
   reco,
   onOpenChange,
+  onDuplicate,
 }: {
   reco: Recommendation | null;
   onOpenChange: (open: boolean) => void;
+  onDuplicate?: (reco: Recommendation) => void;
 }) {
   const parcels = useParcels();
   const { lang } = useTranslation();
@@ -1194,6 +1196,21 @@ export function RecommendationDetailDialog({
                   </button>
                 </div>
               )}
+            </div>
+          )}
+          {onDuplicate && !showPlanningPreview && (
+            <div className="border-t pt-3 mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenChange(false);
+                  onDuplicate(reco);
+                }}
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 px-4 text-xs font-bold uppercase active:scale-95 transition"
+              >
+                <Copy className="h-4 w-4" />
+                <span>{lang === "ar" ? "نسخ وإنشاء توصية جديدة (Dupliquer)" : "Dupliquer cette recommandation"}</span>
+              </button>
             </div>
           )}
         </div>
