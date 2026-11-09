@@ -15,7 +15,7 @@ import {
 } from "@/lib/cloud/recommendations";
 import { FERTILIZER_DATABASE } from "@/data/fertilizers";
 import { useProducts, useProductActions } from "@/lib/products-store";
-import { PHYTO_DATABASE, getMatiereActive, getMatiereActiveAr, getIracFracCode } from "@/data/phytosanitaires";
+import { PHYTO_DATABASE, getMatiereActive, getMatiereActiveAr, getIracFracCode, checkTankMixCompatibility, type TankMixCheckResult } from "@/data/phytosanitaires";
 import { useTranslation } from "@/lib/i18n";
 import { PhytoHistoryModal } from "@/components/ingenieur/PhytoHistoryModal";
 import { PhytoAdvisorModal } from "@/components/ingenieur/PhytoAdvisorModal";
@@ -417,6 +417,15 @@ export function RecommendationForm({
     }));
   };
 
+  // Agronomic Tank Mix Compatibility Check (Vérification automatique de compatibilité en cuve)
+  const tankMixCheck: TankMixCheckResult | null = useMemo(() => {
+    if (phyProducts.length < 2) return null;
+    const p1 = phyProducts[0]?.product?.trim();
+    const p2 = phyProducts[1]?.product?.trim();
+    if (!p1 || !p2) return null;
+    return checkTankMixCompatibility(p1, p2, (lang as "fr" | "ar") || "fr");
+  }, [phyProducts, lang]);
+
   useEffect(() => {
     if (open && recoToEdit) {
       setTitle(
@@ -606,6 +615,30 @@ export function RecommendationForm({
     if (!appDate) return toast.error("Date d'application requise");
     if (cropGroups.length === 0) return toast.error(t("reco.form.errorCropRequired"));
     if (selectedPrescriptions.length === 0) return toast.error(t("reco.form.errorPrescriptionRequired"));
+
+    // Vérification de sécurité agronomique : Alerte incompatibilité chimique en cuve
+    if (selectedPrescriptions.includes("phytosanitaire")) {
+      for (const traitItem of phyPassages) {
+        const activeProds = traitItem.products.filter(p => p.product);
+        if (activeProds.length >= 2) {
+          const check = checkTankMixCompatibility(
+            activeProds[0].product,
+            activeProds[1].product,
+            (lang as "fr" | "ar") || "fr"
+          );
+          if (check && check.status === "incompatible") {
+            const confirmMix = window.confirm(
+              isAr
+                ? `⚠️ تحذير زراعي: تم رصد تعارض كيميائي خطير في (${traitItem.label}) بين (${activeProds[0].product}) و (${activeProds[1].product})!\n\n${check.title}\n${check.message}\n\nنصيحة: ${check.advice}\n\nهل أنت متأكد من حفظ هذه التوصية بهذا الخلط؟`
+                : `⚠️ ALERTE AGRONOMIQUE : Incompatibilité chimique détectée dans "${traitItem.label}" entre "${activeProds[0].product}" et "${activeProds[1].product}" !\n\n${check.title}\n${check.message}\n\nRecommandation : ${check.advice}\n\nSouhaitez-vous malgré tout enregistrer cette recommandation ?`
+            );
+            if (!confirmMix) {
+              return;
+            }
+          }
+        }
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -1917,6 +1950,100 @@ export function RecommendationForm({
                                 </div>
                               </div>
                             ))}
+
+                            {/* Détection et Analyse Agronomique de Compatibilité (Tank Mix) */}
+                            {phyProducts.length >= 2 && (!phyProducts[0]?.product || !phyProducts[1]?.product) && (
+                              <div className="rounded-xl border border-dashed border-indigo-500/30 bg-indigo-500/5 p-2.5 text-center text-xs text-indigo-700 dark:text-indigo-300 flex items-center justify-center gap-2">
+                                <span className="text-base">💡</span>
+                                <span className="font-medium">
+                                  {isAr
+                                    ? "اختر المنتجين أعلاه للتحقق الفوري والآلي من التوافق الكيميائي في الخزان (Tank Mix)"
+                                    : "Sélectionnez les 2 produits ci-dessus pour lancer la vérification automatique de compatibilité en cuve"}
+                                </span>
+                              </div>
+                            )}
+
+                            {tankMixCheck && (
+                              <div
+                                className={`rounded-2xl border-2 p-3.5 space-y-2.5 shadow-xs transition-all ${
+                                  tankMixCheck.status === "compatible"
+                                    ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-950 dark:text-emerald-100"
+                                    : tankMixCheck.status === "incompatible"
+                                    ? "bg-rose-500/15 border-rose-500/50 text-rose-950 dark:text-rose-100 ring-2 ring-rose-500/20"
+                                    : "bg-amber-500/15 border-amber-500/50 text-amber-950 dark:text-amber-100"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-start gap-2.5">
+                                    <span className="text-2xl shrink-0 mt-0.5">
+                                      {tankMixCheck.status === "compatible" ? "✅" : tankMixCheck.status === "incompatible" ? "⛔" : "⚠️"}
+                                    </span>
+                                    <div>
+                                      <h5 className="font-extrabold text-xs sm:text-sm tracking-tight">
+                                        {tankMixCheck.title}
+                                      </h5>
+                                      <p className="text-xs mt-1 font-medium leading-relaxed opacity-90">
+                                        {tankMixCheck.message}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span
+                                    className={`shrink-0 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border shadow-xs ${
+                                      tankMixCheck.status === "compatible"
+                                        ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/30"
+                                        : tankMixCheck.status === "incompatible"
+                                        ? "bg-rose-500/20 text-rose-800 dark:text-rose-200 border-rose-500/40 animate-pulse"
+                                        : "bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/40"
+                                    }`}
+                                  >
+                                    {tankMixCheck.status === "compatible"
+                                      ? (isAr ? "خلط متوافق" : "Compatible")
+                                      : tankMixCheck.status === "incompatible"
+                                      ? (isAr ? "تعارض كيميائي خطير" : "Incompatible")
+                                      : (isAr ? "انتباه / تكرار" : "Attention")}
+                                  </span>
+                                </div>
+
+                                {tankMixCheck.advice && (
+                                  <div
+                                    className={`flex items-start gap-2 rounded-xl p-2.5 text-xs font-semibold ${
+                                      tankMixCheck.status === "compatible"
+                                        ? "bg-emerald-500/15 text-emerald-900 dark:text-emerald-200"
+                                        : tankMixCheck.status === "incompatible"
+                                        ? "bg-rose-500/20 text-rose-900 dark:text-rose-200 font-bold"
+                                        : "bg-amber-500/20 text-amber-900 dark:text-amber-200"
+                                    }`}
+                                  >
+                                    <span className="shrink-0 text-base">{tankMixCheck.status === "compatible" ? "📋" : "💡"}</span>
+                                    <div className="space-y-0.5">
+                                      <span className="font-extrabold text-[11px] block">
+                                        {tankMixCheck.status === "compatible"
+                                          ? (isAr ? "بروتوكول إذابة الخزان (Règle WALES) :" : "Ordre d'incorporation dans la cuve :")
+                                          : (isAr ? "توجيه وقائي إلزامي :" : "Consigne agronomique obligatoire :")}
+                                      </span>
+                                      <span className="text-[11px] font-normal leading-normal">{tankMixCheck.advice}</span>
+                                    </div>
+                                  </div>
+                                )}
+
+                                {(tankMixCheck.codeA || tankMixCheck.codeB) && (
+                                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-current/15 text-[10px]">
+                                    <span className="font-bold opacity-80">{isAr ? "تصنيف المواد الفعالة :" : "Modes d'action (FRAC/IRAC) :"}</span>
+                                    {tankMixCheck.codeA && (
+                                      <span className="bg-background/80 px-2 py-0.5 rounded border font-mono font-bold">
+                                        {phyProducts[0]?.product}: {tankMixCheck.codeA}
+                                      </span>
+                                    )}
+                                    <span>+</span>
+                                    {tankMixCheck.codeB && (
+                                      <span className="bg-background/80 px-2 py-0.5 rounded border font-mono font-bold">
+                                        {phyProducts[1]?.product}: {tankMixCheck.codeB}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {phyProducts.length === 1 ? (
                               <button

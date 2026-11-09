@@ -16,6 +16,7 @@ import { debitProductStock, useSuppliers, useSupplierActions } from "@/lib/suppl
 import { useTranslation } from "@/lib/i18n";
 import { checkRecoStock, computeScheduledDates, computePureIrrigationDates, getTargetParcelsForReco, parsePhytoProductQuantity, type RecoProductStockItem } from "@/lib/stock-alerts";
 import { validateRecommendationAndPurchases } from "@/lib/reco-validation";
+import { checkTankMixCompatibility } from "@/data/phytosanitaires";
 
 const KIND_LABEL: Record<Recommendation["kind"], string> = {
   fertilisation: "Fertilisation",
@@ -512,6 +513,31 @@ export function RecommendationDetailDialog({
                           </div>
                         ))}
                   </div>
+                  {(() => {
+                    const validProds = Array.isArray(program.products)
+                      ? (program.products as any[]).filter(p => p && p.product)
+                      : [];
+                    if (validProds.length < 2) return null;
+                    const check = checkTankMixCompatibility(validProds[0].product, validProds[1].product, (lang as "fr" | "ar") || "fr");
+                    if (!check) return null;
+                    return (
+                      <div className={`rounded-xl border p-2 text-xs flex items-center justify-between gap-2 mt-2 ${
+                        check.status === "compatible"
+                          ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-200"
+                          : check.status === "incompatible"
+                          ? "bg-rose-500/15 border-rose-500/40 text-rose-800 dark:text-rose-200"
+                          : "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-200"
+                      }`}>
+                        <div className="flex items-center gap-1.5 font-bold">
+                          <span>{check.status === "compatible" ? "✅" : check.status === "incompatible" ? "⛔" : "⚠️"}</span>
+                          <span>{check.title}</span>
+                        </div>
+                        <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-background/80 border">
+                          {check.status === "compatible" ? "Mélange OK" : check.status === "incompatible" ? "Incompatible" : "Attention"}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   {Number(program.total ?? 0) > 0 && (
                     <div className="flex justify-between border-t pt-1 font-semibold">
                       <span>Total Estimé</span>
