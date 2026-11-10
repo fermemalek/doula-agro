@@ -226,6 +226,7 @@ export function RecommendationForm({
   interface FertProgramItem {
     id: string;
     label: string; // Ex: "Programme A1", "Programme A2"
+    date?: string;
     period: "matin" | "soir";
     frequency: string;
     pureIrrigationFrequency: string; // Fréquence d'irrigation seule sans fertilisation (0, 1, 2, 3...)
@@ -237,9 +238,10 @@ export function RecommendationForm({
     entries: { bac: "A" | "B" | "C" | "D"; items: any[] }[];
   }
 
-  const createDefaultFertProgram = (id: string, label: string): FertProgramItem => ({
+  const createDefaultFertProgram = (id: string, label: string, defaultDate?: string): FertProgramItem => ({
     id,
     label,
+    date: defaultDate,
     period: "matin",
     frequency: "2",
     pureIrrigationFrequency: "1",
@@ -268,7 +270,7 @@ export function RecommendationForm({
     setFertPrograms(prev => prev.map((fp, i) => i === activeFertProgIndex ? { ...fp, activeBac: b } : fp));
   };
   const fertEntries = currentFertProg.entries;
-  const setFertEntries = (fnOrVal: any) => {
+  const setFertEntries = (fnOrVal: any[] | ((prev: any[]) => any[])) => {
     setFertPrograms(prev => prev.map((fp, i) => {
       if (i !== activeFertProgIndex) return fp;
       const nextEntries = typeof fnOrVal === "function" ? fnOrVal(fp.entries) : fnOrVal;
@@ -322,14 +324,16 @@ export function RecommendationForm({
   interface PulvPassageItem {
     id: string;
     label: string; // Ex: "Passage 1", "Passage 2"
+    date?: string;
     period: "matin" | "soir";
     waterVolume: string; // Ex: 1000 L
     items: { name: string; qty: string; unit: string; price: string }[];
   }
 
-  const createDefaultPulvPassage = (id: string, label: string): PulvPassageItem => ({
+  const createDefaultPulvPassage = (id: string, label: string, defaultDate?: string): PulvPassageItem => ({
     id,
     label,
+    date: defaultDate,
     period: "matin",
     waterVolume: "1000",
     items: [{ name: "", qty: "", unit: "kg", price: "" }],
@@ -346,7 +350,7 @@ export function RecommendationForm({
     setPulvPassages(prev => prev.map((p, i) => i === activePulvIndex ? { ...p, date: val } : p));
   };
   const pulvItems = currentPulvPassage.items;
-  const setPulvItems = (fnOrVal: any) => {
+  const setPulvItems = (fnOrVal: any[] | ((prev: any[]) => any[])) => {
     setPulvPassages(prev => prev.map((p, i) => {
       if (i !== activePulvIndex) return p;
       const nextItems = typeof fnOrVal === "function" ? fnOrVal(p.items) : fnOrVal;
@@ -358,13 +362,15 @@ export function RecommendationForm({
   interface PhytoPassageItem {
     id: string;
     label: string; // Ex: "Traitement 1", "Traitement 2"
+    date?: string;
     period: "matin" | "soir";
-    products: { product: "", cible: "", dosage: "", volume: "1000", price: "", dar: "" }[];
+    products: { product: string; cible: string; dosage: string; volume: string; price: string; dar: string }[];
   }
 
-  const createDefaultPhytoPassage = (id: string, label: string): PhytoPassageItem => ({
+  const createDefaultPhytoPassage = (id: string, label: string, defaultDate?: string): PhytoPassageItem => ({
     id,
     label,
+    date: defaultDate,
     period: "soir",
     products: [{ product: "", cible: "", dosage: "", volume: "1000", price: "", dar: "" }],
   });
@@ -395,7 +401,7 @@ export function RecommendationForm({
     if (targetIdx !== -1) {
       updatePhyItem(targetIdx, newRow);
     } else {
-      setPhyProducts(prev => [...prev, newRow]);
+      setPhyProducts((prev: any[]) => [...prev, newRow]);
     }
     toast.success(
       isAr
@@ -409,7 +415,7 @@ export function RecommendationForm({
     setPhyPassages(prev => prev.map((p, i) => i === activePhyIndex ? { ...p, date: val } : p));
   };
   const phyProducts = currentPhyPassage.products;
-  const setPhyProducts = (fnOrVal: any) => {
+  const setPhyProducts = (fnOrVal: any[] | ((prev: any[]) => any[])) => {
     setPhyPassages(prev => prev.map((p, i) => {
       if (i !== activePhyIndex) return p;
       const nextProds = typeof fnOrVal === "function" ? fnOrVal(p.products) : fnOrVal;
@@ -533,11 +539,11 @@ export function RecommendationForm({
       time: def.time,
       note: def.note,
     };
-    setFertEntries(prev => prev.map(e => e.bac === fertBac ? { ...e, items: [...e.items, newItem] } : e));
+    setFertEntries((prev: any[]) => prev.map((e: any) => e.bac === fertBac ? { ...e, items: [...e.items, newItem] } : e));
   }
 
   function updateFertItem(idx: number, patch: any) {
-    setFertEntries(prev => prev.map(e => {
+    setFertEntries((prev: any[]) => prev.map((e: any) => {
       if (e.bac !== fertBac) return e;
       return {
         ...e,
@@ -560,7 +566,7 @@ export function RecommendationForm({
   }
 
   function removeFertRow(idx: number) {
-    setFertEntries(prev => prev.map(e => {
+    setFertEntries((prev: any[]) => prev.map((e: any) => {
       if (e.bac !== fertBac) return e;
       return {
         ...e,
@@ -571,23 +577,23 @@ export function RecommendationForm({
 
   // Pulverisation handlers
   function addPulvRow() {
-    setPulvItems(prev => [...prev, { name: "", qty: "", unit: "kg", price: "" }]);
+    setPulvItems((prev: any[]) => [...prev, { name: "", qty: "", unit: "kg", price: "" }]);
   }
   function updatePulvItem(idx: number, patch: any) {
-    setPulvItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
+    setPulvItems((prev: any[]) => prev.map((it: any, i: number) => i === idx ? { ...it, ...patch } : it));
   }
   function removePulvRow(idx: number) {
-    setPulvItems(prev => prev.filter((_, i) => i !== idx));
+    setPulvItems((prev: any[]) => prev.filter((_: any, i: number) => i !== idx));
   }
 
   // Phytosanitaire handlers
   function addPhyRow() {
     const baseVolume = phyProducts[0]?.volume || "1000";
-    setPhyProducts(prev => [...prev, { product: "", cible: "", dosage: "", volume: baseVolume, price: "", dar: "" }]);
+    setPhyProducts((prev: any[]) => [...prev, { product: "", cible: "", dosage: "", volume: baseVolume, price: "", dar: "" }]);
   }
   function addSecondPhyProduct() {
     const baseVolume = phyProducts[0]?.volume || "1000";
-    setPhyProducts(prev => [
+    setPhyProducts((prev: any[]) => [
       ...prev,
       { product: "", cible: "", dosage: "", volume: baseVolume, price: "", dar: "" }
     ]);
@@ -598,7 +604,7 @@ export function RecommendationForm({
     );
   }
   function updatePhyItem(idx: number, patch: any) {
-    setPhyProducts(prev => prev.map((it, i) => {
+    setPhyProducts((prev: any[]) => prev.map((it: any, i: number) => {
       if (i === idx) return { ...it, ...patch };
       // Synchroniser le volume d'eau si modifié pour un traitement combiné dans la même cuve
       if (patch.volume !== undefined && it.volume !== patch.volume) {
@@ -608,7 +614,7 @@ export function RecommendationForm({
     }));
   }
   function removePhyRow(idx: number) {
-    setPhyProducts(prev => prev.filter((_, i) => i !== idx));
+    setPhyProducts((prev: any[]) => prev.filter((_: any, i: number) => i !== idx));
   }
 
   async function submit(autoValidate = false) {

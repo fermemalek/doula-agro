@@ -301,10 +301,10 @@ export function RecommendationDetailDialog({
   const payload = (reco.payload ?? {}) as {
     method?: string;
     crop_group?: string | string[];
-    program?: Record<string, unknown>;
+    program?: any;
   };
   const method = payload.method;
-  const program = payload.program;
+  const program = payload.program as any;
 
   return (
     <Dialog open onOpenChange={onOpenChange}>

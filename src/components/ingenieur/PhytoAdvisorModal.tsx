@@ -157,7 +157,7 @@ export function PhytoAdvisorModal({
           const cl = c.toLowerCase();
           if (currentCrop === 'olive') return cl.includes('oliv');
           if (currentCrop === 'pomme') return cl.includes('pomm');
-          if (currentCrop === 'peche' || currentCrop === 'nectarine') return cl.includes('pech') || cl.includes('nectar');
+          if (currentCrop === 'nectarine') return cl.includes('pech') || cl.includes('nectar');
           return true;
         });
         if (!matchesCrop) continue;

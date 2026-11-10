@@ -49,7 +49,7 @@ export async function validateRecommendationAndPurchases({
   suppliers: SupplierPurchase[];
   addPurchase: (p: Omit<SupplierPurchase, "id" | "consumed">) => void;
   acceptReco: (id: string) => Promise<unknown>;
-  addModuleRecord: (parcelId: string, kind: string, data: any) => void;
+  addModuleRecord: (parcelId: string, kind: any, data: any) => void;
   setParcelStatus?: (parcelId: string, status: any) => void;
   options?: {
     supplierName?: string;

@@ -81,7 +81,7 @@ export function ParcelWheel() {
   const hasRecos = recoCount > 0;
 
   const parcelRecoStyles = useMemo(() => {
-    const styles: Record<string, { stroke: string; strokeWidth: number; hasReco: boolean }> = {};
+    const styles: Record<string, { stroke: string; strokeWidth: number; hasReco: boolean; isDual?: boolean }> = {};
     const pendingRecos = recos.filter((r) => r.status === "envoyee");
 
     const parcelMatchesCropGroup = (parcelItem: any, group: string) => {
@@ -112,7 +112,7 @@ export function ParcelWheel() {
 
       const hasPhyto = recosForParcel.some(r => r.kind === "phytosanitaire");
       const hasFert = recosForParcel.some(r => r.kind === "fertilisation");
-      const hasPulv = recosForParcel.some(r => r.payload?.method === "pulverisation" || r.payload?.program?.kind === "pulverisation");
+      const hasPulv = recosForParcel.some(r => (r.payload as any)?.method === "pulverisation" || (r.payload as any)?.program?.kind === "pulverisation");
       const isDual = hasPhyto && (hasFert || hasPulv);
 
       const hasAny = recosForParcel.length > 0;

@@ -41,6 +41,7 @@ interface CropSpeciesConfig {
   groups: string[];
   parcelIds: string[];
   fallbackSurface: number;
+  surfaceHa?: number;
   variety: string;
   rootstock: string;
   colorVar: string;
@@ -942,7 +943,7 @@ export function AgronomicPlanningCalendar({
                               {event.dayName} {formatDateFr(event.date)}
                             </span>
                             <span className="text-[10px] font-extrabold text-primary block">
-                              {event.cropConfig.name} ({event.cropConfig.surfaceHa.toFixed(2)} ha)
+                              {event.cropConfig.name} ({(event.cropConfig.surfaceHa ?? event.cropConfig.fallbackSurface).toFixed(2)} ha)
                             </span>
                           </div>
                         </div>
@@ -1006,7 +1007,7 @@ export function AgronomicPlanningCalendar({
                                         {it.totalParcel.toFixed(1)} {it.unit}
                                       </span>
                                       <span className="text-[9px] text-muted-foreground block">
-                                        ({it.doseHa} {it.unit}/ha × {event.cropConfig.surfaceHa.toFixed(2)} ha)
+                                        ({it.doseHa} {it.unit}/ha × {(event.cropConfig.surfaceHa ?? event.cropConfig.fallbackSurface).toFixed(2)} ha)
                                       </span>
                                     </div>
                                   </div>

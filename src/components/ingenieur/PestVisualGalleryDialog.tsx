@@ -115,8 +115,8 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
   onOpenChange,
   onConfirmSelection,
 }) => {
-  const { currentLang } = useTranslation();
-  const isAr = currentLang === 'ar';
+  const { lang } = useTranslation();
+  const isAr = lang === 'ar';
 
   const [selectedOrganIndex, setSelectedOrganIndex] = useState<number>(0);
   const [imgError, setImgError] = useState<boolean>(false);

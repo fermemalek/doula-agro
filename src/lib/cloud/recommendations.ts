@@ -73,7 +73,7 @@ export function useRecommendations() {
       // 2. Lire les suppressions synchronisées dans le cloud (supplier_purchases)
       const cloudDeletedIds = new Set<string>();
       try {
-        const { data: delRecords } = await supabase
+        const { data: delRecords } = await (supabase as any)
           .from("supplier_purchases")
           .select("product_name")
           .eq("supplier_name", "__SYSTEM_DELETED_RECO__");
@@ -352,7 +352,7 @@ export function useRecommendationActions() {
 
       // 4. Enregistrement de la suppression dans le Cloud Supabase (accessible à tous les utilisateurs authentifiés)
       try {
-        await supabase.from("supplier_purchases").upsert({
+        await (supabase as any).from("supplier_purchases").upsert({
           id: `del_reco_${id}`,
           farm_id: "00000000-0000-0000-0000-000000000001",
           supplier_name: "__SYSTEM_DELETED_RECO__",

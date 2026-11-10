@@ -398,7 +398,7 @@ export class PhytosanitaryEngine {
       }
 
       // 3. RÈGLE CRITIQUE DE SANTÉ PUBLIQUE : Délai Avant Récolte (DAR Standard ou Huile d'olive)
-      const isOliveOil = conditions?.oliveDestination === 'huile' || (params.targetPest.crops.includes('olive') && conditions?.oliveDestination === 'huile');
+      const isOliveOil = (conditions?.oliveDestination as string) === 'huile' || (params.targetPest.crops.includes('olive') && (conditions?.oliveDestination as string) === 'huile');
       const effectivePhiDays = (isOliveOil && ingredient.phiDaysOil) ? ingredient.phiDaysOil : ingredient.phiDays;
 
       if (conditions?.daysBeforeHarvest !== undefined && conditions.daysBeforeHarvest > 0 && effectivePhiDays > conditions.daysBeforeHarvest) {

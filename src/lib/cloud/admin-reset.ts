@@ -31,7 +31,7 @@ export async function resetFarmData(): Promise<ResetResult> {
 
     const results: Record<string, { ok: boolean; error?: string }> = {};
     for (const t of tables) {
-      const { error } = await supabase.from(t).delete().eq("farm_id", FARM_ID);
+      const { error } = await (supabase as any).from(t).delete().eq("farm_id", FARM_ID);
       results[t] = error ? { ok: false, error: error.message } : { ok: true };
       if (error) console.error(`[resetFarmData] ${t}:`, error.message);
     }

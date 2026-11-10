@@ -300,7 +300,7 @@ export function StatsModule() {
     if (groupBy === "month") {
       list.sort((a, b) => a.name.localeCompare(b.name));
     } else {
-      list.sort((a, b) => (b.total || 0) - (a.total || 0));
+      list.sort((a: any, b: any) => (b.total || 0) - (a.total || 0));
     }
 
     return list;

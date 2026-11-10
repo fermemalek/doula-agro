@@ -11,6 +11,7 @@ export function OfflineBadge({ className }: { className?: string }) {
     processing: 0,
     error: 0,
     photos_pending: 0,
+    failed_retrying: 0,
   });
 
   useEffect(() => {

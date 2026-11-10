@@ -25,7 +25,7 @@ export function buildAuthAlias(username: string, password: string): string {
   }
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  const hex = (h2 >>> 0).toString(16).padStart(8, "0") + (h1 >>> 0).toString(8, "0");
+  const hex = (h2 >>> 0).toString(16).padStart(8, "0") + (h1 >>> 0).toString(16).padStart(8, "0");
   return `u_${safeUser}_${hex}@doulaagro.local`;
 }
 

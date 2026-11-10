@@ -380,7 +380,7 @@ function ProgrammesPage() {
         if (group === "casuarina") return parcelItem.name.toUpperCase().includes("CASUARINA") || parcelItem.id === "brisevent";
         return false;
       };
-      return groups.some((group) => parcelMatchesCropGroup(p, group));
+      return groups.some((group: string) => parcelMatchesCropGroup(p, group));
     });
 
     if (target.length === 0) {
@@ -1333,7 +1333,7 @@ function ProgrammesPage() {
                         <div>
                           <span className="font-semibold text-muted-foreground uppercase text-[9px] block">Cultures</span>
                           <div className="flex flex-wrap gap-1 mt-1">
-                            {cropGroups.map((g) => (
+                            {cropGroups.map((g: string) => (
                               <span key={g} className="bg-primary/10 text-primary rounded px-1.5 py-0.5 text-[9px] font-bold uppercase">
                                 {CROP_GROUP_LABELS[g] || g}
                               </span>
