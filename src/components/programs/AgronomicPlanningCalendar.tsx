@@ -1462,16 +1462,16 @@ export function AgronomicPlanningCalendar({
         </button>
       </div>
 
-      {/* 3. Pont de Filtres Unifié et Réactif (Espèce, Type de Prescription avec Couleurs Imposées, Mois) */}
-      <div className="rounded-2xl border bg-card/90 p-3 sm:p-4 space-y-3 shadow-xs">
-        {/* Ligne 1 : Type de Prescription avec les couleurs demandées */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground shrink-0">
+      {/* 3. Pont de Filtres Unifié et Réactif : Chaque rubrique sur sa propre ligne dédiée */}
+      <div className="rounded-2xl border bg-card/90 p-3.5 sm:p-4 space-y-3 shadow-xs">
+        {/* Ligne 1 : Type de Prescription */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground w-40 shrink-0">
             <Filter className="h-3.5 w-3.5 text-primary" />
             <span>Type de Prescription :</span>
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none flex-1">
             {/* Tous */}
             <button
               type="button"
@@ -1529,31 +1529,32 @@ export function AgronomicPlanningCalendar({
           </div>
         </div>
 
-        {/* Ligne 2 : Espèce et Mois */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pt-2 border-t">
-          {/* Espèces */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
-            <span className="text-[11px] font-bold text-muted-foreground shrink-0 pr-1">
-              Espèce :
-            </span>
+        {/* Ligne 2 : Espèce (Sa propre ligne dédiée sur toute la largeur) */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2.5 border-t">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground w-40 shrink-0">
+            <span>🌳</span>
+            <span>Espèce :</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none flex-1">
             <button
               type="button"
               onClick={() => setSelectedSpecies("all")}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 border ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 border ${
                 selectedSpecies === "all"
                   ? "bg-foreground text-background border-foreground shadow-xs font-black"
                   : "bg-background text-muted-foreground hover:bg-muted border-border"
               }`}
             >
               <span>🌳</span>
-              <span>Toutes</span>
+              <span>Toutes les espèces</span>
             </button>
             {cropsWithRealSurfaces.map((crop) => (
               <button
                 key={crop.id}
                 type="button"
                 onClick={() => setSelectedSpecies(crop.id)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 border ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 border ${
                   selectedSpecies === crop.id
                     ? `${crop.badgeBg} border-current shadow-xs font-black`
                     : "bg-background text-muted-foreground hover:bg-muted border-border"
@@ -1565,32 +1566,36 @@ export function AgronomicPlanningCalendar({
               </button>
             ))}
           </div>
+        </div>
 
-          {/* Mois & Bouton Réinitialiser */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none self-start lg:self-auto">
-            <span className="text-[11px] font-bold text-muted-foreground shrink-0 pr-1">
-              Mois :
-            </span>
+        {/* Ligne 3 : Mois (Sa propre ligne dédiée sur toute la largeur) */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2.5 border-t">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground w-40 shrink-0">
+            <Calendar className="h-3.5 w-3.5 text-primary" />
+            <span>Mois :</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none flex-1">
             <button
               type="button"
               onClick={() => setSelectedMonth("all")}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 border ${
                 selectedMonth === "all"
-                  ? "bg-primary text-primary-foreground font-black"
-                  : "bg-muted text-muted-foreground hover:text-foreground"
+                  ? "bg-primary text-primary-foreground font-black border-primary shadow-xs"
+                  : "bg-muted/70 text-muted-foreground hover:bg-muted border-border"
               }`}
             >
-              Tous
+              Tous les mois
             </button>
             {availableMonths.map((m) => (
               <button
                 key={m.code}
                 type="button"
                 onClick={() => setSelectedMonth(m.code)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shrink-0 border ${
                   selectedMonth === m.code
-                    ? "bg-primary text-primary-foreground font-black"
-                    : "bg-muted text-muted-foreground hover:text-foreground"
+                    ? "bg-primary text-primary-foreground font-black border-primary shadow-xs"
+                    : "bg-muted/70 text-muted-foreground hover:bg-muted border-border"
                 }`}
               >
                 {m.label}
@@ -1605,7 +1610,7 @@ export function AgronomicPlanningCalendar({
                   setSelectedMonth("all");
                   setSelectedPrescriptionType("all");
                 }}
-                className="px-2 py-1 text-[11px] text-destructive hover:underline font-bold shrink-0 ml-1 flex items-center gap-0.5"
+                className="px-2.5 py-1 text-xs text-destructive hover:underline font-bold shrink-0 ml-auto flex items-center gap-1 border border-destructive/20 rounded-xl bg-destructive/10"
               >
                 <RefreshCw className="h-3 w-3" />
                 <span>Réinitialiser</span>
