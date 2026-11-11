@@ -30,7 +30,7 @@ const PRESET_COLORS = [
 
 function ConfigPage() {
   const navigate = useNavigate();
-  const { session, loading, isAdmin } = useRole();
+  const { session, loading, isAdmin, switchRole } = useRole();
   const cfg = getConfig();
   const [role, setRole] = useState<ConfigRole>(cfg.role);
   const [bgColor, setBgColor] = useState(cfg.bgColor);
@@ -95,6 +95,7 @@ function ConfigPage() {
 
   function onValidate() {
     saveConfig({ role, bgColor, bgImage, configured: true });
+    switchRole(role);
     toast.success("Configuration enregistrée");
     navigate({ to: "/" });
   }

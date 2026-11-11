@@ -153,9 +153,19 @@ function LoginPage() {
         </header>
 
         {errorMsg && (
-          <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-            <span>{errorMsg}</span>
+          <div className="space-y-2">
+            <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-200 space-y-1">
+              <p className="font-bold flex items-center gap-1">
+                <span>💡</span> Accès secours :
+              </p>
+              <p className="text-[11px] leading-relaxed">
+                Si votre compte <b>Zeinab</b> fonctionne, connectez-vous avec l'identifiant <b><code>zeinab</code></b>. Une fois connecté, vous pouvez <b>basculer en mode Administrateur</b> d'un clic depuis le profil en haut pour gérer tous les comptes et réinitialiser leurs accès.
+              </p>
+            </div>
           </div>
         )}
 

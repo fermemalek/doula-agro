@@ -118,8 +118,8 @@ function matchesSpecies(r: Recommendation, speciesValue: string, parcels: any[])
   const cropGroups: string[] = Array.isArray(payload.crop_group)
     ? payload.crop_group
     : payload.crop_group
-    ? [payload.crop_group]
-    : [];
+      ? [payload.crop_group]
+      : [];
   const titleLower = (r.title || "").toLowerCase();
 
   if (speciesValue === "pommiers") {
@@ -449,11 +449,10 @@ function RecommandationsPageContent() {
           <button
             type="button"
             onClick={() => setSelectedPrescription("all")}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${
-              selectedPrescription === "all"
+            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${selectedPrescription === "all"
                 ? "bg-foreground text-background shadow-xs font-black"
                 : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
+              }`}
           >
             <span>Toutes</span>
             <span className="rounded-full bg-background/20 px-1.5 py-0.2 text-[10px] font-black">
@@ -465,11 +464,10 @@ function RecommandationsPageContent() {
           <button
             type="button"
             onClick={() => setSelectedPrescription("fert_irrigation")}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${
-              selectedPrescription === "fert_irrigation"
+            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${selectedPrescription === "fert_irrigation"
                 ? PRESCRIPTION_CONFIG.fert_irrigation.activePill
                 : PRESCRIPTION_CONFIG.fert_irrigation.inactivePill
-            }`}
+              }`}
           >
             <Droplet className="h-3.5 w-3.5" />
             <span>Fert. Irrigation</span>
@@ -482,11 +480,10 @@ function RecommandationsPageContent() {
           <button
             type="button"
             onClick={() => setSelectedPrescription("fert_foliaire")}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${
-              selectedPrescription === "fert_foliaire"
+            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${selectedPrescription === "fert_foliaire"
                 ? PRESCRIPTION_CONFIG.fert_foliaire.activePill
                 : PRESCRIPTION_CONFIG.fert_foliaire.inactivePill
-            }`}
+              }`}
           >
             <SprayCan className="h-3.5 w-3.5" />
             <span>Fert. Foliaire</span>
@@ -499,11 +496,10 @@ function RecommandationsPageContent() {
           <button
             type="button"
             onClick={() => setSelectedPrescription("phytosanitaire")}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${
-              selectedPrescription === "phytosanitaire"
+            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${selectedPrescription === "phytosanitaire"
                 ? PRESCRIPTION_CONFIG.phytosanitaire.activePill
                 : PRESCRIPTION_CONFIG.phytosanitaire.inactivePill
-            }`}
+              }`}
           >
             <FlaskConical className="h-3.5 w-3.5" />
             <span>Phytosanitaire</span>
@@ -733,8 +729,7 @@ function RecommandationsPageContent() {
                               },
                             });
                             toast.success(
-                              `Recommandation et achats validés avec succès ! (${res.clonedCount} parcelles affectées${
-                                res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats créés` : ""
+                              `Recommandation et achats validés avec succès ! (${res.clonedCount} parcelles affectées${res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats créés` : ""
                               }).`
                             );
                           } catch (err: any) {

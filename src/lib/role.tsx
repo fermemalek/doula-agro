@@ -11,6 +11,7 @@ interface AuthCtx {
   loading: boolean;
   isAdmin: boolean;
   isIngenieur: boolean;
+  switchRole: (newRole: Role) => void;
   signOut: () => Promise<void>;
 }
 
@@ -21,6 +22,13 @@ const ROLE_CACHE_PREFIX = "doula-role:";
 function readCachedRole(uid: string): Role | null {
   if (typeof window === "undefined") return null;
   try {
+    const rawCfg = localStorage.getItem("doula-config");
+    if (rawCfg) {
+      const parsed = JSON.parse(rawCfg);
+      if (parsed?.configured && (parsed.role === "admin" || parsed.role === "ingenieur" || parsed.role === "executant")) {
+        return parsed.role;
+      }
+    }
     const v = localStorage.getItem(ROLE_CACHE_PREFIX + uid);
     if (v === "admin" || v === "executant" || v === "ingenieur") return v;
   } catch { }
@@ -102,6 +110,13 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   async function fetchRole(uid: string) {
     try {
+      // 1. Priorité au rôle explicitement choisi en local si configuré
+      const cached = readCachedRole(uid);
+      if (cached) {
+        setRole(cached);
+        return;
+      }
+
       const { data, error } = await supabase
         .from("user_roles")
         .select("role")
@@ -109,9 +124,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
 
       const roles = (data ?? []).map((d) => d.role as Role);
-      let r: Role = readCachedRole(uid) ?? "executant";
-      if (roles.includes("ingenieur")) r = "ingenieur";
-      else if (roles.includes("admin")) r = "admin";
+      let r: Role = "executant";
+      if (roles.includes("admin")) r = "admin";
+      else if (roles.includes("ingenieur")) r = "ingenieur";
       else if (roles.includes("executant")) r = "executant";
 
       setRole(r);
@@ -124,6 +139,17 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
   }
+
+  const switchRole = (newRole: Role) => {
+    setRole(newRole);
+    if (session?.user.id) {
+      writeCachedRole(session.user.id, newRole);
+    } else {
+      const raw = localStorage.getItem("doula-config");
+      const parsed = raw ? JSON.parse(raw) : {};
+      localStorage.setItem("doula-config", JSON.stringify({ ...parsed, configured: true, role: newRole }));
+    }
+  };
 
   const signOut = async () => {
     if (typeof window !== "undefined") {
@@ -146,6 +172,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         loading,
         isAdmin: role === "admin",
         isIngenieur: role === "ingenieur",
+        switchRole,
         signOut,
       }}
     >
