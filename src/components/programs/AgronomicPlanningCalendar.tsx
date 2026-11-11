@@ -289,10 +289,6 @@ export function AgronomicPlanningCalendar({
 
       distinctDates.forEach((dateKey, dateIdx) => {
         const dateRecos = recosByDate[dateKey];
-        const primaryReco = dateRecos[0];
-        const payload = (primaryReco.payload || {}) as any;
-        const prog = payload.program || {};
-
         const startDate = dateKey;
         const nextDate = distinctDates[dateIdx + 1];
         let endDate = "";
@@ -307,33 +303,52 @@ export function AgronomicPlanningCalendar({
           endDate = addDays(startDate, 28);
         }
 
-        // Fusionner tous les bacs prescrits pour cette date (ex: Reco A1 + Reco A2)
-        const combinedEntriesMap: Record<string, { bac: string; items: any[] }> = {};
-        dateRecos.forEach((r) => {
-          const pProg = ((r.payload as any)?.program) || {};
-          (pProg.entries || []).forEach((e: any) => {
-            if (!combinedEntriesMap[e.bac]) {
-              combinedEntriesMap[e.bac] = { bac: e.bac, items: [] };
-            }
-            (e.items || []).forEach((it: any) => {
-              combinedEntriesMap[e.bac].items.push(it);
-            });
-          });
+        // Trier les sous-programmes pour respecter l'ordre agronomique (ex: Programme A1 avant Programme A2)
+        const sortedSubRecos = [...dateRecos].sort((a, b) => {
+          const lA = (a.payload as any)?.program?.label || a.title || "";
+          const lB = (b.payload as any)?.program?.label || b.title || "";
+          return lA.localeCompare(lB);
         });
 
-        const entries = Object.values(combinedEntriesMap);
+        const primaryReco = sortedSubRecos[0];
+        const primaryPayload = (primaryReco.payload || {}) as any;
+        const primaryProg = primaryPayload.program || {};
 
-        const durationMinutes = parseDurationMinutes(prog.irrigationTime);
-        const irrigationTime = prog.irrigationTime || (durationMinutes === 90 ? "1h30" : `${durationMinutes}m`);
-        const injectionTime = prog.injectionTime ?? 45;
-        const rinsingTime = prog.rinsingTime ?? 10;
+        const durationMinutes = parseDurationMinutes(primaryProg.irrigationTime);
+        const irrigationTime = primaryProg.irrigationTime || (durationMinutes === 90 ? "1h30" : `${durationMinutes}m`);
+        const injectionTime = primaryProg.injectionTime ?? 45;
+        const rinsingTime = primaryProg.rinsingTime ?? 10;
         const wettingTime = Math.max(0, durationMinutes - injectionTime - rinsingTime);
 
-        // Calcul des jours de passage avec décalage régulier de 2 jours (J0, J+3, J+6...)
-        // Ex: Début 09 Mars ➔ 09 Mars (Passage 1), 12 Mars (Passage 2), 15 Mars (Passage 3) ➔ 17 Mars nouvelle reco
+        // Fréquence hebdomadaire :
+        // - Pommier : 1 seul programme A1, se répète 1 fois par semaine (J0 et J+6 / J+7)
+        // - Nablara et Redix 25 : 2 programmes A1 et A2, se répétant chacun 1 fois par semaine (2 passages par semaine au total : A1 puis A2)
+        const hasMultipleSubProgs = sortedSubRecos.length >= 2;
+        const rawFreq = parseFloat(primaryProg.frequency) || 1;
+        const isWeeklySingle = crop.id === "pommiers" || (!hasMultipleSubProgs && rawFreq <= 1);
+
         const startTimestamp = new Date(startDate).getTime();
         const endTimestamp = new Date(endDate).getTime();
         const durationDays = Math.max(1, Math.round((endTimestamp - startTimestamp) / (1000 * 60 * 60 * 24)) + 1);
+
+        // Liste distincte des bacs de la période pour affichage récapitulatif
+        const periodEntries: any[] = [];
+        sortedSubRecos.forEach((r) => {
+          const rProg = (r.payload as any)?.program || {};
+          (rProg.entries || []).forEach((e: any) => {
+            let existingBac = periodEntries.find((pe) => pe.bac === e.bac);
+            if (!existingBac) {
+              existingBac = { bac: e.bac, items: [] };
+              periodEntries.push(existingBac);
+            }
+            (e.items || []).forEach((it: any) => {
+              const pName = (it.name || "").trim();
+              if (pName && !existingBac.items.some((x: any) => x.name?.trim() === pName)) {
+                existingBac.items.push(it);
+              }
+            });
+          });
+        });
 
         const periodObj: PlannedPeriod = {
           speciesId: crop.id,
@@ -344,91 +359,112 @@ export function AgronomicPlanningCalendar({
           startDate,
           endDate,
           isCurrent,
-          frequency: parseFloat(prog.frequency) || 2,
-          pureIrrigationFrequency: parseFloat(prog.pureIrrigationFrequency ?? "0") || 0,
-          pureIrrigationTime: prog.pureIrrigationTime || "1h30",
+          frequency: isWeeklySingle ? 1 : 2,
+          pureIrrigationFrequency: parseFloat(primaryProg.pureIrrigationFrequency ?? "0") || 0,
+          pureIrrigationTime: primaryProg.pureIrrigationTime || "1h30",
           irrigationTime,
           durationMinutes,
           injectionTime,
           rinsingTime,
           wettingTime,
           surfaceHa: crop.surfaceHa,
-          entries,
+          entries: periodEntries,
           totalPassages: 0,
           durationDays,
         };
 
-        // Générer les passages réels avec 2 jours d'intervalle (décalage de 3 jours)
+        // Générer les passages réels selon le rythme de la station (intervalles de 3 jours : J0, J+3, J+6...)
         let passDate = new Date(startDate);
         const finishDate = new Date(endDate);
+        let intervalIndex = 0;
         let passCount = 0;
 
         while (passDate <= finishDate) {
           const dateStr = passDate.toISOString().slice(0, 10);
           const dayOfWeek = passDate.getDay();
 
-          // Doses calculées sur la surface réelle et exacte de la parcelle
-          const bacsComputed = entries.map((e) => ({
-            bac: e.bac,
-            items: e.items.map((it) => {
-              const doseHa = parseFloat(String(it.qty || "0").replace(",", ".")) || 0;
+          // Règle agronomique de passage pour cette espèce :
+          // Si l'espèce est à 1 fois par semaine (Pommier) : elle tourne le premier passage (J0, 09 mars) et le troisième (J+6, 15 mars),
+          // mais elle NE TOURNE PAS au passage intermédiaire J+3 (Jeudi 12 mars) !
+          const isScheduledThisDay = !isWeeklySingle || (intervalIndex % 2 === 0);
+
+          if (isScheduledThisDay) {
+            // Sélectionner le sous-programme exact pour ce passage (A1 sur passage pair, A2 sur passage impair si 2 sous-programmes)
+            const subProgIdx = hasMultipleSubProgs ? (passCount % sortedSubRecos.length) : 0;
+            const currentSubReco = sortedSubRecos[subProgIdx];
+            const currentSubProg = (currentSubReco.payload as any)?.program || {};
+            const currentSubEntries = currentSubProg.entries || [];
+
+            // Doses calculées sur la surface réelle et exacte de la parcelle,
+            // SANS AUCUN DOUBLON dans le même bac (ex: une seule ligne d'Acide Nitrique)
+            const bacsComputed = (currentSubEntries as any[]).map((e: any) => {
+              const uniqueItemsMap: Record<string, { name: string; doseHa: number; unit: string; totalParcel: number }> = {};
+              (e.items || []).forEach((it: any) => {
+                const prodName = (it.name || "").trim();
+                if (!prodName) return;
+                const doseHa = parseFloat(String(it.qty || "0").replace(",", ".")) || 0;
+                if (!uniqueItemsMap[prodName]) {
+                  uniqueItemsMap[prodName] = {
+                    name: prodName,
+                    doseHa,
+                    unit: it.unit || "kg",
+                    totalParcel: doseHa * crop.surfaceHa,
+                  };
+                }
+              });
               return {
-                name: it.name,
-                doseHa,
-                unit: it.unit || "kg",
-                totalParcel: doseHa * crop.surfaceHa,
+                bac: e.bac,
+                items: Object.values(uniqueItemsMap),
               };
-            }),
-          }));
+            });
 
-          rawEvents.push({
-            date: dateStr,
-            dayOfWeek,
-            dayName: DAY_NAMES_FR[dayOfWeek],
-            speciesId: crop.id,
-            speciesName: crop.name,
-            cropConfig: crop,
-            type: "fertigation", // Toute recommandation avec engrais est une FERTIGATION
-            periodInfo: periodObj,
-            recoTitle: primaryReco.title,
-            irrigationDuration: irrigationTime,
-            durationMinutes,
-            wettingTime,
-            injectionTime,
-            rinsingTime,
-            bacs: bacsComputed,
-          });
+            rawEvents.push({
+              date: dateStr,
+              dayOfWeek,
+              dayName: DAY_NAMES_FR[dayOfWeek],
+              speciesId: crop.id,
+              speciesName: crop.name,
+              cropConfig: crop,
+              type: "fertigation",
+              periodInfo: periodObj,
+              recoTitle: currentSubReco.title || primaryReco.title,
+              irrigationDuration: currentSubProg.irrigationTime || irrigationTime,
+              durationMinutes: parseDurationMinutes(currentSubProg.irrigationTime) || durationMinutes,
+              wettingTime: currentSubProg.wettingTime ?? wettingTime,
+              injectionTime: currentSubProg.injectionTime ?? injectionTime,
+              rinsingTime: currentSubProg.rinsingTime ?? rinsingTime,
+              bacs: bacsComputed,
+            });
 
-          passCount++;
+            // Cumul de consolidation EXACT basé strictement sur chaque passage réel exécuté
+            bacsComputed.forEach((b) => {
+              b.items.forEach((it) => {
+                const prodName = it.name.trim();
+                if (!prodName) return;
+                if (!productConsolidationMap[prodName]) {
+                  productConsolidationMap[prodName] = {
+                    name: prodName,
+                    unit: it.unit,
+                    bySpecies: {},
+                    totalQty: 0,
+                  };
+                }
+                productConsolidationMap[prodName].bySpecies[crop.id] =
+                  (productConsolidationMap[prodName].bySpecies[crop.id] || 0) + it.totalParcel;
+                productConsolidationMap[prodName].totalQty += it.totalParcel;
+              });
+            });
 
-          // Décalage de 3 jours (ex: 9 mars + 3j = 12 mars ; 12 mars + 3j = 15 mars)
+            passCount++;
+          }
+
+          intervalIndex++;
+          // Décalage de 3 jours vers le passage suivant de la station
           passDate.setDate(passDate.getDate() + 3);
         }
 
         periodObj.totalPassages = passCount;
         speciesPeriods.push(periodObj);
-
-        // Cumul consolidé des produits fertilisants
-        entries.forEach((entry) => {
-          entry.items.forEach((it) => {
-            const prodName = it.name?.trim();
-            if (!prodName) return;
-            const doseHa = parseFloat(String(it.qty || "0").replace(",", ".")) || 0;
-            const totalForPeriod = doseHa * crop.surfaceHa * passCount;
-
-            if (!productConsolidationMap[prodName]) {
-              productConsolidationMap[prodName] = {
-                name: prodName,
-                unit: it.unit || "kg",
-                bySpecies: {},
-                totalQty: 0,
-              };
-            }
-            productConsolidationMap[prodName].bySpecies[crop.id] =
-              (productConsolidationMap[prodName].bySpecies[crop.id] || 0) + totalForPeriod;
-            productConsolidationMap[prodName].totalQty += totalForPeriod;
-          });
-        });
       });
 
       periodsBySpeciesMap[crop.id] = speciesPeriods;
