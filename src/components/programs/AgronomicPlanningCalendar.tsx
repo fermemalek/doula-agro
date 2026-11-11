@@ -108,12 +108,15 @@ const CROPS_CONFIG: CropSpeciesConfig[] = [
   },
 ];
 
+export type PrescriptionFilterType = "all" | "fert_irrigation" | "fert_foliaire" | "phytosanitaire";
+
 export interface PlannedPeriod {
   speciesId: string;
   speciesName: string;
   recoId: string;
   recoTitle: string;
   reco: Recommendation;
+  type?: "fertigation" | "pulverisation" | "phyto";
   startDate: string;
   endDate: string;
   isCurrent: boolean;
@@ -130,6 +133,15 @@ export interface PlannedPeriod {
     bac: string;
     items: Array<{ name: string; qty: string; unit: string; price?: string }>;
   }>;
+  products?: Array<{
+    name: string;
+    doseHa: number;
+    unit: string;
+    totalParcel: number;
+    cible?: string;
+    dar?: string;
+    note?: string;
+  }>;
   totalPassages: number;
   durationDays: number;
 }
@@ -142,8 +154,9 @@ export interface ScheduledDayEvent {
   speciesName: string;
   cropConfig: CropSpeciesConfig;
   type: "fertigation" | "pure_irrigation" | "pulverisation" | "phyto";
-  periodInfo: PlannedPeriod;
+  periodInfo?: PlannedPeriod;
   recoTitle: string;
+  recoObj?: Recommendation;
   startHourMinutes: number;
   endHourMinutes: number;
   hours: string; // ex: "05h00 - 06h30"
@@ -161,6 +174,25 @@ export interface ScheduledDayEvent {
       totalParcel: number;
     }>;
   }>;
+  products?: Array<{
+    name: string;
+    doseHa: number;
+    unit: string;
+    totalParcel: number;
+    cible?: string;
+    dar?: string;
+    note?: string;
+  }>;
+}
+
+export interface ConsolidatedProduct {
+  name: string;
+  category: "fertigation" | "foliaire" | "phytosanitaire";
+  unit: string;
+  bySpecies: Record<string, number>;
+  totalQty: number;
+  cible?: string;
+  dar?: string;
 }
 
 function parseDurationMinutes(timeStr: string | undefined): number {
@@ -329,6 +361,7 @@ export function AgronomicPlanningCalendar({
   const [selectedSpecies, setSelectedSpecies] = useState<string>("all");
   const [activeView, setActiveView] = useState<"grid" | "cards" | "periods" | "consolidation">("grid");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedPrescriptionType, setSelectedPrescriptionType] = useState<PrescriptionFilterType>("all");
 
   // 1. Calcul dynamique et exact des surfaces depuis la base de données (parcels)
   const cropsWithRealSurfaces = useMemo(() => {
@@ -348,44 +381,94 @@ export function AgronomicPlanningCalendar({
     });
   }, [parcels]);
 
-  // 2. Extraire toutes les recommandations par espèce et construire les périodes successives
-  const { periodsBySpecies, allScheduledEvents, allFertProductsConsolidated } = useMemo(() => {
+  // 2. Extraire toutes les recommandations par espèce (Fertigation, Foliaire, Phytosanitaire)
+  const { periodsBySpecies, allScheduledEvents, allProductsConsolidated } = useMemo(() => {
     const periodsBySpeciesMap: Record<string, PlannedPeriod[]> = {};
     const rawEvents: Array<Omit<ScheduledDayEvent, "startHourMinutes" | "endHourMinutes" | "hours">> = [];
-    const productConsolidationMap: Record<
-      string,
-      {
-        name: string;
-        unit: string;
-        bySpecies: Record<string, number>;
-        totalQty: number;
-      }
-    > = {};
+    const productConsolidationMap: Record<string, ConsolidatedProduct> = {};
 
     cropsWithRealSurfaces.forEach((crop) => {
       // Filtrer les recommandations valides pour cette espèce avec matching multicritères complet
       const matchingRecos = recos.filter((r) => matchesCropForCalendar(r, crop, parcels));
 
-      // Extraire les recommandations de fertilisation / irrigation
+      // A. Recommandations de Fertigation (au sol)
       const fertRecos = matchingRecos.filter((r) => {
         const payload = (r.payload || {}) as any;
         const prog = payload.program || {};
-        return r.kind === "fertilisation" || payload.method === "irrigation" || (prog.entries && prog.entries.length > 0);
+        const titleLower = (r.title || "").toLowerCase();
+        const isFoliar =
+          payload.method === "pulverisation" ||
+          payload.method === "foliaire" ||
+          prog.kind === "pulverisation" ||
+          titleLower.includes("pulv") ||
+          titleLower.includes("foliaire");
+        const isPhyto =
+          r.kind === "phytosanitaire" ||
+          prog.kind === "phytosanitaire" ||
+          payload.method === "phytosanitaire" ||
+          titleLower.includes("phyto");
+        if (isFoliar || isPhyto) return false;
+        return (
+          r.kind === "fertilisation" ||
+          payload.method === "irrigation" ||
+          (prog.entries && prog.entries.length > 0)
+        );
       });
 
-      // Regrouper par date de programme unique pour éviter les doublons de sous-programmes
+      // B. Recommandations de Pulvérisation Foliaire
+      const foliarRecos = matchingRecos.filter((r) => {
+        const payload = (r.payload || {}) as any;
+        const prog = payload.program || {};
+        const titleLower = (r.title || "").toLowerCase();
+        const isPhyto =
+          r.kind === "phytosanitaire" ||
+          prog.kind === "phytosanitaire" ||
+          payload.method === "phytosanitaire" ||
+          titleLower.includes("phyto");
+        if (isPhyto) return false;
+        return (
+          payload.method === "pulverisation" ||
+          payload.method === "foliaire" ||
+          prog.kind === "pulverisation" ||
+          titleLower.includes("pulv") ||
+          titleLower.includes("foliaire")
+        );
+      });
+
+      // C. Recommandations Phytosanitaires
+      const phytoRecos = matchingRecos.filter((r) => {
+        const payload = (r.payload || {}) as any;
+        const prog = payload.program || {};
+        const titleLower = (r.title || "").toLowerCase();
+        return (
+          r.kind === "phytosanitaire" ||
+          prog.kind === "phytosanitaire" ||
+          payload.method === "phytosanitaire" ||
+          titleLower.includes("phyto")
+        );
+      });
+
+      const speciesPeriods: PlannedPeriod[] = [];
+
+      // ==========================================
+      // TRAITEMENT 1 : FERTIGATION (SOL & BACS)
+      // ==========================================
       const recosByDate: Record<string, Recommendation[]> = {};
       fertRecos.forEach((r) => {
         const payload = (r.payload || {}) as any;
         const prog = payload.program || {};
         const titleMatch = (r.title || "").match(/(\d{4}-\d{2}-\d{2})/);
-        const d = prog.date || payload.date || titleMatch?.[1] || r.created_at?.slice(0, 10) || "2026-03-09";
+        const d =
+          prog.date ||
+          payload.date ||
+          titleMatch?.[1] ||
+          r.created_at?.slice(0, 10) ||
+          "2026-03-09";
         if (!recosByDate[d]) recosByDate[d] = [];
         recosByDate[d].push(r);
       });
 
       const distinctDates = Object.keys(recosByDate).sort();
-      const speciesPeriods: PlannedPeriod[] = [];
 
       distinctDates.forEach((dateKey, dateIdx) => {
         const dateRecos = recosByDate[dateKey];
@@ -395,15 +478,12 @@ export function AgronomicPlanningCalendar({
         let isCurrent = false;
 
         if (nextDate) {
-          // L'ancienne recommandation s'arrête strictement la veille de la nouvelle recommandation
           endDate = addDays(nextDate, -1);
         } else {
           isCurrent = true;
-          // Pour la dernière recommandation en vigueur : reconduite sur l'horizon actif
           endDate = addDays(startDate, 28);
         }
 
-        // Trier les sous-programmes pour respecter l'ordre agronomique (ex: Programme A1 avant Programme A2)
         const sortedSubRecos = [...dateRecos].sort((a, b) => {
           const lA = (a.payload as any)?.program?.label || a.title || "";
           const lB = (b.payload as any)?.program?.label || b.title || "";
@@ -415,23 +495,23 @@ export function AgronomicPlanningCalendar({
         const primaryProg = primaryPayload.program || {};
 
         const durationMinutes = parseDurationMinutes(primaryProg.irrigationTime);
-        const irrigationTime = primaryProg.irrigationTime || (durationMinutes === 90 ? "1h30" : `${durationMinutes}m`);
+        const irrigationTime =
+          primaryProg.irrigationTime || (durationMinutes === 90 ? "1h30" : `${durationMinutes}m`);
         const injectionTime = primaryProg.injectionTime ?? 45;
         const rinsingTime = primaryProg.rinsingTime ?? 10;
         const wettingTime = Math.max(0, durationMinutes - injectionTime - rinsingTime);
 
-        // Fréquence hebdomadaire :
-        // - Pommier : 1 seul programme A1, se répète 1 fois par semaine (J0 et J+6 / J+7)
-        // - Nablara et Redix 25 : 2 programmes A1 et A2, se répétant chacun 1 fois par semaine (2 passages par semaine au total : A1 puis A2)
         const hasMultipleSubProgs = sortedSubRecos.length >= 2;
         const rawFreq = parseFloat(primaryProg.frequency) || 1;
         const isWeeklySingle = crop.id === "pommiers" || (!hasMultipleSubProgs && rawFreq <= 1);
 
         const startTimestamp = new Date(startDate).getTime();
         const endTimestamp = new Date(endDate).getTime();
-        const durationDays = Math.max(1, Math.round((endTimestamp - startTimestamp) / (1000 * 60 * 60 * 24)) + 1);
+        const durationDays = Math.max(
+          1,
+          Math.round((endTimestamp - startTimestamp) / (1000 * 60 * 60 * 24)) + 1
+        );
 
-        // Liste distincte des bacs de la période pour affichage récapitulatif
         const periodEntries: any[] = [];
         sortedSubRecos.forEach((r) => {
           const rProg = (r.payload as any)?.program || {};
@@ -456,6 +536,7 @@ export function AgronomicPlanningCalendar({
           recoId: primaryReco.id,
           recoTitle: primaryReco.title,
           reco: primaryReco,
+          type: "fertigation",
           startDate,
           endDate,
           isCurrent,
@@ -473,31 +554,26 @@ export function AgronomicPlanningCalendar({
           durationDays,
         };
 
-        // Générer les passages réels selon le calendrier agronomique de la station
         const passDates = getPassDatesForPeriod(startDate, endDate);
         let passCount = 0;
 
         passDates.forEach((dateStr, intervalIndex) => {
           const dObj = new Date(dateStr);
-          const dayOfWeek = dObj.getDay();
+          const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
 
-          // Règle agronomique stricte pour le Pommier :
-          // Le Pommier a UN SEUL programme A1 qui se répète STRICTEMENT 1 fois par semaine !
-          // Il tourne donc le premier passage (Mardi 10 Mars) et le troisième (Dimanche 15 Mars pour le cycle suivant),
-          // mais NE TOURNE ABSOLUMENT PAS au passage intermédiaire (Jeudi 12 Mars) !
-          const isScheduledThisDay = !isWeeklySingle || (intervalIndex % 2 === 0);
+          const isScheduledThisDay = !isWeeklySingle || intervalIndex % 2 === 0;
 
           if (isScheduledThisDay) {
-            // Sélectionner le sous-programme exact pour ce passage (A1 sur passage 0 et 2, A2 sur passage 1 pour les Nectarines)
-            const subProgIdx = hasMultipleSubProgs ? (passCount % sortedSubRecos.length) : 0;
+            const subProgIdx = hasMultipleSubProgs ? passCount % sortedSubRecos.length : 0;
             const currentSubReco = sortedSubRecos[subProgIdx];
             const currentSubProg = (currentSubReco.payload as any)?.program || {};
             const currentSubEntries = currentSubProg.entries || [];
 
-            // Doses calculées sur la surface réelle et exacte de la parcelle,
-            // SANS AUCUN DOUBLON dans le même bac (ex: une seule ligne d'Acide Nitrique 2 L/ha × 2.16 ha = 4.3 L)
             const bacsComputed = (currentSubEntries as any[]).map((e: any) => {
-              const uniqueItemsMap: Record<string, { name: string; doseHa: number; unit: string; totalParcel: number }> = {};
+              const uniqueItemsMap: Record<
+                string,
+                { name: string; doseHa: number; unit: string; totalParcel: number }
+              > = {};
               (e.items || []).forEach((it: any) => {
                 const prodName = (it.name || "").trim();
                 if (!prodName) return;
@@ -528,23 +604,26 @@ export function AgronomicPlanningCalendar({
               type: "fertigation",
               periodInfo: periodObj,
               recoTitle: currentSubReco.title || primaryReco.title,
+              recoObj: currentSubReco,
               irrigationDuration: currentSubProg.irrigationTime || irrigationTime,
-              durationMinutes: parseDurationMinutes(currentSubProg.irrigationTime) || durationMinutes,
+              durationMinutes:
+                parseDurationMinutes(currentSubProg.irrigationTime) || durationMinutes,
               wettingTime: currentSubProg.wettingTime ?? wettingTime,
               injectionTime: currentSubProg.injectionTime ?? injectionTime,
               rinsingTime: currentSubProg.rinsingTime ?? rinsingTime,
               bacs: bacsComputed,
+              products: [],
             });
 
-            // Cumul de consolidation EXACT basé strictement sur chaque passage réel exécuté
             bacsComputed.forEach((b) => {
               b.items.forEach((it) => {
                 const prodName = it.name.trim();
                 if (!prodName) return;
-                const normKey = prodName.toLowerCase().replace(/\s+/g, " ");
+                const normKey = `fert:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
                 if (!productConsolidationMap[normKey]) {
                   productConsolidationMap[normKey] = {
                     name: prodName,
+                    category: "fertigation",
                     unit: it.unit,
                     bySpecies: {},
                     totalQty: 0,
@@ -564,11 +643,214 @@ export function AgronomicPlanningCalendar({
         speciesPeriods.push(periodObj);
       });
 
+      // ==========================================
+      // TRAITEMENT 2 : ENGRAIS FOLIAIRES (PULVÉRISATION)
+      // ==========================================
+      foliarRecos.forEach((r) => {
+        const payload = (r.payload || {}) as any;
+        const prog = payload.program || {};
+        const titleMatch = (r.title || "").match(/(\d{4}-\d{2}-\d{2})/);
+        const dateStr =
+          prog.date ||
+          payload.date ||
+          titleMatch?.[1] ||
+          r.created_at?.slice(0, 10) ||
+          "2026-04-20";
+        const dObj = new Date(dateStr);
+        const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
+
+        const rawItems = prog.items || payload.items || [];
+        const prodsComputed: any[] = [];
+
+        rawItems.forEach((it: any) => {
+          const prodName = (it.name || it.product || "").trim();
+          if (!prodName) return;
+          const doseHa = parseFloat(String(it.qty || it.dosage || "0").replace(",", ".")) || 0;
+          const unit = it.unit || "litres";
+          const totalParcel = doseHa * crop.surfaceHa;
+          prodsComputed.push({
+            name: prodName,
+            doseHa,
+            unit,
+            totalParcel,
+            note: it.note,
+          });
+
+          const normKey = `foliaire:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+          if (!productConsolidationMap[normKey]) {
+            productConsolidationMap[normKey] = {
+              name: prodName,
+              category: "foliaire",
+              unit,
+              bySpecies: {},
+              totalQty: 0,
+            };
+          }
+          productConsolidationMap[normKey].bySpecies[crop.id] =
+            (productConsolidationMap[normKey].bySpecies[crop.id] || 0) + totalParcel;
+          productConsolidationMap[normKey].totalQty += totalParcel;
+        });
+
+        const periodObj: PlannedPeriod = {
+          speciesId: crop.id,
+          speciesName: crop.name,
+          recoId: r.id,
+          recoTitle: r.title,
+          reco: r,
+          type: "pulverisation",
+          startDate: dateStr,
+          endDate: addDays(dateStr, 7),
+          isCurrent: dateStr <= new Date().toISOString().slice(0, 10),
+          frequency: 1,
+          pureIrrigationFrequency: 0,
+          pureIrrigationTime: "—",
+          irrigationTime: "1h30",
+          durationMinutes: 90,
+          injectionTime: 90,
+          rinsingTime: 0,
+          wettingTime: 0,
+          surfaceHa: crop.surfaceHa,
+          entries: [],
+          products: prodsComputed,
+          totalPassages: 1,
+          durationDays: 7,
+        };
+
+        speciesPeriods.push(periodObj);
+
+        rawEvents.push({
+          date: dateStr,
+          dayOfWeek,
+          dayName: DAY_NAMES_FR[dayOfWeek],
+          speciesId: crop.id,
+          speciesName: crop.name,
+          cropConfig: crop,
+          type: "pulverisation",
+          periodInfo: periodObj,
+          recoTitle: r.title,
+          recoObj: r,
+          irrigationDuration: "1h30 (Pulv.)",
+          durationMinutes: 90,
+          wettingTime: 0,
+          injectionTime: 90,
+          rinsingTime: 0,
+          bacs: [],
+          products: prodsComputed,
+        });
+      });
+
+      // ==========================================
+      // TRAITEMENT 3 : PHYTOSANITAIRE (PROTECTION)
+      // ==========================================
+      phytoRecos.forEach((r) => {
+        const payload = (r.payload || {}) as any;
+        const prog = payload.program || {};
+        const titleMatch = (r.title || "").match(/(\d{4}-\d{2}-\d{2})/);
+        const dateStr =
+          prog.date ||
+          payload.date ||
+          titleMatch?.[1] ||
+          r.created_at?.slice(0, 10) ||
+          "2026-04-20";
+        const dObj = new Date(dateStr);
+        const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
+
+        const rawProds = prog.products || payload.products || prog.items || [];
+        const prodsComputed: any[] = [];
+
+        rawProds.forEach((pItem: any) => {
+          const prodName = (pItem.product || pItem.name || "").trim();
+          if (!prodName) return;
+          const doseMatch = String(pItem.dosage || pItem.qty || "0").match(/([0-9.,]+)/);
+          const doseHa = parseFloat((doseMatch?.[1] || "0").replace(",", ".")) || 0;
+          const unitMatch = String(pItem.dosage || pItem.unit || "").match(/(litres|l|kg|g)/i);
+          const unit = unitMatch
+            ? unitMatch[1].toLowerCase().startsWith("k")
+              ? "kg"
+              : unitMatch[1].toLowerCase().startsWith("g")
+              ? "g"
+              : "litres"
+            : pItem.unit || "litres";
+          const totalParcel = doseHa * crop.surfaceHa;
+
+          prodsComputed.push({
+            name: prodName,
+            doseHa,
+            unit,
+            totalParcel,
+            cible: pItem.cible,
+            dar: pItem.dar,
+          });
+
+          const normKey = `phyto:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+          if (!productConsolidationMap[normKey]) {
+            productConsolidationMap[normKey] = {
+              name: prodName,
+              category: "phytosanitaire",
+              unit,
+              bySpecies: {},
+              totalQty: 0,
+              cible: pItem.cible,
+              dar: pItem.dar,
+            };
+          }
+          productConsolidationMap[normKey].bySpecies[crop.id] =
+            (productConsolidationMap[normKey].bySpecies[crop.id] || 0) + totalParcel;
+          productConsolidationMap[normKey].totalQty += totalParcel;
+        });
+
+        const periodObj: PlannedPeriod = {
+          speciesId: crop.id,
+          speciesName: crop.name,
+          recoId: r.id,
+          recoTitle: r.title,
+          reco: r,
+          type: "phyto",
+          startDate: dateStr,
+          endDate: addDays(dateStr, 7),
+          isCurrent: dateStr <= new Date().toISOString().slice(0, 10),
+          frequency: 1,
+          pureIrrigationFrequency: 0,
+          pureIrrigationTime: "—",
+          irrigationTime: "1h30 (Phyto)",
+          durationMinutes: 90,
+          injectionTime: 90,
+          rinsingTime: 0,
+          wettingTime: 0,
+          surfaceHa: crop.surfaceHa,
+          entries: [],
+          products: prodsComputed,
+          totalPassages: 1,
+          durationDays: 7,
+        };
+
+        speciesPeriods.push(periodObj);
+
+        rawEvents.push({
+          date: dateStr,
+          dayOfWeek,
+          dayName: DAY_NAMES_FR[dayOfWeek],
+          speciesId: crop.id,
+          speciesName: crop.name,
+          cropConfig: crop,
+          type: "phyto",
+          periodInfo: periodObj,
+          recoTitle: r.title,
+          recoObj: r,
+          irrigationDuration: "1h30 (Phyto)",
+          durationMinutes: 90,
+          wettingTime: 0,
+          injectionTime: 90,
+          rinsingTime: 0,
+          bacs: [],
+          products: prodsComputed,
+        });
+      });
+
       periodsBySpeciesMap[crop.id] = speciesPeriods;
     });
 
-    // 3. Calcul séquentiel des horaires de la station de pompage (JAMAIS en parallèle)
-    // Regrouper par date
+    // 3. Calcul séquentiel des horaires (Station Fertigation, Pulvérisation Matin, Traitement Soir)
     const eventsByDateMap: Record<string, typeof rawEvents> = {};
     rawEvents.forEach((ev) => {
       if (!eventsByDateMap[ev.date]) eventsByDateMap[ev.date] = [];
@@ -577,25 +859,56 @@ export function AgronomicPlanningCalendar({
 
     const finalEvents: ScheduledDayEvent[] = [];
 
-    // Déterminer la séquence exacte pour chaque date
     Object.keys(eventsByDateMap).sort().forEach((dateKey) => {
       const dayList = eventsByDateMap[dateKey];
 
-      // Ordre agronomique des secteurs : Pommier -> Nablara -> Redix 25 -> Oliviers
+      // A. Fertigation séquentielle station
+      const fertEvents = dayList.filter((e) => e.type === "fertigation" || e.type === "pure_irrigation");
+      const foliarEvents = dayList.filter((e) => e.type === "pulverisation");
+      const phytoEvents = dayList.filter((e) => e.type === "phyto");
+
       const priorityOrder = ["pommiers", "nablara", "redix25", "oliviers"];
-      dayList.sort((a, b) => priorityOrder.indexOf(a.speciesId) - priorityOrder.indexOf(b.speciesId));
+      fertEvents.sort(
+        (a, b) => priorityOrder.indexOf(a.speciesId) - priorityOrder.indexOf(b.speciesId)
+      );
 
-      const hasPommier = dayList.some((e) => e.speciesId === "pommiers");
-
-      // Heure de démarrage de la station :
-      // - 05h00 (300 min) si Pommier est programmé
-      // - 06h00 (360 min) si seulement Nablara et Redix 25 sont programmés
+      const hasPommier = fertEvents.some((e) => e.speciesId === "pommiers");
       let currentStationTime = hasPommier ? 5 * 60 : 6 * 60;
 
-      dayList.forEach((ev) => {
+      fertEvents.forEach((ev) => {
         const startMin = currentStationTime;
         const endMin = startMin + ev.durationMinutes;
-        currentStationTime = endMin; // Le secteur suivant commence exactement quand le précédent finit
+        currentStationTime = endMin;
+
+        finalEvents.push({
+          ...ev,
+          startHourMinutes: startMin,
+          endHourMinutes: endMin,
+          hours: `${formatMinutesToHourString(startMin)} - ${formatMinutesToHourString(endMin)}`,
+        });
+      });
+
+      // B. Pulvérisation foliaire (Matinée à la fraîche)
+      let foliarTime = 6 * 60 + 30; // 06h30
+      foliarEvents.forEach((ev) => {
+        const startMin = foliarTime;
+        const endMin = startMin + ev.durationMinutes;
+        foliarTime = endMin;
+
+        finalEvents.push({
+          ...ev,
+          startHourMinutes: startMin,
+          endHourMinutes: endMin,
+          hours: `${formatMinutesToHourString(startMin)} - ${formatMinutesToHourString(endMin)}`,
+        });
+      });
+
+      // C. Traitement phytosanitaire (Fin d'après-midi / absence de vent)
+      let phytoTime = 17 * 60 + 30; // 17h30
+      phytoEvents.forEach((ev) => {
+        const startMin = phytoTime;
+        const endMin = startMin + ev.durationMinutes;
+        phytoTime = endMin;
 
         finalEvents.push({
           ...ev,
@@ -615,23 +928,98 @@ export function AgronomicPlanningCalendar({
     return {
       periodsBySpecies: periodsBySpeciesMap,
       allScheduledEvents: finalEvents,
-      allFertProductsConsolidated: Object.values(productConsolidationMap).sort(
+      allProductsConsolidated: Object.values(productConsolidationMap).sort(
         (a, b) => b.totalQty - a.totalQty
       ),
     };
   }, [recos, cropsWithRealSurfaces]);
 
-  // Filtrer par espèce et par mois
+  // Filtrer par espèce, mois et type de prescription
   const filteredEvents = useMemo(() => {
     return allScheduledEvents.filter((ev) => {
+      // 1. Filtre Espèce
       if (selectedSpecies !== "all" && ev.speciesId !== selectedSpecies) return false;
+
+      // 2. Filtre Mois
       if (selectedMonth !== "all") {
         const monthNum = ev.date.slice(5, 7);
         if (monthNum !== selectedMonth) return false;
       }
+
+      // 3. Filtre Type de Prescription
+      if (
+        selectedPrescriptionType === "fert_irrigation" &&
+        ev.type !== "fertigation" &&
+        ev.type !== "pure_irrigation"
+      ) {
+        return false;
+      }
+      if (selectedPrescriptionType === "fert_foliaire" && ev.type !== "pulverisation") {
+        return false;
+      }
+      if (selectedPrescriptionType === "phytosanitaire" && ev.type !== "phyto") {
+        return false;
+      }
+
       return true;
     });
-  }, [allScheduledEvents, selectedSpecies, selectedMonth]);
+  }, [allScheduledEvents, selectedSpecies, selectedMonth, selectedPrescriptionType]);
+
+  // Synthèse consolidée des intrants calculée dynamiquement sur les événements filtrés
+  const consolidatedProductsFiltered = useMemo(() => {
+    const map: Record<string, ConsolidatedProduct> = {};
+
+    filteredEvents.forEach((ev) => {
+      // A. Fertigation (bacs)
+      if (ev.type === "fertigation" || ev.type === "pure_irrigation") {
+        ev.bacs.forEach((b) => {
+          b.items.forEach((it) => {
+            const prodName = it.name.trim();
+            if (!prodName) return;
+            const normKey = `fert:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+            if (!map[normKey]) {
+              map[normKey] = {
+                name: prodName,
+                category: "fertigation",
+                unit: it.unit,
+                bySpecies: {},
+                totalQty: 0,
+              };
+            }
+            map[normKey].bySpecies[ev.speciesId] =
+              (map[normKey].bySpecies[ev.speciesId] || 0) + it.totalParcel;
+            map[normKey].totalQty += it.totalParcel;
+          });
+        });
+      }
+
+      // B. Foliaire ou Phyto (products)
+      if (ev.type === "pulverisation" || ev.type === "phyto") {
+        const cat = ev.type === "pulverisation" ? "foliaire" : "phytosanitaire";
+        (ev.products || []).forEach((it) => {
+          const prodName = it.name.trim();
+          if (!prodName) return;
+          const normKey = `${cat}:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+          if (!map[normKey]) {
+            map[normKey] = {
+              name: prodName,
+              category: cat,
+              unit: it.unit,
+              bySpecies: {},
+              totalQty: 0,
+              cible: it.cible,
+              dar: it.dar,
+            };
+          }
+          map[normKey].bySpecies[ev.speciesId] =
+            (map[normKey].bySpecies[ev.speciesId] || 0) + it.totalParcel;
+          map[normKey].totalQty += it.totalParcel;
+        });
+      }
+    });
+
+    return Object.values(map).sort((a, b) => b.totalQty - a.totalQty);
+  }, [filteredEvents]);
 
   // Ensemble dynamique des dates d'introduction de nouvelles recommandations
   const allRecoStartDates = useMemo(() => {
@@ -672,13 +1060,16 @@ export function AgronomicPlanningCalendar({
 
       let summaryLabel = "";
       if (dayEvents.length > 0) {
-        const speciesNames = Array.from(new Set(dayEvents.map((e) => {
-          if (e.speciesId === "pommiers") return "Pom";
-          if (e.speciesId === "nablara") return "Nablara";
-          if (e.speciesId === "redix25") return "Redix";
-          return e.speciesName;
-        }))).join("-");
-        summaryLabel = `Fertilisation ${speciesNames}`;
+        const typesSet = new Set(
+          dayEvents.map((e) =>
+            e.type === "fertigation" || e.type === "pure_irrigation"
+              ? "Fert."
+              : e.type === "pulverisation"
+              ? "Foliaire"
+              : "Phyto"
+          )
+        );
+        summaryLabel = Array.from(typesSet).join(" + ");
       }
 
       rows.push({
@@ -812,128 +1203,210 @@ export function AgronomicPlanningCalendar({
         </div>
       </div>
 
-      {/* 2. Barre de Navigation : Sélecteur d'Espèce & Mode d'Affichage */}
-      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2.5 border-b pb-2">
-        {/* Sélecteur de l'Espèce */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => setSelectedSpecies("all")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shrink-0 border ${
-              selectedSpecies === "all"
-                ? "bg-foreground text-background shadow-xs border-foreground"
-                : "bg-background text-muted-foreground hover:bg-muted border-border"
-            }`}
-          >
-            <span>🌳</span>
-            <span>Toutes les espèces</span>
-          </button>
+      {/* 2. Barre de Navigation (Les 4 Vues Agronomiques) */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b">
+        <button
+          type="button"
+          onClick={() => setActiveView("grid")}
+          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border ${
+            activeView === "grid"
+              ? "bg-foreground text-background shadow-xs border-foreground"
+              : "bg-muted/40 text-muted-foreground hover:bg-muted border-border"
+          }`}
+        >
+          <TableIcon className="h-3.5 w-3.5 text-amber-500" />
+          <span>Grille Calendrier (Excel)</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveView("cards")}
+          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border ${
+            activeView === "cards"
+              ? "bg-foreground text-background shadow-xs border-foreground"
+              : "bg-muted/40 text-muted-foreground hover:bg-muted border-border"
+          }`}
+        >
+          <Calendar className="h-3.5 w-3.5 text-primary" />
+          <span>Fiches Horaires</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveView("periods")}
+          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border ${
+            activeView === "periods"
+              ? "bg-foreground text-background shadow-xs border-foreground"
+              : "bg-muted/40 text-muted-foreground hover:bg-muted border-border"
+          }`}
+        >
+          <Layers className="h-3.5 w-3.5 text-indigo-500" />
+          <span>Paliers & Périodes</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveView("consolidation")}
+          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border ${
+            activeView === "consolidation"
+              ? "bg-foreground text-background shadow-xs border-foreground"
+              : "bg-muted/40 text-muted-foreground hover:bg-muted border-border"
+          }`}
+        >
+          <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+          <span>Synthèse Intrants</span>
+        </button>
+      </div>
 
-          {cropsWithRealSurfaces.map((crop) => (
+      {/* 3. Pont de Filtres Unifié et Réactif (Espèce, Type de Prescription avec Couleurs Imposées, Mois) */}
+      <div className="rounded-2xl border bg-card/90 p-3 sm:p-4 space-y-3 shadow-xs">
+        {/* Ligne 1 : Type de Prescription avec les couleurs demandées */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground shrink-0">
+            <Filter className="h-3.5 w-3.5 text-primary" />
+            <span>Type de Prescription :</span>
+          </div>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+            {/* Tous */}
             <button
-              key={crop.id}
               type="button"
-              onClick={() => setSelectedSpecies(crop.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shrink-0 border ${
-                selectedSpecies === crop.id
-                  ? `${crop.badgeBg} border-current shadow-xs`
+              onClick={() => setSelectedPrescriptionType("all")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 shrink-0 border ${
+                selectedPrescriptionType === "all"
+                  ? "bg-foreground text-background border-foreground shadow-xs font-black"
                   : "bg-background text-muted-foreground hover:bg-muted border-border"
               }`}
             >
-              <span>{crop.icon}</span>
-              <span>{crop.name}</span>
-              <span className="text-[10px] font-medium opacity-80">({crop.surfaceHa} ha)</span>
+              <span>Tous les types</span>
             </button>
-          ))}
-        </div>
 
-        {/* Sélecteur de Mode de Vue */}
-        <div className="flex items-center gap-1 bg-muted p-1 rounded-xl shrink-0 self-end sm:self-auto">
-          <button
-            type="button"
-            onClick={() => setActiveView("grid")}
-            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
-              activeView === "grid"
-                ? "bg-background text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <TableIcon className="h-3.5 w-3.5 text-amber-500" />
-            <span>Grille Calendrier (Excel)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("cards")}
-            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
-              activeView === "cards"
-                ? "bg-background text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Calendar className="h-3.5 w-3.5 text-primary" />
-            <span>Fiches Horaires</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("periods")}
-            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
-              activeView === "periods"
-                ? "bg-background text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Layers className="h-3.5 w-3.5" />
-            <span>Paliers & Périodes</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView("consolidation")}
-            className={`px-3 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${
-              activeView === "consolidation"
-                ? "bg-background text-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
-            <span>Synthèse Intrants</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Filtre de Mois */}
-      {availableMonths.length > 1 && (
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="font-bold text-muted-foreground text-[11px] flex items-center gap-1">
-            <Filter className="h-3 w-3" />
-            <span>Filtrer le Mois :</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => setSelectedMonth("all")}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-              selectedMonth === "all"
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Tous les mois
-          </button>
-          {availableMonths.map((m) => (
+            {/* Fert. Irrigation - VERT */}
             <button
-              key={m.code}
               type="button"
-              onClick={() => setSelectedMonth(m.code)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                selectedMonth === m.code
-                  ? "bg-primary text-primary-foreground"
+              onClick={() => setSelectedPrescriptionType("fert_irrigation")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 border ${
+                selectedPrescriptionType === "fert_irrigation"
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs font-black ring-2 ring-emerald-500/30"
+                  : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
+              }`}
+            >
+              <span>💧</span>
+              <span>Fert. Irrigation</span>
+            </button>
+
+            {/* Fert. Foliaire - BLEU */}
+            <button
+              type="button"
+              onClick={() => setSelectedPrescriptionType("fert_foliaire")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 border ${
+                selectedPrescriptionType === "fert_foliaire"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-xs font-black ring-2 ring-blue-500/30"
+                  : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/20"
+              }`}
+            >
+              <span>🌿</span>
+              <span>Fert. Foliaire</span>
+            </button>
+
+            {/* Phytosanitaire - ORANGE */}
+            <button
+              type="button"
+              onClick={() => setSelectedPrescriptionType("phytosanitaire")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 border ${
+                selectedPrescriptionType === "phytosanitaire"
+                  ? "bg-amber-600 text-white border-amber-600 shadow-xs font-black ring-2 ring-amber-500/30"
+                  : "bg-amber-500/10 text-amber-800 dark:text-amber-200 border-amber-500/30 hover:bg-amber-500/20"
+              }`}
+            >
+              <span>🛡️</span>
+              <span>Phytosanitaire</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Ligne 2 : Espèce et Mois */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 pt-2 border-t">
+          {/* Espèces */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
+            <span className="text-[11px] font-bold text-muted-foreground shrink-0 pr-1">
+              Espèce :
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedSpecies("all")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 border ${
+                selectedSpecies === "all"
+                  ? "bg-foreground text-background border-foreground shadow-xs font-black"
+                  : "bg-background text-muted-foreground hover:bg-muted border-border"
+              }`}
+            >
+              <span>🌳</span>
+              <span>Toutes</span>
+            </button>
+            {cropsWithRealSurfaces.map((crop) => (
+              <button
+                key={crop.id}
+                type="button"
+                onClick={() => setSelectedSpecies(crop.id)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 border ${
+                  selectedSpecies === crop.id
+                    ? `${crop.badgeBg} border-current shadow-xs font-black`
+                    : "bg-background text-muted-foreground hover:bg-muted border-border"
+                }`}
+              >
+                <span>{crop.icon}</span>
+                <span>{crop.name}</span>
+                <span className="text-[10px] opacity-75 font-mono">({crop.surfaceHa.toFixed(1)} ha)</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Mois & Bouton Réinitialiser */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none self-start lg:self-auto">
+            <span className="text-[11px] font-bold text-muted-foreground shrink-0 pr-1">
+              Mois :
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedMonth("all")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                selectedMonth === "all"
+                  ? "bg-primary text-primary-foreground font-black"
                   : "bg-muted text-muted-foreground hover:text-foreground"
               }`}
             >
-              {m.label}
+              Tous
             </button>
-          ))}
+            {availableMonths.map((m) => (
+              <button
+                key={m.code}
+                type="button"
+                onClick={() => setSelectedMonth(m.code)}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 ${
+                  selectedMonth === m.code
+                    ? "bg-primary text-primary-foreground font-black"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+
+            {(selectedSpecies !== "all" || selectedMonth !== "all" || selectedPrescriptionType !== "all") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSpecies("all");
+                  setSelectedMonth("all");
+                  setSelectedPrescriptionType("all");
+                }}
+                className="px-2 py-1 text-[11px] text-destructive hover:underline font-bold shrink-0 ml-1 flex items-center gap-0.5"
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span>Réinitialiser</span>
+              </button>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
       {/* ======================================================== */}
       {/* VUE 1 : GRILLE CALENDRIER TYPE TABLEUR EXCEL (IMAGE 5)    */}
@@ -1003,21 +1476,64 @@ export function AgronomicPlanningCalendar({
                             return (
                               <td
                                 key={colDay}
-                                className="p-2.5 border-r bg-amber-400/30 dark:bg-amber-500/20 text-center font-black text-amber-950 dark:text-amber-100"
+                                className="p-2 border-r bg-muted/20 text-center font-medium"
                               >
-                                <div className="space-y-1">
-                                  <span className="block text-xs font-black tracking-tight text-amber-900 dark:text-amber-200">
-                                    {row.summaryLabel}
-                                  </span>
-                                  <div className="flex flex-wrap justify-center gap-1 text-[10px]">
-                                    {row.events.map((ev) => (
-                                      <span
-                                        key={ev.speciesId}
-                                        className="bg-background/90 px-1.5 py-0.5 rounded border shadow-2xs font-mono font-bold text-[9px]"
+                                <div className="space-y-1.5">
+                                  {/* Badges de types d'interventions aux couleurs requises */}
+                                  <div className="flex flex-wrap justify-center gap-1">
+                                    {Array.from(new Set(row.events.map((e) => e.type))).map((t) => {
+                                      if (t === "fertigation" || t === "pure_irrigation") {
+                                        return (
+                                          <span
+                                            key={t}
+                                            className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                                          >
+                                            💧 Fert
+                                          </span>
+                                        );
+                                      }
+                                      if (t === "pulverisation") {
+                                        return (
+                                          <span
+                                            key={t}
+                                            className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
+                                          >
+                                            🌿 Foliaire
+                                          </span>
+                                        );
+                                      }
+                                      return (
+                                        <span
+                                          key={t}
+                                          className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-800 dark:text-amber-200 border border-amber-500/30"
+                                        >
+                                          🛡️ Phyto
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Détail par espèce et horaires séquentiels */}
+                                  <div className="space-y-1">
+                                    {row.events.map((ev, evIdx) => (
+                                      <div
+                                        key={evIdx}
+                                        className="bg-background/95 px-1.5 py-0.5 rounded border shadow-2xs font-mono font-bold text-[9px] flex items-center justify-between gap-1"
                                       >
-                                        {ev.speciesId === "pommiers" ? "Pom: " : ev.speciesId === "nablara" ? "Nab: " : "Red: "}
-                                        {ev.hours}
-                                      </span>
+                                        <span className="flex items-center gap-0.5">
+                                          <span>{ev.cropConfig.icon}</span>
+                                          <span>
+                                            {ev.speciesId === "pommiers"
+                                              ? "Pom"
+                                              : ev.speciesId === "nablara"
+                                              ? "Nab"
+                                              : ev.speciesId === "redix25"
+                                              ? "Red"
+                                              : "Oli"}
+                                          </span>
+                                        </span>
+                                        <span className="text-muted-foreground">{ev.hours}</span>
+                                      </div>
                                     ))}
                                   </div>
                                 </div>
@@ -1079,7 +1595,7 @@ export function AgronomicPlanningCalendar({
                       key={evIdx}
                       className="rounded-xl border p-3 space-y-2 bg-card border-border hover:shadow-xs transition-all"
                     >
-                      {/* En-tête du passage */}
+                      {/* En-tête du passage avec badge coloré selon le type */}
                       <div className="flex items-start justify-between gap-1.5 border-b pb-1.5">
                         <div className="flex items-center gap-1.5">
                           <span className="text-xl">{event.cropConfig.icon}</span>
@@ -1093,74 +1609,208 @@ export function AgronomicPlanningCalendar({
                           </div>
                         </div>
 
-                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 shrink-0">
-                          Fertigation
-                        </span>
+                        {/* Badges de Prescription aux couleurs requises */}
+                        {event.type === "fertigation" && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 shrink-0">
+                            💧 Fert. Irrigation
+                          </span>
+                        )}
+                        {event.type === "pure_irrigation" && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-600 border-emerald-500/20 shrink-0">
+                            💧 Irrigation Seule
+                          </span>
+                        )}
+                        {event.type === "pulverisation" && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 shrink-0">
+                            🌿 Fert. Foliaire
+                          </span>
+                        )}
+                        {event.type === "phyto" && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30 shrink-0">
+                            🛡️ Phytosanitaire
+                          </span>
+                        )}
                       </div>
 
-                      {/* Horaires séquentiels précis de la station */}
-                      <div className="rounded-lg bg-muted/40 p-2 text-[10px] space-y-1">
-                        <div className="flex justify-between items-center font-bold">
-                          <span className="text-muted-foreground flex items-center gap-1">
-                            <Clock className="h-3 w-3 text-primary" />
-                            <span>Créneau pompe :</span>
-                          </span>
-                          <span className="text-foreground font-black font-mono text-[11px]">
-                            {event.hours} ({event.irrigationDuration})
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-1 pt-1 border-t border-border/50 text-center font-semibold">
-                          <span className="text-muted-foreground">
-                            Mouillage: <b className="text-foreground">{event.wettingTime}m</b>
-                          </span>
-                          <span className="text-emerald-700 dark:text-emerald-300 font-bold">
-                            Injection: <b>{event.injectionTime}m</b>
-                          </span>
-                          <span className="text-muted-foreground">
-                            Rinçage: <b className="text-foreground">{event.rinsingTime}m</b>
-                          </span>
-                        </div>
-                      </div>
+                      {/* --- TYPE 1 : FERTIGATION (Bacs & Pompe) --- */}
+                      {(event.type === "fertigation" || event.type === "pure_irrigation") && (
+                        <>
+                          <div className="rounded-lg bg-muted/40 p-2 text-[10px] space-y-1">
+                            <div className="flex justify-between items-center font-bold">
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-primary" />
+                                <span>Créneau pompe :</span>
+                              </span>
+                              <span className="text-foreground font-black font-mono text-[11px]">
+                                {event.hours} ({event.irrigationDuration})
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1 pt-1 border-t border-border/50 text-center font-semibold">
+                              <span className="text-muted-foreground">
+                                Mouillage: <b className="text-foreground">{event.wettingTime}m</b>
+                              </span>
+                              <span className="text-emerald-700 dark:text-emerald-300 font-bold">
+                                Injection: <b>{event.injectionTime}m</b>
+                              </span>
+                              <span className="text-muted-foreground">
+                                Rinçage: <b className="text-foreground">{event.rinsingTime}m</b>
+                              </span>
+                            </div>
+                          </div>
 
-                      {/* Détail des Bacs & Quantités exactes pour la parcelle */}
-                      {event.bacs.length > 0 && (
-                        <div className="space-y-1.5 pt-0.5">
-                          {event.bacs.map((bacEntry) => (
-                            <div
-                              key={bacEntry.bac}
-                              className="rounded-lg border p-2 bg-background space-y-1 text-xs"
-                            >
-                              <div className="flex justify-between items-center">
-                                <span className="font-black text-[10px] uppercase text-primary flex items-center gap-1">
-                                  <span>🧪</span>
-                                  <span>Bac {bacEntry.bac}</span>
-                                </span>
-                                <span className="text-[9px] text-muted-foreground font-semibold">
-                                  Quantité totale injectée
-                                </span>
-                              </div>
+                          {event.bacs.length > 0 && (
+                            <div className="space-y-1.5 pt-0.5">
+                              {event.bacs.map((bacEntry) => (
+                                <div
+                                  key={bacEntry.bac}
+                                  className="rounded-lg border p-2 bg-background space-y-1 text-xs"
+                                >
+                                  <div className="flex justify-between items-center">
+                                    <span className="font-black text-[10px] uppercase text-primary flex items-center gap-1">
+                                      <span>🧪</span>
+                                      <span>Bac {bacEntry.bac}</span>
+                                    </span>
+                                    <span className="text-[9px] text-muted-foreground font-semibold">
+                                      Quantité totale injectée
+                                    </span>
+                                  </div>
 
-                              <div className="space-y-1">
-                                {bacEntry.items.map((it, itIdx) => (
-                                  <div
-                                    key={itIdx}
-                                    className="flex items-center justify-between text-[11px] border-b border-border/40 pb-0.5 last:border-0 last:pb-0"
-                                  >
-                                    <span className="font-medium text-foreground">{it.name}</span>
-                                    <div className="text-right">
-                                      <span className="font-black text-emerald-700 dark:text-emerald-300">
-                                        {it.totalParcel.toFixed(1)} {it.unit}
-                                      </span>
-                                      <span className="text-[9px] text-muted-foreground block">
-                                        ({it.doseHa} {it.unit}/ha × {(event.cropConfig.surfaceHa ?? event.cropConfig.fallbackSurface).toFixed(2)} ha)
-                                      </span>
+                                  <div className="space-y-1">
+                                    {bacEntry.items.map((it, itIdx) => (
+                                      <div
+                                        key={itIdx}
+                                        className="flex items-center justify-between text-[11px] border-b border-border/40 pb-0.5 last:border-0 last:pb-0"
+                                      >
+                                        <span className="font-medium text-foreground">{it.name}</span>
+                                        <div className="text-right">
+                                          <span className="font-black text-emerald-700 dark:text-emerald-300">
+                                            {it.totalParcel.toFixed(1)} {it.unit}
+                                          </span>
+                                          <span className="text-[9px] text-muted-foreground block">
+                                            ({it.doseHa} {it.unit}/ha × {(event.cropConfig.surfaceHa ?? event.cropConfig.fallbackSurface).toFixed(2)} ha)
+                                          </span>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* --- TYPE 2 : FERTILISATION FOLIAIRE --- */}
+                      {event.type === "pulverisation" && (
+                        <>
+                          <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 p-2 text-[10px] space-y-1">
+                            <div className="flex justify-between items-center font-bold">
+                              <span className="text-blue-900 dark:text-blue-200 flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-blue-600" />
+                                <span>Pulvérisation à la fraîche :</span>
+                              </span>
+                              <span className="text-blue-950 dark:text-blue-100 font-black font-mono text-[11px]">
+                                {event.hours} (Matinée)
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-blue-800 dark:text-blue-300">
+                              Application foliaire optimale avant la montée des températures.
+                            </p>
+                          </div>
+
+                          <div className="rounded-lg border border-blue-500/20 bg-background p-2 space-y-1.5 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="font-black text-[10px] uppercase text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                                <span>🌿</span>
+                                <span>Bouillie & Produits Foliaires</span>
+                              </span>
+                              <span className="text-[9px] text-muted-foreground font-semibold">
+                                Total pour {(event.cropConfig.surfaceHa ?? event.cropConfig.fallbackSurface).toFixed(2)} ha
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              {(event.products || []).map((it, itIdx) => (
+                                <div
+                                  key={itIdx}
+                                  className="flex items-center justify-between text-[11px] border-b border-border/40 pb-0.5 last:border-0 last:pb-0"
+                                >
+                                  <div>
+                                    <span className="font-medium text-foreground block">{it.name}</span>
+                                    {it.note && (
+                                      <span className="text-[9px] text-muted-foreground block">{it.note}</span>
+                                    )}
+                                  </div>
+                                  <div className="text-right">
+                                    <span className="font-black text-blue-700 dark:text-blue-300">
+                                      {it.totalParcel.toFixed(1)} {it.unit}
+                                    </span>
+                                    <span className="text-[9px] text-muted-foreground block">
+                                      ({it.doseHa} {it.unit}/ha × {(event.cropConfig.surfaceHa ?? event.cropConfig.fallbackSurface).toFixed(2)} ha)
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </>
+                      )}
+
+                      {/* --- TYPE 3 : PHYTOSANITAIRE --- */}
+                      {event.type === "phyto" && (
+                        <>
+                          <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-2 text-[10px] space-y-1">
+                            <div className="flex justify-between items-center font-bold">
+                              <span className="text-amber-900 dark:text-amber-200 flex items-center gap-1">
+                                <Clock className="h-3 w-3 text-amber-600" />
+                                <span>Traitement Crépusculaire :</span>
+                              </span>
+                              <span className="text-amber-950 dark:text-amber-100 font-black font-mono text-[11px]">
+                                {event.hours} (Soirée)
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-amber-800 dark:text-amber-300">
+                              Traitement en soirée / conditions de vent calme (&lt; 15 km/h).
+                            </p>
+                          </div>
+
+                          <div className="rounded-lg border border-amber-500/20 bg-background p-2 space-y-1.5 text-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="font-black text-[10px] uppercase text-amber-800 dark:text-amber-200 flex items-center gap-1">
+                                <span>🛡️</span>
+                                <span>Produits de Protection</span>
+                              </span>
+                              <span className="text-[9px] text-muted-foreground font-semibold">
+                                Total pour {(event.cropConfig.surfaceHa ?? event.cropConfig.fallbackSurface).toFixed(2)} ha
+                              </span>
+                            </div>
+
+                            <div className="space-y-1">
+                              {(event.products || []).map((it, itIdx) => (
+                                <div
+                                  key={itIdx}
+                                  className="flex items-center justify-between text-[11px] border-b border-border/40 pb-0.5 last:border-0 last:pb-0"
+                                >
+                                  <div>
+                                    <span className="font-medium text-foreground block">{it.name}</span>
+                                    <div className="flex items-center gap-2 text-[9px] text-muted-foreground">
+                                      {it.cible && <span>Cible: <b>{it.cible}</b></span>}
+                                      {it.dar && <span>DAR: <b>{it.dar}</b></span>}
                                     </div>
                                   </div>
-                                ))}
-                              </div>
+                                  <div className="text-right">
+                                    <span className="font-black text-amber-800 dark:text-amber-200">
+                                      {it.totalParcel.toFixed(1)} {it.unit}
+                                    </span>
+                                    <span className="text-[9px] text-muted-foreground block">
+                                      ({it.doseHa} {it.unit}/ha × {(event.cropConfig.surfaceHa ?? event.cropConfig.fallbackSurface).toFixed(2)} ha)
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
-                        </div>
+                          </div>
+                        </>
                       )}
 
                       {/* Source Recommandation cliquable */}
@@ -1168,10 +1818,13 @@ export function AgronomicPlanningCalendar({
                         <span className="truncate max-w-[170px]" title={event.recoTitle}>
                           📋 {event.recoTitle}
                         </span>
-                        {onSelectReco && (
+                        {onSelectReco && (event.periodInfo?.reco || event.recoObj) && (
                           <button
                             type="button"
-                            onClick={() => onSelectReco(event.periodInfo.reco)}
+                            onClick={() => {
+                              const targetReco = event.periodInfo?.reco || event.recoObj;
+                              if (targetReco) onSelectReco(targetReco);
+                            }}
                             className="text-primary hover:underline font-bold flex items-center gap-0.5"
                           >
                             <span>Détails</span>
@@ -1248,9 +1901,42 @@ export function AgronomicPlanningCalendar({
             })}
           </div>
 
-          {cropsWithRealSurfaces.filter((c) => selectedSpecies === "all" || c.id === selectedSpecies).map(
-            (crop) => {
-              const cropPeriods = periodsBySpecies[crop.id] || [];
+          {cropsWithRealSurfaces
+            .filter((c) => selectedSpecies === "all" || c.id === selectedSpecies)
+            .map((crop) => {
+              const cropPeriodsRaw = periodsBySpecies[crop.id] || [];
+              const cropPeriods = cropPeriodsRaw.filter((p) => {
+                // 1. Filtre type de prescription
+                if (
+                  selectedPrescriptionType === "fert_irrigation" &&
+                  p.type &&
+                  p.type !== "fertigation"
+                ) {
+                  return false;
+                }
+                if (
+                  selectedPrescriptionType === "fert_foliaire" &&
+                  p.type !== "pulverisation"
+                ) {
+                  return false;
+                }
+                if (
+                  selectedPrescriptionType === "phytosanitaire" &&
+                  p.type !== "phyto"
+                ) {
+                  return false;
+                }
+
+                // 2. Filtre mois
+                if (selectedMonth !== "all") {
+                  const sMonth = p.startDate.slice(5, 7);
+                  const eMonth = p.endDate.slice(5, 7);
+                  if (sMonth > selectedMonth || eMonth < selectedMonth) return false;
+                }
+
+                return true;
+              });
+
               const has20AvrInCrop = cropPeriods.some((p) => p.startDate === "2026-04-20");
 
               return (
@@ -1302,7 +1988,7 @@ export function AgronomicPlanningCalendar({
 
                   {cropPeriods.length === 0 ? (
                     <div className="p-6 text-center text-xs text-muted-foreground">
-                      Aucune recommandation active pour {crop.name}.
+                      Aucune recommandation active pour {crop.name} avec les filtres sélectionnés.
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
@@ -1310,9 +1996,9 @@ export function AgronomicPlanningCalendar({
                         <thead className="bg-muted/20 text-[10px] uppercase font-bold text-muted-foreground border-b">
                           <tr>
                             <th className="p-3">Statut & Période d'Effet</th>
-                            <th className="p-3">Créneau Séquentiel</th>
-                            <th className="p-3">Formule Bacs (Doses/ha)</th>
-                            <th className="p-3 text-right">Passages Effectués</th>
+                            <th className="p-3">Créneau & Application</th>
+                            <th className="p-3">Formule Prescrite (Doses/ha)</th>
+                            <th className="p-3 text-right">Passages</th>
                             <th className="p-3 text-right">Action</th>
                           </tr>
                         </thead>
@@ -1337,6 +2023,23 @@ export function AgronomicPlanningCalendar({
                                         <span>{crop.name}</span>
                                       </span>
 
+                                      {/* Badges de Prescription aux couleurs requises */}
+                                      {(period.type === "fertigation" || !period.type) && (
+                                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
+                                          💧 Fert. Irrigation
+                                        </span>
+                                      )}
+                                      {period.type === "pulverisation" && (
+                                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30">
+                                          🌿 Fert. Foliaire
+                                        </span>
+                                      )}
+                                      {period.type === "phyto" && (
+                                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30">
+                                          🛡️ Phytosanitaire
+                                        </span>
+                                      )}
+
                                       {is20Avr && (
                                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-xs flex items-center gap-1 animate-pulse">
                                           <span>✨</span>
@@ -1347,7 +2050,7 @@ export function AgronomicPlanningCalendar({
                                       {period.isCurrent ? (
                                         <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                          <span>Programme Actuel (En cours)</span>
+                                          <span>En cours</span>
                                         </span>
                                       ) : (
                                         <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
@@ -1359,7 +2062,7 @@ export function AgronomicPlanningCalendar({
                                       Du {formatDateFr(period.startDate)} au {formatDateFr(period.endDate)}
                                     </p>
                                     <span className="text-[10px] text-muted-foreground block">
-                                      {period.durationDays} jours · {period.totalPassages} passages
+                                      {period.durationDays} jours · {period.totalPassages} passage(s)
                                     </span>
                                     <span className="text-[10px] text-muted-foreground/80 block truncate max-w-xs" title={period.recoTitle}>
                                       📋 {period.recoTitle}
@@ -1368,33 +2071,82 @@ export function AgronomicPlanningCalendar({
                                 </td>
 
                                 <td className="p-3 font-bold">
-                                  <span className="font-mono text-xs text-primary block">
-                                    {crop.id === "pommiers"
-                                      ? "05h00 - 06h30"
-                                      : crop.id === "nablara"
-                                      ? "06h30 - 08h00 (ou 06h00)"
-                                      : "08h00 - 09h30 (ou 07h30)"}
-                                  </span>
-                                  <span className="text-[10px] text-muted-foreground block mt-0.5">
-                                    Durée: {period.irrigationTime} (Mouil. {period.wettingTime}m + Inj. {period.injectionTime}m + Rinc. {period.rinsingTime}m)
-                                  </span>
+                                  {period.type === "pulverisation" ? (
+                                    <>
+                                      <span className="font-mono text-xs text-blue-600 dark:text-blue-400 block">
+                                        06h30 - 08h30 (Matinée)
+                                      </span>
+                                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                                        Pulvérisation foliaire à la fraîche
+                                      </span>
+                                    </>
+                                  ) : period.type === "phyto" ? (
+                                    <>
+                                      <span className="font-mono text-xs text-amber-600 dark:text-amber-400 block">
+                                        17h30 - 19h30 (Soirée)
+                                      </span>
+                                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                                        Traitement crépusculaire (vent faible)
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span className="font-mono text-xs text-primary block">
+                                        {crop.id === "pommiers"
+                                          ? "05h00 - 06h30"
+                                          : crop.id === "nablara"
+                                          ? "06h30 - 08h00 (ou 06h00)"
+                                          : "08h00 - 09h30 (ou 07h30)"}
+                                      </span>
+                                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                                        Durée: {period.irrigationTime} (Mouil. {period.wettingTime}m + Inj. {period.injectionTime}m + Rinc. {period.rinsingTime}m)
+                                      </span>
+                                    </>
+                                  )}
                                 </td>
 
                                 <td className="p-3">
-                                  <div className="space-y-1.5 max-w-sm">
-                                    {period.entries.map((e) => (
-                                      <div key={e.bac} className="text-[11px]">
-                                        <span className="font-extrabold text-primary uppercase text-[10px]">
-                                          Bac {e.bac} :
-                                        </span>{" "}
-                                        <span className="text-foreground font-medium">
-                                          {e.items
-                                            .map((it) => `${it.name} (${it.qty} ${it.unit}/ha)`)
-                                            .join(", ")}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
+                                  {period.entries && period.entries.length > 0 ? (
+                                    <div className="space-y-1.5 max-w-sm">
+                                      {period.entries.map((e) => (
+                                        <div key={e.bac} className="text-[11px]">
+                                          <span className="font-extrabold text-primary uppercase text-[10px]">
+                                            Bac {e.bac} :
+                                          </span>{" "}
+                                          <span className="text-foreground font-medium">
+                                            {e.items
+                                              .map((it) => `${it.name} (${it.qty} ${it.unit}/ha)`)
+                                              .join(", ")}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : period.products && period.products.length > 0 ? (
+                                    <div className="space-y-1 max-w-sm text-[11px]">
+                                      {period.products.map((p, pidx) => (
+                                        <div
+                                          key={pidx}
+                                          className="flex items-center justify-between gap-2 border-b border-border/30 pb-0.5 last:border-0 last:pb-0"
+                                        >
+                                          <div>
+                                            <span className="font-medium text-foreground block">{p.name}</span>
+                                            {(p.cible || p.dar) && (
+                                              <span className="text-[9px] text-muted-foreground block">
+                                                {p.cible ? `Cible: ${p.cible}` : ""} {p.dar ? `· DAR: ${p.dar}` : ""}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="font-bold text-muted-foreground shrink-0">
+                                            {p.doseHa} {p.unit}/ha
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground italic">
+                                      Irrigation pure (sans fertilisation)
+                                    </span>
+                                  )}
                                 </td>
 
                                 <td className="p-3 text-right">
@@ -1428,32 +2180,84 @@ export function AgronomicPlanningCalendar({
                   )}
                 </div>
               );
-            }
-          )}
+            })}
         </div>
       )}
 
       {/* ======================================================== */}
-      {/* VUE 4 : SYNTHÈSE CONSOLIDÉE DES BESOINS D'ENGRAIS       */}
+      {/* VUE 4 : SYNTHÈSE CONSOLIDÉE DES BESOINS D'INTRANTS      */}
       {/* ======================================================== */}
       {activeView === "consolidation" && (
         <div className="space-y-4">
-          <div className="rounded-xl border bg-card p-4 space-y-2">
-            <h4 className="font-black text-sm text-foreground flex items-center gap-2">
-              <span>🧪 Synthèse Consolidée des Besoins d'Engrais (Surfaces Réelles Vérifiées)</span>
-            </h4>
-            <p className="text-xs text-muted-foreground">
-              Calcul mathématique exact basé sur les surfaces réelles enregistrées dans vos fiches parcelles :
-              <b> 2 ha pour Pommier</b>, <b>2 ha pour Nablara</b>, <b>2 ha pour Redix 25</b>, et <b>8 ha pour Oliviers</b>.
-            </p>
+          <div className="rounded-xl border bg-card p-4 space-y-3">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+              <div>
+                <h4 className="font-black text-sm text-foreground flex items-center gap-2">
+                  <span>🧪 Synthèse Consolidée des Intrants (Surfaces Réelles Vérifiées)</span>
+                </h4>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Calcul mathématique exact basé sur les surfaces réelles enregistrées dans vos fiches parcelles :
+                  <b> 2 ha pour Pommier</b>, <b>2 ha pour Nablara</b>, <b>2 ha pour Redix 25</b>, et <b>8 ha pour Oliviers</b>.
+                </p>
+              </div>
+
+              {(selectedSpecies !== "all" || selectedMonth !== "all" || selectedPrescriptionType !== "all") && (
+                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 shrink-0">
+                  Filtres actifs : {consolidatedProductsFiltered.length} produit(s)
+                </span>
+              )}
+            </div>
+
+            {/* Cartes KPI aux couleurs imposées */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-1">
+                <span className="text-[11px] font-black uppercase text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
+                  <span>💧</span>
+                  <span>Fert. Irrigation (Sol)</span>
+                </span>
+                <p className="text-lg font-black text-emerald-950 dark:text-emerald-100">
+                  {consolidatedProductsFiltered.filter((p) => p.category === "fertigation").length} produit(s)
+                </p>
+                <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold block">
+                  Bacs A, B, C, D séquentiels
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-3 space-y-1">
+                <span className="text-[11px] font-black uppercase text-blue-800 dark:text-blue-200 flex items-center gap-1.5">
+                  <span>🌿</span>
+                  <span>Fert. Foliaire</span>
+                </span>
+                <p className="text-lg font-black text-blue-950 dark:text-blue-100">
+                  {consolidatedProductsFiltered.filter((p) => p.category === "foliaire").length} produit(s)
+                </p>
+                <span className="text-[10px] text-blue-700 dark:text-blue-300 font-semibold block">
+                  Pulvérisations matinales à la fraîche
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-1">
+                <span className="text-[11px] font-black uppercase text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
+                  <span>🛡️</span>
+                  <span>Phytosanitaire</span>
+                </span>
+                <p className="text-lg font-black text-amber-950 dark:text-amber-100">
+                  {consolidatedProductsFiltered.filter((p) => p.category === "phytosanitaire").length} produit(s)
+                </p>
+                <span className="text-[10px] text-amber-800 dark:text-amber-200 font-semibold block">
+                  Traitements crépusculaires & DAR
+                </span>
+              </div>
+            </div>
           </div>
 
           <div className="border rounded-2xl bg-card overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left border-collapse">
-                <thead className="bg-muted/40 text-[10px] uppercase font-black text-muted-foreground border-b">
+                <thead className="bg-muted/50 text-[10px] uppercase font-black text-muted-foreground border-b">
                   <tr>
-                    <th className="p-3">Produit Fertilisant</th>
+                    <th className="p-3">Produit & Spécifications</th>
+                    <th className="p-3">Type</th>
                     <th className="p-3">Unité</th>
                     <th className="p-3 text-right">🍎 Pommiers (2,00 ha)</th>
                     <th className="p-3 text-right">🍑 Nablara (2,00 ha)</th>
@@ -1465,16 +2269,42 @@ export function AgronomicPlanningCalendar({
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {allFertProductsConsolidated.length === 0 ? (
+                  {consolidatedProductsFiltered.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-muted-foreground text-xs">
-                        Aucun engrais prescrit dans les recommandations pour l'instant.
+                      <td colSpan={8} className="p-8 text-center text-muted-foreground text-xs">
+                        Aucun produit correspondant aux critères de recherche actuels.
                       </td>
                     </tr>
                   ) : (
-                    allFertProductsConsolidated.map((prod, idx) => (
+                    consolidatedProductsFiltered.map((prod, idx) => (
                       <tr key={idx} className="hover:bg-muted/10 transition">
-                        <td className="p-3 font-extrabold text-foreground">{prod.name}</td>
+                        <td className="p-3 font-extrabold text-foreground">
+                          <div>
+                            <span className="block font-black">{prod.name}</span>
+                            {(prod.cible || prod.dar) && (
+                              <span className="text-[10px] text-muted-foreground block font-normal">
+                                {prod.cible ? `Cible: ${prod.cible}` : ""} {prod.dar ? `· DAR: ${prod.dar}` : ""}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          {prod.category === "fertigation" && (
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 whitespace-nowrap">
+                              💧 Fert. Irrigation
+                            </span>
+                          )}
+                          {prod.category === "foliaire" && (
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 whitespace-nowrap">
+                              🌿 Fert. Foliaire
+                            </span>
+                          )}
+                          {prod.category === "phytosanitaire" && (
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30 whitespace-nowrap">
+                              🛡️ Phyto
+                            </span>
+                          )}
+                        </td>
                         <td className="p-3 text-muted-foreground font-semibold">{prod.unit}</td>
                         <td className="p-3 text-right font-medium">
                           {prod.bySpecies["pommiers"]
