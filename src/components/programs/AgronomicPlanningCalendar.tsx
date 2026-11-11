@@ -19,6 +19,7 @@ import {
   Table as TableIcon,
   Check,
   RefreshCw,
+  ArrowUpDown,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -190,9 +191,42 @@ export interface ConsolidatedProduct {
   category: "fertigation" | "foliaire" | "phytosanitaire";
   unit: string;
   bySpecies: Record<string, number>;
+  byMonth?: Record<string, number>;
   totalQty: number;
   cible?: string;
   dar?: string;
+}
+
+const MONTH_NAMES_FR: Record<string, string> = {
+  "01": "Janvier",
+  "02": "Février",
+  "03": "Mars",
+  "04": "Avril",
+  "05": "Mai",
+  "06": "Juin",
+  "07": "Juillet",
+  "08": "Août",
+  "09": "Septembre",
+  "10": "Octobre",
+  "11": "Novembre",
+  "12": "Décembre",
+};
+
+function sortProducts<T extends { name: string; totalQty: number; category: string }>(
+  list: T[],
+  sortBy: "qty_desc" | "name_asc" | "category"
+): T[] {
+  return [...list].sort((a, b) => {
+    if (sortBy === "qty_desc") return b.totalQty - a.totalQty;
+    if (sortBy === "name_asc") return a.name.localeCompare(b.name);
+    if (sortBy === "category") {
+      const order: Record<string, number> = { fertigation: 1, foliaire: 2, phytosanitaire: 3 };
+      const catDiff = (order[a.category] || 9) - (order[b.category] || 9);
+      if (catDiff !== 0) return catDiff;
+      return b.totalQty - a.totalQty;
+    }
+    return 0;
+  });
 }
 
 function parseDurationMinutes(timeStr: string | undefined): number {
@@ -362,6 +396,8 @@ export function AgronomicPlanningCalendar({
   const [activeView, setActiveView] = useState<"grid" | "cards" | "periods" | "consolidation">("grid");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedPrescriptionType, setSelectedPrescriptionType] = useState<PrescriptionFilterType>("all");
+  const [consolidationGrouping, setConsolidationGrouping] = useState<"by_species" | "by_month" | "matrix">("by_species");
+  const [consolidationSort, setConsolidationSort] = useState<"qty_desc" | "name_asc" | "category">("qty_desc");
 
   // 1. Calcul dynamique et exact des surfaces depuis la base de données (parcels)
   const cropsWithRealSurfaces = useMemo(() => {
@@ -970,6 +1006,8 @@ export function AgronomicPlanningCalendar({
     const map: Record<string, ConsolidatedProduct> = {};
 
     filteredEvents.forEach((ev) => {
+      const mCode = ev.date.slice(5, 7);
+
       // A. Fertigation (bacs)
       if (ev.type === "fertigation" || ev.type === "pure_irrigation") {
         ev.bacs.forEach((b) => {
@@ -983,11 +1021,14 @@ export function AgronomicPlanningCalendar({
                 category: "fertigation",
                 unit: it.unit,
                 bySpecies: {},
+                byMonth: {},
                 totalQty: 0,
               };
             }
             map[normKey].bySpecies[ev.speciesId] =
               (map[normKey].bySpecies[ev.speciesId] || 0) + it.totalParcel;
+            map[normKey].byMonth = map[normKey].byMonth || {};
+            map[normKey].byMonth[mCode] = (map[normKey].byMonth[mCode] || 0) + it.totalParcel;
             map[normKey].totalQty += it.totalParcel;
           });
         });
@@ -1006,6 +1047,7 @@ export function AgronomicPlanningCalendar({
               category: cat,
               unit: it.unit,
               bySpecies: {},
+              byMonth: {},
               totalQty: 0,
               cible: it.cible,
               dar: it.dar,
@@ -1013,13 +1055,178 @@ export function AgronomicPlanningCalendar({
           }
           map[normKey].bySpecies[ev.speciesId] =
             (map[normKey].bySpecies[ev.speciesId] || 0) + it.totalParcel;
+          map[normKey].byMonth = map[normKey].byMonth || {};
+          map[normKey].byMonth[mCode] = (map[normKey].byMonth[mCode] || 0) + it.totalParcel;
           map[normKey].totalQty += it.totalParcel;
         });
       }
     });
 
-    return Object.values(map).sort((a, b) => b.totalQty - a.totalQty);
-  }, [filteredEvents]);
+    return sortProducts(Object.values(map), consolidationSort);
+  }, [filteredEvents, consolidationSort]);
+
+  // Synthèse groupée par Espèce avec ventilation mois par mois
+  const speciesConsolidation = useMemo(() => {
+    return cropsWithRealSurfaces
+      .filter((c) => selectedSpecies === "all" || c.id === selectedSpecies)
+      .map((crop) => {
+        const cropEvents = filteredEvents.filter((e) => e.speciesId === crop.id);
+        const map: Record<
+          string,
+          {
+            name: string;
+            category: "fertigation" | "foliaire" | "phytosanitaire";
+            unit: string;
+            totalQty: number;
+            byMonth: Record<string, number>;
+            cible?: string;
+            dar?: string;
+          }
+        > = {};
+
+        const monthsInCrop = new Set<string>();
+
+        cropEvents.forEach((ev) => {
+          const mCode = ev.date.slice(5, 7);
+          monthsInCrop.add(mCode);
+
+          if (ev.type === "fertigation" || ev.type === "pure_irrigation") {
+            ev.bacs.forEach((b) => {
+              b.items.forEach((it) => {
+                const prodName = it.name.trim();
+                if (!prodName) return;
+                const k = `fert:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+                if (!map[k]) {
+                  map[k] = {
+                    name: prodName,
+                    category: "fertigation",
+                    unit: it.unit,
+                    totalQty: 0,
+                    byMonth: {},
+                  };
+                }
+                map[k].totalQty += it.totalParcel;
+                map[k].byMonth[mCode] = (map[k].byMonth[mCode] || 0) + it.totalParcel;
+              });
+            });
+          }
+
+          if (ev.type === "pulverisation" || ev.type === "phyto") {
+            const cat = ev.type === "pulverisation" ? "foliaire" : "phytosanitaire";
+            (ev.products || []).forEach((it) => {
+              const prodName = it.name.trim();
+              if (!prodName) return;
+              const k = `${cat}:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+              if (!map[k]) {
+                map[k] = {
+                  name: prodName,
+                  category: cat,
+                  unit: it.unit,
+                  totalQty: 0,
+                  byMonth: {},
+                  cible: it.cible,
+                  dar: it.dar,
+                };
+              }
+              map[k].totalQty += it.totalParcel;
+              map[k].byMonth[mCode] = (map[k].byMonth[mCode] || 0) + it.totalParcel;
+            });
+          }
+        });
+
+        const sortedProducts = sortProducts(Object.values(map), consolidationSort);
+        const sortedMonths = Array.from(monthsInCrop).sort();
+
+        return {
+          crop,
+          products: sortedProducts,
+          months: sortedMonths,
+          eventsCount: cropEvents.length,
+        };
+      });
+  }, [cropsWithRealSurfaces, filteredEvents, selectedSpecies, consolidationSort]);
+
+  // Synthèse groupée par Mois avec ventilation espèce par espèce
+  const monthConsolidation = useMemo(() => {
+    const monthsSet = new Set<string>();
+    filteredEvents.forEach((e) => {
+      monthsSet.add(e.date.slice(5, 7));
+    });
+
+    const sortedMonthCodes = Array.from(monthsSet).sort();
+
+    return sortedMonthCodes.map((mCode) => {
+      const monthEvents = filteredEvents.filter((e) => e.date.slice(5, 7) === mCode);
+      const map: Record<
+        string,
+        {
+          name: string;
+          category: "fertigation" | "foliaire" | "phytosanitaire";
+          unit: string;
+          totalQty: number;
+          bySpecies: Record<string, number>;
+          cible?: string;
+          dar?: string;
+        }
+      > = {};
+
+      monthEvents.forEach((ev) => {
+        if (ev.type === "fertigation" || ev.type === "pure_irrigation") {
+          ev.bacs.forEach((b) => {
+            b.items.forEach((it) => {
+              const prodName = it.name.trim();
+              if (!prodName) return;
+              const k = `fert:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+              if (!map[k]) {
+                map[k] = {
+                  name: prodName,
+                  category: "fertigation",
+                  unit: it.unit,
+                  totalQty: 0,
+                  bySpecies: {},
+                };
+              }
+              map[k].totalQty += it.totalParcel;
+              map[k].bySpecies[ev.speciesId] =
+                (map[k].bySpecies[ev.speciesId] || 0) + it.totalParcel;
+            });
+          });
+        }
+
+        if (ev.type === "pulverisation" || ev.type === "phyto") {
+          const cat = ev.type === "pulverisation" ? "foliaire" : "phytosanitaire";
+          (ev.products || []).forEach((it) => {
+            const prodName = it.name.trim();
+            if (!prodName) return;
+            const k = `${cat}:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+            if (!map[k]) {
+              map[k] = {
+                name: prodName,
+                category: cat,
+                unit: it.unit,
+                totalQty: 0,
+                bySpecies: {},
+                cible: it.cible,
+                dar: it.dar,
+              };
+            }
+            map[k].totalQty += it.totalParcel;
+            map[k].bySpecies[ev.speciesId] =
+              (map[k].bySpecies[ev.speciesId] || 0) + it.totalParcel;
+          });
+        }
+      });
+
+      const sortedProducts = sortProducts(Object.values(map), consolidationSort);
+
+      return {
+        monthCode: mCode,
+        monthLabel: MONTH_NAMES_FR[mCode] || `Mois ${mCode}`,
+        eventsCount: monthEvents.length,
+        products: sortedProducts,
+      };
+    });
+  }, [filteredEvents, consolidationSort]);
 
   // Ensemble dynamique des dates d'introduction de nouvelles recommandations
   const allRecoStartDates = useMemo(() => {
@@ -2189,11 +2396,15 @@ export function AgronomicPlanningCalendar({
       {/* ======================================================== */}
       {activeView === "consolidation" && (
         <div className="space-y-4">
+          {/* En-tête avec KPIs */}
           <div className="rounded-xl border bg-card p-4 space-y-3">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
               <div>
                 <h4 className="font-black text-sm text-foreground flex items-center gap-2">
-                  <span>🧪 Synthèse Consolidée des Intrants (Surfaces Réelles Vérifiées)</span>
+                  <span>🧪 Synthèse Consolidée des Intrants</span>
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-600 text-white shadow-xs">
+                    Surfaces Réelles Vérifiées
+                  </span>
                 </h4>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Calcul mathématique exact basé sur les surfaces réelles enregistrées dans vos fiches parcelles :
@@ -2208,7 +2419,7 @@ export function AgronomicPlanningCalendar({
               )}
             </div>
 
-            {/* Cartes KPI aux couleurs imposées */}
+            {/* Cartes KPI aux 3 couleurs imposées */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
               <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-1">
                 <span className="text-[11px] font-black uppercase text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
@@ -2251,91 +2462,425 @@ export function AgronomicPlanningCalendar({
             </div>
           </div>
 
-          <div className="border rounded-2xl bg-card overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
-                <thead className="bg-muted/50 text-[10px] uppercase font-black text-muted-foreground border-b">
-                  <tr>
-                    <th className="p-3">Produit & Spécifications</th>
-                    <th className="p-3">Type</th>
-                    <th className="p-3">Unité</th>
-                    <th className="p-3 text-right">🍎 Pommiers (2,00 ha)</th>
-                    <th className="p-3 text-right">🍑 Nablara (2,00 ha)</th>
-                    <th className="p-3 text-right">🍑 Redix 25 (2,00 ha)</th>
-                    <th className="p-3 text-right">🫒 Oliviers (8,00 ha)</th>
-                    <th className="p-3 text-right bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 font-black">
-                      Total Exploitation
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {consolidatedProductsFiltered.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="p-8 text-center text-muted-foreground text-xs">
-                        Aucun produit correspondant aux critères de recherche actuels.
-                      </td>
-                    </tr>
-                  ) : (
-                    consolidatedProductsFiltered.map((prod, idx) => (
-                      <tr key={idx} className="hover:bg-muted/10 transition">
-                        <td className="p-3 font-extrabold text-foreground">
-                          <div>
-                            <span className="block font-black">{prod.name}</span>
-                            {(prod.cible || prod.dar) && (
-                              <span className="text-[10px] text-muted-foreground block font-normal">
-                                {prod.cible ? `Cible: ${prod.cible}` : ""} {prod.dar ? `· DAR: ${prod.dar}` : ""}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="p-3">
-                          {prod.category === "fertigation" && (
-                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 whitespace-nowrap">
-                              💧 Fert. Irrigation
-                            </span>
-                          )}
-                          {prod.category === "foliaire" && (
-                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 whitespace-nowrap">
-                              🌿 Fert. Foliaire
-                            </span>
-                          )}
-                          {prod.category === "phytosanitaire" && (
-                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30 whitespace-nowrap">
-                              🛡️ Phyto
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3 text-muted-foreground font-semibold">{prod.unit}</td>
-                        <td className="p-3 text-right font-medium">
-                          {prod.bySpecies["pommiers"]
-                            ? `${prod.bySpecies["pommiers"].toFixed(1)} ${prod.unit}`
-                            : "—"}
-                        </td>
-                        <td className="p-3 text-right font-medium">
-                          {prod.bySpecies["nablara"]
-                            ? `${prod.bySpecies["nablara"].toFixed(1)} ${prod.unit}`
-                            : "—"}
-                        </td>
-                        <td className="p-3 text-right font-medium">
-                          {prod.bySpecies["redix25"]
-                            ? `${prod.bySpecies["redix25"].toFixed(1)} ${prod.unit}`
-                            : "—"}
-                        </td>
-                        <td className="p-3 text-right font-medium">
-                          {prod.bySpecies["oliviers"]
-                            ? `${prod.bySpecies["oliviers"].toFixed(1)} ${prod.unit}`
-                            : "—"}
-                        </td>
-                        <td className="p-3 text-right font-black bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 text-sm">
-                          {prod.totalQty.toFixed(1)} {prod.unit}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+          {/* Barre de Commande : Grouper par (Espèce / Mois / Matrice) & Trier par Ordre */}
+          <div className="rounded-2xl border bg-card p-3 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 shadow-xs">
+            {/* 1. Sélecteur de Regroupement */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+              <span className="text-[11px] font-bold text-muted-foreground shrink-0 pr-1 flex items-center gap-1">
+                <Layers className="h-3.5 w-3.5 text-primary" />
+                <span>Grouper par :</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setConsolidationGrouping("by_species")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 border ${
+                  consolidationGrouping === "by_species"
+                    ? "bg-foreground text-background border-foreground shadow-xs font-black"
+                    : "bg-background text-muted-foreground hover:bg-muted border-border"
+                }`}
+              >
+                <span>🌳</span>
+                <span>Trier par Espèce</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setConsolidationGrouping("by_month")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 border ${
+                  consolidationGrouping === "by_month"
+                    ? "bg-foreground text-background border-foreground shadow-xs font-black"
+                    : "bg-background text-muted-foreground hover:bg-muted border-border"
+                }`}
+              >
+                <span>📅</span>
+                <span>Trier par Mois</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setConsolidationGrouping("matrix")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 border ${
+                  consolidationGrouping === "matrix"
+                    ? "bg-foreground text-background border-foreground shadow-xs font-black"
+                    : "bg-background text-muted-foreground hover:bg-muted border-border"
+                }`}
+              >
+                <span>📊</span>
+                <span>Matrice Globale</span>
+              </button>
+            </div>
+
+            {/* 2. Ordre de Tri */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none self-start md:self-auto">
+              <span className="text-[11px] font-bold text-muted-foreground shrink-0 pr-1 flex items-center gap-1">
+                <ArrowUpDown className="h-3.5 w-3.5 text-primary" />
+                <span>Ordre :</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setConsolidationSort("qty_desc")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 border ${
+                  consolidationSort === "qty_desc"
+                    ? "bg-primary text-primary-foreground font-black"
+                    : "bg-background text-muted-foreground hover:bg-muted border-border"
+                }`}
+              >
+                Quantité ⬇
+              </button>
+              <button
+                type="button"
+                onClick={() => setConsolidationSort("name_asc")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 border ${
+                  consolidationSort === "name_asc"
+                    ? "bg-primary text-primary-foreground font-black"
+                    : "bg-background text-muted-foreground hover:bg-muted border-border"
+                }`}
+              >
+                Nom A-Z
+              </button>
+              <button
+                type="button"
+                onClick={() => setConsolidationSort("category")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition shrink-0 border ${
+                  consolidationSort === "category"
+                    ? "bg-primary text-primary-foreground font-black"
+                    : "bg-background text-muted-foreground hover:bg-muted border-border"
+                }`}
+              >
+                Type
+              </button>
             </div>
           </div>
+
+          {/* ======================================================== */}
+          {/* MODE 1 : SYNTHÈSE GROUPÉE PAR ESPÈCE (AVEC DÉTAIL PAR MOIS) */}
+          {/* ======================================================== */}
+          {consolidationGrouping === "by_species" && (
+            <div className="space-y-4">
+              {speciesConsolidation.map((item) => (
+                <div key={item.crop.id} className="border rounded-2xl bg-card overflow-hidden shadow-xs">
+                  {/* En-tête de l'Espèce */}
+                  <div className="bg-muted/40 px-4 py-3 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{item.crop.icon}</span>
+                      <div>
+                        <h4 className="font-black text-sm text-foreground flex items-center gap-2">
+                          <span>{item.crop.name}</span>
+                          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                            (Surface réelle : {item.crop.surfaceHa.toFixed(2)} ha)
+                          </span>
+                        </h4>
+                        <span className="text-[11px] text-muted-foreground">
+                          {item.eventsCount} passages programmés · {item.products.length} produit(s) prescrit(s)
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Mois concernés */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {item.months.map((m) => (
+                        <span
+                          key={m}
+                          className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-background border text-primary"
+                        >
+                          {MONTH_NAMES_FR[m] || m}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tableau des produits de cette espèce ventilés par mois */}
+                  {item.products.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-muted-foreground">
+                      Aucun intrant programmé pour {item.crop.name} avec les filtres sélectionnés.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left border-collapse">
+                        <thead className="bg-muted/30 text-[10px] uppercase font-black text-muted-foreground border-b">
+                          <tr>
+                            <th className="p-3">Produit & Spécifications</th>
+                            <th className="p-3">Type</th>
+                            <th className="p-3">Unité</th>
+                            {item.months.map((m) => (
+                              <th key={m} className="p-3 text-right">
+                                {MONTH_NAMES_FR[m] || m}
+                              </th>
+                            ))}
+                            <th className="p-3 text-right bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 font-black">
+                              Total {item.crop.name}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {item.products.map((prod, pIdx) => (
+                            <tr key={pIdx} className="hover:bg-muted/10 transition">
+                              <td className="p-3 font-extrabold text-foreground">
+                                <div>
+                                  <span className="block font-black">{prod.name}</span>
+                                  {(prod.cible || prod.dar) && (
+                                    <span className="text-[10px] text-muted-foreground block font-normal">
+                                      {prod.cible ? `Cible: ${prod.cible}` : ""} {prod.dar ? `· DAR: ${prod.dar}` : ""}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="p-3">
+                                {prod.category === "fertigation" && (
+                                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 whitespace-nowrap">
+                                    💧 Fert. Irrigation
+                                  </span>
+                                )}
+                                {prod.category === "foliaire" && (
+                                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 whitespace-nowrap">
+                                    🌿 Fert. Foliaire
+                                  </span>
+                                )}
+                                {prod.category === "phytosanitaire" && (
+                                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30 whitespace-nowrap">
+                                    🛡️ Phyto
+                                  </span>
+                                )}
+                              </td>
+
+                              <td className="p-3 text-muted-foreground font-semibold">{prod.unit}</td>
+
+                              {item.months.map((m) => (
+                                <td key={m} className="p-3 text-right font-medium">
+                                  {prod.byMonth[m] ? `${prod.byMonth[m].toFixed(1)} ${prod.unit}` : "—"}
+                                </td>
+                              ))}
+
+                              <td className="p-3 text-right font-black bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 text-sm">
+                                {prod.totalQty.toFixed(1)} {prod.unit}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* MODE 2 : SYNTHÈSE GROUPÉE PAR MOIS (AVEC DÉTAIL PAR ESPÈCE) */}
+          {/* ======================================================== */}
+          {consolidationGrouping === "by_month" && (
+            <div className="space-y-4">
+              {monthConsolidation.length === 0 ? (
+                <div className="border rounded-2xl bg-card p-8 text-center text-xs text-muted-foreground">
+                  Aucun intrant programmé pour les filtres sélectionnés.
+                </div>
+              ) : (
+                monthConsolidation.map((mGroup) => (
+                  <div key={mGroup.monthCode} className="border rounded-2xl bg-card overflow-hidden shadow-xs">
+                    {/* En-tête du Mois */}
+                    <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="h-5 w-5 text-primary" />
+                        <div>
+                          <h4 className="font-black text-sm text-foreground">
+                            <span>Mois de {mGroup.monthLabel} 2026</span>
+                          </h4>
+                          <span className="text-[11px] text-muted-foreground">
+                            {mGroup.eventsCount} passages programmés · {mGroup.products.length} produit(s)
+                          </span>
+                        </div>
+                      </div>
+
+                      <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                        {mGroup.products.length} intrants au programme
+                      </span>
+                    </div>
+
+                    {/* Tableau des produits du mois */}
+                    {mGroup.products.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-muted-foreground">
+                        Aucun intrant programmé en {mGroup.monthLabel}.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs text-left border-collapse">
+                          <thead className="bg-muted/30 text-[10px] uppercase font-black text-muted-foreground border-b">
+                            <tr>
+                              <th className="p-3">Produit & Spécifications</th>
+                              <th className="p-3">Type</th>
+                              <th className="p-3">Unité</th>
+                              <th className="p-3 text-right">🍎 Pommiers (2 ha)</th>
+                              <th className="p-3 text-right">🍑 Nablara (2 ha)</th>
+                              <th className="p-3 text-right">🍑 Redix 25 (2 ha)</th>
+                              <th className="p-3 text-right">🫒 Oliviers (8 ha)</th>
+                              <th className="p-3 text-right bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 font-black">
+                                Total {mGroup.monthLabel}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {mGroup.products.map((prod, pIdx) => (
+                              <tr key={pIdx} className="hover:bg-muted/10 transition">
+                                <td className="p-3 font-extrabold text-foreground">
+                                  <div>
+                                    <span className="block font-black">{prod.name}</span>
+                                    {(prod.cible || prod.dar) && (
+                                      <span className="text-[10px] text-muted-foreground block font-normal">
+                                        {prod.cible ? `Cible: ${prod.cible}` : ""} {prod.dar ? `· DAR: ${prod.dar}` : ""}
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                <td className="p-3">
+                                  {prod.category === "fertigation" && (
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 whitespace-nowrap">
+                                      💧 Fert. Irrigation
+                                    </span>
+                                  )}
+                                  {prod.category === "foliaire" && (
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 whitespace-nowrap">
+                                      🌿 Fert. Foliaire
+                                    </span>
+                                  )}
+                                  {prod.category === "phytosanitaire" && (
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30 whitespace-nowrap">
+                                      🛡️ Phyto
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="p-3 text-muted-foreground font-semibold">{prod.unit}</td>
+
+                                <td className="p-3 text-right font-medium">
+                                  {prod.bySpecies["pommiers"]
+                                    ? `${prod.bySpecies["pommiers"].toFixed(1)} ${prod.unit}`
+                                    : "—"}
+                                </td>
+                                <td className="p-3 text-right font-medium">
+                                  {prod.bySpecies["nablara"]
+                                    ? `${prod.bySpecies["nablara"].toFixed(1)} ${prod.unit}`
+                                    : "—"}
+                                </td>
+                                <td className="p-3 text-right font-medium">
+                                  {prod.bySpecies["redix25"]
+                                    ? `${prod.bySpecies["redix25"].toFixed(1)} ${prod.unit}`
+                                    : "—"}
+                                </td>
+                                <td className="p-3 text-right font-medium">
+                                  {prod.bySpecies["oliviers"]
+                                    ? `${prod.bySpecies["oliviers"].toFixed(1)} ${prod.unit}`
+                                    : "—"}
+                                </td>
+
+                                <td className="p-3 text-right font-black bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 text-sm">
+                                  {prod.totalQty.toFixed(1)} {prod.unit}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* ======================================================== */}
+          {/* MODE 3 : MATRICE GLOBALE CONSOLIDÉE                     */}
+          {/* ======================================================== */}
+          {consolidationGrouping === "matrix" && (
+            <div className="border rounded-2xl bg-card overflow-hidden shadow-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left border-collapse">
+                  <thead className="bg-muted/50 text-[10px] uppercase font-black text-muted-foreground border-b">
+                    <tr>
+                      <th className="p-3">Produit & Spécifications</th>
+                      <th className="p-3">Type</th>
+                      <th className="p-3">Unité</th>
+                      <th className="p-3 text-right">🍎 Pommiers (2,00 ha)</th>
+                      <th className="p-3 text-right">🍑 Nablara (2,00 ha)</th>
+                      <th className="p-3 text-right">🍑 Redix 25 (2,00 ha)</th>
+                      <th className="p-3 text-right">🫒 Oliviers (8,00 ha)</th>
+                      <th className="p-3 text-right bg-emerald-500/10 text-emerald-900 dark:text-emerald-100 font-black">
+                        Total Exploitation
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {consolidatedProductsFiltered.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-muted-foreground text-xs">
+                          Aucun produit correspondant aux critères de recherche actuels.
+                        </td>
+                      </tr>
+                    ) : (
+                      consolidatedProductsFiltered.map((prod, idx) => (
+                        <tr key={idx} className="hover:bg-muted/10 transition">
+                          <td className="p-3 font-extrabold text-foreground">
+                            <div>
+                              <span className="block font-black">{prod.name}</span>
+                              {(prod.cible || prod.dar) && (
+                                <span className="text-[10px] text-muted-foreground block font-normal">
+                                  {prod.cible ? `Cible: ${prod.cible}` : ""} {prod.dar ? `· DAR: ${prod.dar}` : ""}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            {prod.category === "fertigation" && (
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 whitespace-nowrap">
+                                💧 Fert. Irrigation
+                              </span>
+                            )}
+                            {prod.category === "foliaire" && (
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30 whitespace-nowrap">
+                                🌿 Fert. Foliaire
+                              </span>
+                            )}
+                            {prod.category === "phytosanitaire" && (
+                              <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30 whitespace-nowrap">
+                                🛡️ Phyto
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 text-muted-foreground font-semibold">{prod.unit}</td>
+                          <td className="p-3 text-right font-medium">
+                            {prod.bySpecies["pommiers"]
+                              ? `${prod.bySpecies["pommiers"].toFixed(1)} ${prod.unit}`
+                              : "—"}
+                          </td>
+                          <td className="p-3 text-right font-medium">
+                            {prod.bySpecies["nablara"]
+                              ? `${prod.bySpecies["nablara"].toFixed(1)} ${prod.unit}`
+                              : "—"}
+                          </td>
+                          <td className="p-3 text-right font-medium">
+                            {prod.bySpecies["redix25"]
+                              ? `${prod.bySpecies["redix25"].toFixed(1)} ${prod.unit}`
+                              : "—"}
+                          </td>
+                          <td className="p-3 text-right font-medium">
+                            {prod.bySpecies["oliviers"]
+                              ? `${prod.bySpecies["oliviers"].toFixed(1)} ${prod.unit}`
+                              : "—"}
+                          </td>
+                          <td className="p-3 text-right font-black bg-emerald-500/5 text-emerald-700 dark:text-emerald-300 text-sm">
+                            {prod.totalQty.toFixed(1)} {prod.unit}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
