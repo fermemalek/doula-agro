@@ -3,20 +3,23 @@ import { useConfig } from "@/lib/config-store";
 
 export type DisplayRole = "admin" | "executant" | "ingenieur";
 
-/** Visual role: pour tout utilisateur connecté, son rôle en base (dbRole) s'applique directement. */
+/**
+ * Visual role:
+ * 1. Priorité absolue au rôle actif sélectionné par l'utilisateur via useRole().role
+ * 2. Si non défini, rôle de la configuration locale
+ * 3. Défaut: executant
+ */
 export function useDisplayRole(): DisplayRole {
-  const { role: dbRole, session } = useRole();
+  const { role } = useRole();
   const cfg = useConfig();
 
-  const isRealUser =
-    session && session.user.id !== "00000000-0000-0000-0000-000000000000";
-
-  if (isRealUser && dbRole) {
-    return dbRole;
+  if (role === "admin" || role === "ingenieur" || role === "executant") {
+    return role;
   }
 
-  const r = cfg.configured ? cfg.role : dbRole;
-  if (r === "admin") return "admin";
-  if (r === "ingenieur") return "ingenieur";
+  if (cfg.configured && (cfg.role === "admin" || cfg.role === "ingenieur" || cfg.role === "executant")) {
+    return cfg.role;
+  }
+
   return "executant";
 }

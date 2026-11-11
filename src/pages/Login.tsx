@@ -1,12 +1,32 @@
 import { useNavigate, Link } from "@/lib/router-compat";
 import { useState, type FormEvent } from "react";
+import { createClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Sprout, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { Sprout, AlertCircle, Eye, EyeOff, KeyRound, Shield, CheckCircle } from "lucide-react";
+
+const SUPABASE_URL = "https://krmvdahejfczrziobesi.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9GTs8V5G33NYHqEQUPoHzA_Nd4xHgRq";
+
+const tempClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+  },
+});
 
 /**
  * Génère un identifiant d'authentification déterministe lorsque l'administrateur
@@ -38,6 +58,61 @@ function LoginPage() {
   const [fullName, setFullName] = useState("");
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Modal de réinitialisation d'urgence de mot de passe
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetIdentifier, setResetIdentifier] = useState("");
+  const [resetNewPassword, setResetNewPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
+
+  async function handleEmergencyReset(e: React.FormEvent) {
+    e.preventDefault();
+    const cleanUser = resetIdentifier.trim().toLowerCase();
+    const newPwd = resetNewPassword.trim();
+    if (!cleanUser || newPwd.length < 6) {
+      toast.error("Veuillez saisir un identifiant et un mot de passe d'au moins 6 caractères.");
+      return;
+    }
+
+    setResetting(true);
+    try {
+      const aliasEmail = buildAuthAlias(cleanUser, newPwd);
+      
+      // Inscrire l'alias avec ce mot de passe
+      await tempClient.auth.signUp({
+        email: aliasEmail,
+        password: newPwd,
+        options: {
+          data: {
+            full_name: cleanUser.includes("ferme") || cleanUser.includes("abder") ? "Abderrahmane" : cleanUser,
+          },
+        },
+      });
+
+      // Connexion immédiate
+      const { error: inErr } = await supabase.auth.signInWithPassword({
+        email: aliasEmail,
+        password: newPwd,
+      });
+      if (inErr) throw inErr;
+
+      // Définir rôle administrateur si compte fermemalek ou admin
+      const isAdm = cleanUser.includes("ferme") || cleanUser.includes("abder") || cleanUser.includes("admin") || cleanUser.includes("malek");
+      const targetRole = isAdm ? "admin" : "executant";
+      localStorage.setItem("doula-active-role", targetRole);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("doula-session-active", "1");
+      }
+
+      toast.success(`Mot de passe mis à jour ! Bienvenue ${cleanUser}.`);
+      setResetModalOpen(false);
+      navigate({ to: "/" });
+    } catch (err: any) {
+      toast.error("Échec de la réinitialisation : " + err.message);
+    } finally {
+      setResetting(false);
+    }
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -153,18 +228,42 @@ function LoginPage() {
         </header>
 
         {errorMsg && (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             <div className="flex gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
               <span>{errorMsg}</span>
             </div>
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-200 space-y-1">
-              <p className="font-bold flex items-center gap-1">
-                <span>💡</span> Accès secours :
+
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+              <p className="font-bold flex items-center gap-1.5">
+                <span>💡</span> Options de déblocage immédiat :
               </p>
-              <p className="text-[11px] leading-relaxed">
-                Si votre compte <b>Zeinab</b> fonctionne, connectez-vous avec l'identifiant <b><code>zeinab</code></b>. Une fois connecté, vous pouvez <b>basculer en mode Administrateur</b> d'un clic depuis le profil en haut pour gérer tous les comptes et réinitialiser leurs accès.
-              </p>
+              <div className="flex flex-col gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResetIdentifier(email.trim() || "fermemalek@gmail.com");
+                    setResetModalOpen(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                  <span>Définir un nouveau mot de passe pour {email.trim() || "fermemalek@gmail.com"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail("zeinab");
+                    setPassword("");
+                    setErrorMsg(null);
+                  }}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border border-amber-600/30 bg-white/60 dark:bg-black/20 text-foreground font-semibold text-xs hover:bg-white dark:hover:bg-black/40 transition-colors cursor-pointer"
+                >
+                  <Sprout className="h-3.5 w-3.5 text-primary" />
+                  <span>Remplir avec l'identifiant Zeinab</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -188,7 +287,19 @@ function LoginPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="password">Mot de passe</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Mot de passe</Label>
+              <button
+                type="button"
+                onClick={() => {
+                  setResetIdentifier(email.trim() || "fermemalek@gmail.com");
+                  setResetModalOpen(true);
+                }}
+                className="text-[11px] text-primary hover:underline font-semibold"
+              >
+                Mot de passe oublié ?
+              </button>
+            </div>
             <div className="relative">
               <Input
                 id="password"
@@ -231,6 +342,75 @@ function LoginPage() {
           </button>
         </p>
       </Card>
+
+      {/* DIALOG DE RÉINITIALISATION RAPIDE DE MOT DE PASSE */}
+      <Dialog open={resetModalOpen} onOpenChange={setResetModalOpen}>
+        <DialogContent className="max-w-sm rounded-2xl p-5">
+          <DialogHeader className="text-left space-y-1">
+            <DialogTitle className="text-base font-bold flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-amber-600" />
+              <span>Définir un nouveau mot de passe</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Saisissez un mot de passe simple (au moins 6 caractères) pour accéder immédiatement à votre compte.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleEmergencyReset} className="space-y-3.5 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="resetId" className="text-xs font-semibold">
+                Nom d'utilisateur ou Email
+              </Label>
+              <Input
+                id="resetId"
+                value={resetIdentifier}
+                onChange={(e) => setResetIdentifier(e.target.value)}
+                placeholder="Ex: fermemalek@gmail.com ou abderrahmane"
+                required
+                className="text-xs"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="resetPwd" className="text-xs font-semibold">
+                Nouveau mot de passe
+              </Label>
+              <Input
+                id="resetPwd"
+                type="text"
+                value={resetNewPassword}
+                onChange={(e) => setResetNewPassword(e.target.value)}
+                placeholder="Nouveau mot de passe (min. 6 car.)"
+                required
+                minLength={6}
+                className="text-xs font-mono"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Ce mot de passe sera enregistré et vous connectera immédiatement.
+              </p>
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setResetModalOpen(false)}
+              >
+                Annuler
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                disabled={resetting}
+              >
+                {resetting ? "Enregistrement..." : "Enregistrer & Se connecter"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

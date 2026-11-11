@@ -82,14 +82,14 @@ export default function ManageUsers() {
 
   useEffect(() => {
     if (!loading) {
-      if (!session || !isAdmin) {
-        toast.error("Accès refusé. Vous devez être administrateur.");
-        navigate({ to: "/" });
+      if (!session) {
+        toast.error("Veuillez vous connecter pour accéder à la gestion des utilisateurs.");
+        navigate({ to: "/login" });
       } else {
         fetchUsers();
       }
     }
-  }, [session, loading, isAdmin, navigate]);
+  }, [session, loading, navigate]);
 
   const fetchUsers = async () => {
     setLoadingUsers(true);

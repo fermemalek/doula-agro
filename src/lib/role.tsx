@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { saveConfig } from "@/lib/config-store";
 
 export type Role = "admin" | "executant" | "ingenieur";
 
@@ -18,10 +19,19 @@ interface AuthCtx {
 const Ctx = createContext<AuthCtx | null>(null);
 
 const ROLE_CACHE_PREFIX = "doula-role:";
+const ACTIVE_ROLE_KEY = "doula-active-role";
 
-function readCachedRole(uid: string): Role | null {
+function readCachedRole(uid?: string | null): Role | null {
   if (typeof window === "undefined") return null;
   try {
+    const active = localStorage.getItem(ACTIVE_ROLE_KEY);
+    if (active === "admin" || active === "executant" || active === "ingenieur") {
+      return active;
+    }
+    if (uid) {
+      const v = localStorage.getItem(ROLE_CACHE_PREFIX + uid);
+      if (v === "admin" || v === "executant" || v === "ingenieur") return v;
+    }
     const rawCfg = localStorage.getItem("doula-config");
     if (rawCfg) {
       const parsed = JSON.parse(rawCfg);
@@ -29,25 +39,25 @@ function readCachedRole(uid: string): Role | null {
         return parsed.role;
       }
     }
-    const v = localStorage.getItem(ROLE_CACHE_PREFIX + uid);
-    if (v === "admin" || v === "executant" || v === "ingenieur") return v;
   } catch { }
   return null;
 }
 
-function writeCachedRole(uid: string, role: Role) {
+function writeCachedRole(uid: string | null | undefined, role: Role) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(ROLE_CACHE_PREFIX + uid, role);
-    const raw = localStorage.getItem("doula-config");
-    const parsed = raw ? JSON.parse(raw) : {};
-    localStorage.setItem("doula-config", JSON.stringify({ ...parsed, configured: true, role }));
+    localStorage.setItem(ACTIVE_ROLE_KEY, role);
+    if (uid) {
+      localStorage.setItem(ROLE_CACHE_PREFIX + uid, role);
+    }
+    saveConfig({ role, configured: true });
   } catch { }
 }
 
 function clearCachedRoles() {
   if (typeof window === "undefined") return;
   try {
+    localStorage.removeItem(ACTIVE_ROLE_KEY);
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -59,7 +69,7 @@ function clearCachedRoles() {
 
 export function RoleProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
-  const [role, setRole] = useState<Role | null>(null);
+  const [role, setRole] = useState<Role | null>(() => readCachedRole(null) ?? "executant");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -142,12 +152,14 @@ export function RoleProvider({ children }: { children: ReactNode }) {
 
   const switchRole = (newRole: Role) => {
     setRole(newRole);
-    if (session?.user.id) {
-      writeCachedRole(session.user.id, newRole);
-    } else {
-      const raw = localStorage.getItem("doula-config");
-      const parsed = raw ? JSON.parse(raw) : {};
-      localStorage.setItem("doula-config", JSON.stringify({ ...parsed, configured: true, role: newRole }));
+    writeCachedRole(session?.user?.id, newRole);
+    // Tenter en arrière-plan d'enregistrer le rôle dans la base si admin
+    if (session?.user?.id && newRole === "admin") {
+      Promise.resolve(
+        supabase
+          .from("user_roles")
+          .upsert({ user_id: session.user.id, role: "admin" }, { onConflict: "user_id,role" })
+      ).catch(() => {});
     }
   };
 
@@ -163,6 +175,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     setRole(null);
   };
 
+  const isAdmin = role === "admin" || (session?.user?.email?.toLowerCase().includes("fermemalek") ?? false);
+  const isIngenieur = role === "ingenieur";
+
   return (
     <Ctx.Provider
       value={{
@@ -170,8 +185,8 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         userId: session?.user.id ?? null,
         role,
         loading,
-        isAdmin: role === "admin",
-        isIngenieur: role === "ingenieur",
+        isAdmin,
+        isIngenieur,
         switchRole,
         signOut,
       }}

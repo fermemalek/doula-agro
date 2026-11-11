@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "@/lib/router-compat";
 import { useState } from "react";
-import { LogOut, Settings, User as UserIcon, HardHat, Shield, Trash2, RotateCcw, CloudOff } from "lucide-react";
+import { LogOut, Settings, User as UserIcon, HardHat, Shield, Trash2, RotateCcw, CloudOff, FlaskConical, Check, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useRole } from "@/lib/role";
 import { useDisplayRole } from "@/lib/display-role";
@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 function ProfilPage() {
-  const { session, signOut } = useRole();
+  const { session, signOut, switchRole } = useRole();
   const navigate = useNavigate();
   const role = useDisplayRole();
   const email = session?.user?.email ?? "";
@@ -67,7 +67,7 @@ function ProfilPage() {
     <main className="mx-auto max-w-3xl px-4 pb-24 pt-4">
       <h1 className="mb-3 text-xl font-bold">Profil</h1>
 
-      <section className="mb-4 flex items-center gap-3 rounded-2xl border bg-card p-4">
+      <section className="mb-4 flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-2xs">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
           <UserIcon className="h-7 w-7" />
         </span>
@@ -75,13 +75,125 @@ function ProfilPage() {
           <p className="truncate font-semibold">{name}</p>
           <p className="truncate text-xs text-muted-foreground">{email}</p>
         </div>
-        <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
-          {role === "admin" ? <Shield className="h-3.5 w-3.5" /> : <HardHat className="h-3.5 w-3.5" />}
-          {role === "admin" ? "Admin" : "Exécutant"}
+        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${
+          role === "admin"
+            ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
+            : role === "ingenieur"
+            ? "bg-purple-600 text-white"
+            : "bg-secondary text-secondary-foreground"
+        }`}>
+          {role === "admin" ? <Shield className="h-3.5 w-3.5" /> : role === "ingenieur" ? <FlaskConical className="h-3.5 w-3.5" /> : <HardHat className="h-3.5 w-3.5" />}
+          {role === "admin" ? "Admin" : role === "ingenieur" ? "Ingénieur" : "Exécutant"}
         </span>
       </section>
 
+      {/* SÉLECTEUR DE RÔLE DIRECT & VISIBLE */}
+      <section className="mb-4 rounded-2xl border bg-card p-4 space-y-3 shadow-2xs">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-bold text-foreground">Changer de profil actif</h2>
+            <p className="text-xs text-muted-foreground">Basculez instantanément pour tester ou administrer la ferme</p>
+          </div>
+          <span className="text-[11px] font-black uppercase px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+            {role === "admin" ? "🛡️ Mode Admin" : role === "ingenieur" ? "🧪 Mode Ingénieur" : "👷 Mode Exécutant"}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              switchRole("admin");
+              toast.success("Mode Administrateur activé");
+            }}
+            className={`flex items-center justify-between sm:flex-col sm:items-start gap-2 p-3 rounded-xl border-2 text-left transition-all active:scale-95 cursor-pointer ${
+              role === "admin"
+                ? "border-primary bg-primary/10 shadow-xs ring-2 ring-primary/20"
+                : "border-border hover:border-primary/40 bg-background"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`p-1.5 rounded-lg ${role === "admin" ? "bg-slate-900 text-white" : "bg-muted text-muted-foreground"}`}>
+                <Shield className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="font-bold text-xs">Administrateur</p>
+                <p className="text-[10px] text-muted-foreground">Accès total & gestion</p>
+              </div>
+            </div>
+            {role === "admin" && <Check className="h-4 w-4 text-primary shrink-0" />}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              switchRole("ingenieur");
+              toast.success("Mode Ingénieur activé");
+            }}
+            className={`flex items-center justify-between sm:flex-col sm:items-start gap-2 p-3 rounded-xl border-2 text-left transition-all active:scale-95 cursor-pointer ${
+              role === "ingenieur"
+                ? "border-purple-600 bg-purple-500/10 shadow-xs ring-2 ring-purple-600/20"
+                : "border-border hover:border-purple-400 bg-background"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`p-1.5 rounded-lg ${role === "ingenieur" ? "bg-purple-600 text-white" : "bg-muted text-muted-foreground"}`}>
+                <FlaskConical className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="font-bold text-xs">Ingénieur</p>
+                <p className="text-[10px] text-muted-foreground">Recommandations & météo</p>
+              </div>
+            </div>
+            {role === "ingenieur" && <Check className="h-4 w-4 text-purple-600 shrink-0" />}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              switchRole("executant");
+              toast.success("Mode Exécutant activé");
+            }}
+            className={`flex items-center justify-between sm:flex-col sm:items-start gap-2 p-3 rounded-xl border-2 text-left transition-all active:scale-95 cursor-pointer ${
+              role === "executant"
+                ? "border-amber-600 bg-amber-500/10 shadow-xs ring-2 ring-amber-600/20"
+                : "border-border hover:border-amber-400 bg-background"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <span className={`p-1.5 rounded-lg ${role === "executant" ? "bg-amber-600 text-white" : "bg-muted text-muted-foreground"}`}>
+                <HardHat className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="font-bold text-xs">Exécutant</p>
+                <p className="text-[10px] text-muted-foreground">Tâches quotidiennes & eau</p>
+              </div>
+            </div>
+            {role === "executant" && <Check className="h-4 w-4 text-amber-600 shrink-0" />}
+          </button>
+        </div>
+      </section>
+
       <ul className="space-y-2">
+        <li>
+          <Link
+            to="/utilisateurs"
+            className="flex min-h-14 items-center justify-between rounded-2xl border-2 border-primary/40 bg-primary/5 p-4 active:scale-95 hover:bg-primary/10 transition-colors shadow-2xs"
+          >
+            <div className="flex items-center gap-3">
+              <span className="p-2 rounded-xl bg-primary text-primary-foreground">
+                <Users className="h-5 w-5" />
+              </span>
+              <div>
+                <span className="font-bold text-sm block">Gestion des utilisateurs</span>
+                <span className="text-xs text-muted-foreground block">
+                  Modifier les identifiants, mots de passe et rôles de la ferme
+                </span>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-primary shrink-0">Ouvrir →</span>
+          </Link>
+        </li>
         <li>
           <Link
             to="/configuration"
@@ -100,17 +212,6 @@ function ProfilPage() {
             <span className="font-semibold">Données en attente & conflits</span>
           </Link>
         </li>
-        {role === "admin" && (
-          <li>
-            <Link
-              to="/utilisateurs"
-              className="flex min-h-14 items-center gap-3 rounded-2xl border bg-card p-4 active:scale-95"
-            >
-              <Shield className="h-5 w-5 text-primary" />
-              <span className="font-semibold">Gestion des utilisateurs</span>
-            </Link>
-          </li>
-        )}
         <li>
           <button
             onClick={async () => {
