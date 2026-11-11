@@ -473,19 +473,31 @@ export function RecommendationDetailDialog({
                     {Array.isArray(program.entries) &&
                       (program.entries as Array<{ bac: string; items: Array<{ name: string; qty: string; unit: string; price: string }> }>)
                         .filter((e) => e.items.length > 0)
-                        .map((entry, idx) => (
-                          <div key={idx} className="rounded-lg border bg-card p-2 space-y-1">
-                            <span className="font-extrabold uppercase text-primary text-[10px]">Bac {entry.bac}</span>
-                            <ul className="space-y-0.5 pl-1">
-                              {entry.items.map((it, i) => (
-                                <li key={i} className="flex justify-between text-[11px]">
-                                  <span>{it.name}</span>
-                                  <span className="font-medium">{it.qty} {it.unit}/ha</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
+                        .map((entry, idx) => {
+                          // Dédoublonner l'affichage si le même produit a été saisi en double dans le bac
+                          const distinctItems: typeof entry.items = [];
+                          const seenNames = new Set<string>();
+                          for (const it of entry.items) {
+                            const n = (it.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+                            if (!seenNames.has(n)) {
+                              seenNames.add(n);
+                              distinctItems.push(it);
+                            }
+                          }
+                          return (
+                            <div key={idx} className="rounded-lg border bg-card p-2 space-y-1">
+                              <span className="font-extrabold uppercase text-primary text-[10px]">Bac {entry.bac}</span>
+                              <ul className="space-y-0.5 pl-1">
+                                {distinctItems.map((it, i) => (
+                                  <li key={i} className="flex justify-between text-[11px]">
+                                    <span>{it.name}</span>
+                                    <span className="font-medium">{it.qty} {it.unit}/ha</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          );
+                        })}
                   </div>
                 </div>
               ) : program.kind === "phytosanitaire" ? (

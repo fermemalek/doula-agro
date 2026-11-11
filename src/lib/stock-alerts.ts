@@ -250,9 +250,15 @@ export function checkRecoStock(
         if (Array.isArray(program.entries)) {
           for (const entry of program.entries) {
             if (Array.isArray(entry.items)) {
+              // Dédoublonner strictement les matières identiques saisies par mégarde dans le même bac
+              const seenInBac = new Set<string>();
               for (const it of entry.items) {
                 const name = it.name?.trim();
                 if (!name) continue;
+                const normName = name.toLowerCase().replace(/\s+/g, " ");
+                if (seenInBac.has(normName)) continue;
+                seenInBac.add(normName);
+
                 const doseHa = safeParseFloat(it.qty);
                 const price = safeParseFloat(it.price);
                 const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
