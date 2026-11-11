@@ -1601,21 +1601,6 @@ export function AgronomicPlanningCalendar({
                 {m.label}
               </button>
             ))}
-
-            {(selectedSpecies !== "all" || selectedMonth !== "all" || selectedPrescriptionType !== "all") && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedSpecies("all");
-                  setSelectedMonth("all");
-                  setSelectedPrescriptionType("all");
-                }}
-                className="px-2.5 py-1 text-xs text-destructive hover:underline font-bold shrink-0 ml-auto flex items-center gap-1 border border-destructive/20 rounded-xl bg-destructive/10"
-              >
-                <RefreshCw className="h-3 w-3" />
-                <span>Réinitialiser</span>
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -1637,10 +1622,10 @@ export function AgronomicPlanningCalendar({
 
           <div className="border rounded-2xl bg-card overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left border-collapse">
+              <table className="w-full min-w-[780px] table-fixed text-xs text-left border-collapse">
                 <thead className="bg-muted/70 text-[11px] font-black uppercase text-foreground border-b text-center">
                   <tr>
-                    <th className="p-2.5 border-r w-28 text-left bg-muted/90">Date</th>
+                    <th className="p-2.5 border-r w-28 text-left bg-muted/90 shrink-0">Date</th>
                     <th className="p-2.5 border-r">Samedi</th>
                     <th className="p-2.5 border-r">Dimanche</th>
                     <th className="p-2.5 border-r">Lundi</th>
@@ -1667,11 +1652,13 @@ export function AgronomicPlanningCalendar({
                             : "bg-muted/10"
                         }`}
                       >
-                        <td className="p-2.5 border-r font-bold text-foreground bg-muted/30 whitespace-nowrap">
-                          <div className="flex items-center justify-between gap-1.5">
-                            <span>{formatDateFr(row.date)}</span>
+                        <td className="p-2.5 border-r font-bold text-foreground bg-muted/30">
+                          <div className="flex flex-col items-start gap-1">
+                            <span className="text-xs font-bold leading-tight whitespace-nowrap">
+                              {formatDateFr(row.date)}
+                            </span>
                             {row.isNewRecoDay && (
-                              <span className="text-[9px] bg-indigo-600 text-white font-extrabold px-1.5 py-0.2 rounded">
+                              <span className="text-[9px] bg-indigo-600 text-white font-extrabold px-1.5 py-0.5 rounded leading-none">
                                 New Reco
                               </span>
                             )}
