@@ -228,6 +228,94 @@ function formatDateFr(dateStr: string): string {
   }
 }
 
+/**
+ * Filtrage agronomique robuste et multicritères d'une recommandation pour une culture
+ * (Insensible à la casse, tolérant aux libellés composés "REDIX 25, NABLARA",
+ * inspection du titre, du commentaire, des groupes et des parcelles ciblées).
+ */
+function matchesCropForCalendar(r: Recommendation, crop: CropSpeciesConfig, allParcels: any[] = []): boolean {
+  if (!r || r.status === "rejetee") return false;
+  const payload = (r.payload || {}) as any;
+
+  // 1. Normalisation et aplatissement des groupes de cultures
+  const rawGroups: string[] = Array.isArray(payload.crop_group)
+    ? payload.crop_group
+    : payload.crop_group
+    ? [payload.crop_group]
+    : [];
+  const flatGroups = rawGroups
+    .flatMap((g) => String(g).split(/[;,/]+/).map((s) => s.trim().toLowerCase()))
+    .filter(Boolean);
+
+  const titleLower = (r.title || "").toLowerCase();
+  const commentLower = (r.comment || "").toLowerCase();
+
+  // 2. Vérification par identifiant direct de parcelle
+  const rParcels = (r.parcel_ids || []).map((id) => String(id).toLowerCase());
+  const matchesDirectParcel = rParcels.some((pId) =>
+    crop.parcelIds.some((cId) => pId.includes(cId.toLowerCase()) || cId.toLowerCase().includes(pId))
+  );
+  if (matchesDirectParcel) return true;
+
+  // 3. Vérification par les objets parcelles réels de l'exploitation
+  if (allParcels.length > 0 && rParcels.length > 0) {
+    const targetedParcels = allParcels.filter((p) => rParcels.includes(String(p.id).toLowerCase()));
+    const matchesTargetedParcel = targetedParcels.some((p) => {
+      const pName = (p.name || "").toLowerCase();
+      const pSpec = (p.species || p.culture || p.type || "").toLowerCase();
+      if (crop.id === "pommiers") return pName.includes("pomm") || pSpec.includes("pomm") || pSpec.includes("apple");
+      if (crop.id === "nablara") return pName.includes("nablara") || (pSpec.includes("nectar") && !pName.includes("redix"));
+      if (crop.id === "redix25") return pName.includes("redix") || (pSpec.includes("nectar") && !pName.includes("nablara"));
+      if (crop.id === "oliviers") return pName.includes("oliv") || pSpec.includes("oliv");
+      return false;
+    });
+    if (matchesTargetedParcel) return true;
+  }
+
+  // 4. Vérification par crop_group normalisé
+  const matchesGroup = flatGroups.some((g) => {
+    const gClean = g.replace(/[\s\-_®]/g, "");
+    return crop.groups.some((cg) => {
+      const cgClean = cg.toLowerCase().replace(/[\s\-_®]/g, "");
+      return gClean.includes(cgClean) || cgClean.includes(gClean);
+    });
+  });
+  if (matchesGroup) return true;
+
+  // 5. Vérification sémantique par titre et commentaire
+  if (crop.id === "pommiers") {
+    if (flatGroups.some((g) => g.includes("pomm") || g.includes("apple") || g.includes("تفاح"))) return true;
+    if (titleLower.includes("pomm") || titleLower.includes("تفاح") || commentLower.includes("pomm")) return true;
+  } else if (crop.id === "nablara") {
+    if (
+      flatGroups.some(
+        (g) =>
+          g.includes("nablara") ||
+          (g.includes("nectar") && !flatGroups.some((x) => x.includes("redix") && !x.includes("nablara")))
+      )
+    )
+      return true;
+    if (titleLower.includes("nablara") || (titleLower.includes("nectar") && !titleLower.includes("redix seul"))) return true;
+    if (commentLower.includes("nablara")) return true;
+  } else if (crop.id === "redix25") {
+    if (
+      flatGroups.some(
+        (g) =>
+          g.includes("redix") ||
+          (g.includes("nectar") && !flatGroups.some((x) => x.includes("nablara") && !x.includes("redix")))
+      )
+    )
+      return true;
+    if (titleLower.includes("redix") || (titleLower.includes("nectar") && !titleLower.includes("nablara seul"))) return true;
+    if (commentLower.includes("redix")) return true;
+  } else if (crop.id === "oliviers") {
+    if (flatGroups.some((g) => g.includes("oliv") || g.includes("زيتون"))) return true;
+    if (titleLower.includes("oliv") || titleLower.includes("زيتون") || commentLower.includes("oliv")) return true;
+  }
+
+  return false;
+}
+
 const DAY_NAMES_FR = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 
 export function AgronomicPlanningCalendar({
@@ -275,19 +363,8 @@ export function AgronomicPlanningCalendar({
     > = {};
 
     cropsWithRealSurfaces.forEach((crop) => {
-      // Filtrer les recommandations valides pour cette espèce
-      const matchingRecos = recos.filter((r) => {
-        if (!r || r.status === "rejetee") return false;
-        const payload = (r.payload || {}) as any;
-        const cropGroups = Array.isArray(payload.crop_group)
-          ? payload.crop_group
-          : payload.crop_group
-          ? [payload.crop_group]
-          : [];
-        const matchesGroup = cropGroups.some((g: string) => crop.groups.includes(g));
-        const matchesParcel = (r.parcel_ids || []).some((pId) => crop.parcelIds.includes(pId));
-        return matchesGroup || matchesParcel;
-      });
+      // Filtrer les recommandations valides pour cette espèce avec matching multicritères complet
+      const matchingRecos = recos.filter((r) => matchesCropForCalendar(r, crop, parcels));
 
       // Extraire les recommandations de fertilisation / irrigation
       const fertRecos = matchingRecos.filter((r) => {
@@ -556,6 +633,18 @@ export function AgronomicPlanningCalendar({
     });
   }, [allScheduledEvents, selectedSpecies, selectedMonth]);
 
+  // Ensemble dynamique des dates d'introduction de nouvelles recommandations
+  const allRecoStartDates = useMemo(() => {
+    const dates = new Set<string>();
+    Object.values(periodsBySpecies).forEach((ps) => {
+      ps.forEach((p) => {
+        if (p.startDate) dates.add(p.startDate);
+      });
+    });
+    dates.add("2026-04-20");
+    return dates;
+  }, [periodsBySpecies]);
+
   // Construction de la grille type Tableur / Calendrier (Samedi à Vendredi)
   const calendarGridRows = useMemo(() => {
     // Trouver la date min et max
@@ -599,14 +688,14 @@ export function AgronomicPlanningCalendar({
         events: dayEvents,
         summaryLabel,
         isPassageDay: dayEvents.length > 0,
-        isNewRecoDay: dStr === "2026-03-17" || dStr === "2026-04-01" || dStr === "2026-04-20" || dStr === "2026-05-06" || dStr === "2026-05-28",
+        isNewRecoDay: allRecoStartDates.has(dStr),
       });
 
       curr.setDate(curr.getDate() + 1);
     }
 
     return rows;
-  }, [filteredEvents]);
+  }, [filteredEvents, allRecoStartDates]);
 
   // Regroupement par semaine pour la vue Cartes
   const eventsByWeek = useMemo(() => {
@@ -1113,13 +1202,60 @@ export function AgronomicPlanningCalendar({
             </span>
           </div>
 
+          {/* Sélecteur direct d'espèce pour les Paliers & Périodes */}
+          <div className="flex flex-wrap items-center gap-2 p-2.5 bg-muted/40 rounded-2xl border shadow-2xs">
+            <span className="text-xs font-bold text-muted-foreground flex items-center gap-1.5 pl-1">
+              <Filter className="h-3.5 w-3.5 text-primary" />
+              <span>Afficher les paliers pour :</span>
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setSelectedSpecies("all")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+                selectedSpecies === "all"
+                  ? "bg-foreground text-background shadow-xs border-foreground"
+                  : "bg-background text-muted-foreground hover:bg-muted border-border"
+              }`}
+            >
+              🌳 Toutes les espèces ({Object.values(periodsBySpecies).reduce((sum, p) => sum + p.length, 0)} paliers)
+            </button>
+
+            {cropsWithRealSurfaces.map((c) => {
+              const pList = periodsBySpecies[c.id] || [];
+              const has20Avr = pList.some((p) => p.startDate === "2026-04-20");
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSelectedSpecies(c.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
+                    selectedSpecies === c.id
+                      ? `${c.badgeBg} border-current shadow-xs`
+                      : "bg-background text-muted-foreground hover:bg-muted border-border"
+                  }`}
+                >
+                  <span>{c.icon}</span>
+                  <span>{c.name}</span>
+                  <span className="text-[10px] opacity-75 font-mono">({pList.length} paliers)</span>
+                  {has20Avr && (
+                    <span className="text-[9px] bg-indigo-600 text-white px-1.5 py-0.2 rounded-full font-black animate-pulse">
+                      20 Avr ✓
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
           {cropsWithRealSurfaces.filter((c) => selectedSpecies === "all" || c.id === selectedSpecies).map(
             (crop) => {
               const cropPeriods = periodsBySpecies[crop.id] || [];
+              const has20AvrInCrop = cropPeriods.some((p) => p.startDate === "2026-04-20");
 
               return (
                 <div key={crop.id} className="border rounded-2xl bg-card overflow-hidden shadow-xs">
-                  <div className="bg-muted/40 px-4 py-3 border-b flex justify-between items-center">
+                  <div className="bg-muted/40 px-4 py-3 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-xl">{crop.icon}</span>
                       <div>
@@ -1129,12 +1265,40 @@ export function AgronomicPlanningCalendar({
                             (Surface : {crop.surfaceHa.toFixed(2)} ha)
                           </span>
                         </h4>
+                        <p className="text-[11px] text-muted-foreground">
+                          Créneau pompe séquentiel :{" "}
+                          <span className="font-mono font-bold text-foreground">
+                            {crop.id === "pommiers"
+                              ? "05h00 - 06h30"
+                              : crop.id === "nablara"
+                              ? "06h30 - 08h00 (ou 06h00 si pas de pommier)"
+                              : "08h00 - 09h30 (ou 07h30)"}
+                          </span>
+                        </p>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-muted-foreground">
-                      {cropPeriods.length} palier(s)
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {has20AvrInCrop && (
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-xs">
+                          ✨ Palier 20 Avril Inclus
+                        </span>
+                      )}
+                      <span className="text-xs font-bold text-muted-foreground">
+                        {cropPeriods.length} palier(s)
+                      </span>
+                    </div>
                   </div>
+
+                  {/* Note explicative spécifique pour Pommier Gala One */}
+                  {crop.id === "pommiers" && !has20AvrInCrop && (
+                    <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2.5 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
+                      <Info className="h-4 w-4 shrink-0 text-amber-600" />
+                      <span>
+                        <b>Note agronomique Pommier Gala One :</b> La recommandation du 1er Avril est restée en vigueur continue jusqu'au 5 Mai (35 jours · 7 passages).
+                        La recommandation du <b>20 Avril</b> a été introduite spécifiquement pour les <b>Nectarines (Nablara & Redix® 25)</b>.
+                      </span>
+                    </div>
+                  )}
 
                   {cropPeriods.length === 0 ? (
                     <div className="p-6 text-center text-xs text-muted-foreground">
@@ -1153,85 +1317,111 @@ export function AgronomicPlanningCalendar({
                           </tr>
                         </thead>
                         <tbody className="divide-y">
-                          {cropPeriods.map((period, pIdx) => (
-                            <tr key={pIdx} className="hover:bg-muted/10 transition">
-                              <td className="p-3">
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-1.5">
-                                    {period.isCurrent ? (
-                                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                        <span>Programme Actuel (En cours)</span>
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
-                                        Palier {pIdx + 1}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="font-extrabold text-foreground">
-                                    Du {formatDateFr(period.startDate)} au {formatDateFr(period.endDate)}
-                                  </p>
-                                  <span className="text-[10px] text-muted-foreground block">
-                                    {period.durationDays} jours · {period.totalPassages} passages
-                                  </span>
-                                </div>
-                              </td>
+                          {cropPeriods.map((period, pIdx) => {
+                            const is20Avr = period.startDate === "2026-04-20";
 
-                              <td className="p-3 font-bold">
-                                <span className="font-mono text-xs text-primary block">
-                                  {crop.id === "pommiers"
-                                    ? "05h00 - 06h30"
-                                    : crop.id === "nablara"
-                                    ? "06h30 - 08h00 (ou 06h00)"
-                                    : "08h00 - 09h30 (ou 07h30)"}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground block mt-0.5">
-                                  Durée: {period.irrigationTime} (Mouil. {period.wettingTime}m + Inj. {period.injectionTime}m + Rinc. {period.rinsingTime}m)
-                                </span>
-                              </td>
-
-                              <td className="p-3">
-                                <div className="space-y-1.5 max-w-sm">
-                                  {period.entries.map((e) => (
-                                    <div key={e.bac} className="text-[11px]">
-                                      <span className="font-extrabold text-primary uppercase text-[10px]">
-                                        Bac {e.bac} :
-                                      </span>{" "}
-                                      <span className="text-foreground font-medium">
-                                        {e.items
-                                          .map((it) => `${it.name} (${it.qty} ${it.unit}/ha)`)
-                                          .join(", ")}
+                            return (
+                              <tr
+                                key={pIdx}
+                                className={`transition ${
+                                  is20Avr
+                                    ? "bg-indigo-500/10 hover:bg-indigo-500/15"
+                                    : "hover:bg-muted/10"
+                                }`}
+                              >
+                                <td className="p-3">
+                                  <div className="space-y-1">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-muted/70 text-muted-foreground flex items-center gap-1">
+                                        <span>{crop.icon}</span>
+                                        <span>{crop.name}</span>
                                       </span>
+
+                                      {is20Avr && (
+                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-xs flex items-center gap-1 animate-pulse">
+                                          <span>✨</span>
+                                          <span>Palier du 20 Avril</span>
+                                        </span>
+                                      )}
+
+                                      {period.isCurrent ? (
+                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                          <span>Programme Actuel (En cours)</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
+                                          Palier {pIdx + 1}
+                                        </span>
+                                      )}
                                     </div>
-                                  ))}
-                                </div>
-                              </td>
+                                    <p className="font-extrabold text-foreground">
+                                      Du {formatDateFr(period.startDate)} au {formatDateFr(period.endDate)}
+                                    </p>
+                                    <span className="text-[10px] text-muted-foreground block">
+                                      {period.durationDays} jours · {period.totalPassages} passages
+                                    </span>
+                                    <span className="text-[10px] text-muted-foreground/80 block truncate max-w-xs" title={period.recoTitle}>
+                                      📋 {period.recoTitle}
+                                    </span>
+                                  </div>
+                                </td>
 
-                              <td className="p-3 text-right">
-                                <span className="font-black text-sm text-foreground">
-                                  {period.totalPassages}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground block">
-                                  passages sur la période
-                                </span>
-                              </td>
+                                <td className="p-3 font-bold">
+                                  <span className="font-mono text-xs text-primary block">
+                                    {crop.id === "pommiers"
+                                      ? "05h00 - 06h30"
+                                      : crop.id === "nablara"
+                                      ? "06h30 - 08h00 (ou 06h00)"
+                                      : "08h00 - 09h30 (ou 07h30)"}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground block mt-0.5">
+                                    Durée: {period.irrigationTime} (Mouil. {period.wettingTime}m + Inj. {period.injectionTime}m + Rinc. {period.rinsingTime}m)
+                                  </span>
+                                </td>
 
-                              <td className="p-3 text-right">
-                                {onSelectReco && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => onSelectReco(period.reco)}
-                                    className="text-xs font-bold gap-1 text-primary"
-                                  >
-                                    <Eye className="h-3.5 w-3.5" />
-                                    <span>Voir Reco</span>
-                                  </Button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                                <td className="p-3">
+                                  <div className="space-y-1.5 max-w-sm">
+                                    {period.entries.map((e) => (
+                                      <div key={e.bac} className="text-[11px]">
+                                        <span className="font-extrabold text-primary uppercase text-[10px]">
+                                          Bac {e.bac} :
+                                        </span>{" "}
+                                        <span className="text-foreground font-medium">
+                                          {e.items
+                                            .map((it) => `${it.name} (${it.qty} ${it.unit}/ha)`)
+                                            .join(", ")}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </td>
+
+                                <td className="p-3 text-right">
+                                  <span className="font-black text-sm text-foreground">
+                                    {period.totalPassages}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground block">
+                                    passages sur la période
+                                  </span>
+                                </td>
+
+                                <td className="p-3 text-right">
+                                  {onSelectReco && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => onSelectReco(period.reco)}
+                                      className="text-xs font-bold gap-1 text-primary"
+                                    >
+                                      <Eye className="h-3.5 w-3.5" />
+                                      <span>Voir Reco</span>
+                                    </Button>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
