@@ -170,6 +170,23 @@ async function runOnce(): Promise<void> {
   if (getNetworkStatus() === "offline") return;
   const now = Date.now();
 
+  // Reset any stuck "processing" entries older than 15s back to "pending"
+  try {
+    const stuck = await offlineDB.outbox
+      .where("status")
+      .equals("processing")
+      .filter((e) => now - (e.updated_at || e.created_at) > 15000)
+      .toArray();
+    for (const item of stuck) {
+      // If it's a purchase.delete for a synthetic reco purchase, simply discard it
+      if (item.op === "purchase.delete" && String(item.record_id || "").startsWith("p-reco-")) {
+        await offlineDB.outbox.delete(item.client_id);
+      } else {
+        await offlineDB.outbox.update(item.client_id, { status: "pending", next_retry_at: now, updated_at: now });
+      }
+    }
+  } catch {}
+
   // 1) Photos d'abord (pour pouvoir injecter leur path dans les payloads liés)
   const photos = await offlineDB.photos_outbox
     .where("status")

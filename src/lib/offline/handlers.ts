@@ -246,9 +246,16 @@ registerOp("purchase.update", async (e) => {
 });
 
 registerOp("purchase.delete", async (e) => {
-  const { id } = e.payload as { id: string };
-  const { error } = await supabase.from("supplier_purchases" as any).delete().eq("id" as never, id as never);
-  if (error) throw error;
+  try {
+    const { id } = e.payload as { id: string };
+    if (!id) return;
+    const { error } = await supabase.from("supplier_purchases" as any).delete().eq("id" as never, id as never);
+    if (error) {
+      console.warn("[sync-engine] purchase.delete cloud notice:", error.message);
+    }
+  } catch (err) {
+    console.warn("[sync-engine] purchase.delete skipped:", err);
+  }
 });
 
 registerOp("prediction.upsert", async (e) => {

@@ -4,6 +4,7 @@ import { type SupplierPurchase, debitProductStock, deletePurchasesForReco } from
 import { checkRecoStock, getTargetParcelsForReco, safeParseFloat, parsePhytoProductQuantity } from "@/lib/stock-alerts";
 import { removeModuleRecordsByRecoId } from "@/lib/modules-store";
 import { supabase } from "@/integrations/supabase/client";
+import { offlineDB } from "@/lib/offline/db";
 
 export function parseDurationToMinutes(durationStr: string): number {
   if (!durationStr) return 90;
@@ -246,6 +247,16 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
   for (const r of recos) {
     deletePurchasesForReco(r.id);
   }
+
+  // Purge de la file offline des résidus p-reco-
+  try {
+    const pendingRecoOps = await offlineDB.outbox
+      .filter((e) => String(e.record_id || "").startsWith("p-reco-") || (e.op === "purchase.delete" && String((e.payload as any)?.id || "").startsWith("p-reco-")))
+      .toArray();
+    for (const item of pendingRecoOps) {
+      await offlineDB.outbox.delete(item.client_id);
+    }
+  } catch {}
 
   // 3. Réinitialisation des statuts dans Supabase vers "envoyee"
   for (const r of recos) {

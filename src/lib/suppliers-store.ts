@@ -127,12 +127,14 @@ export function deletePurchasesForReco(recoId: string, recoProductNames?: string
         } catch (err) {
           console.warn("Direct delete of reco purchase failed:", err);
         }
-        void enqueueOp({
-          op: "purchase.delete",
-          table: "supplier_purchases",
-          record_id: p.id,
-          payload: { id: p.id },
-        });
+        if (!p.id.startsWith("p-reco-")) {
+          void enqueueOp({
+            op: "purchase.delete",
+            table: "supplier_purchases",
+            record_id: p.id,
+            payload: { id: p.id },
+          });
+        }
       })();
     }
   }
