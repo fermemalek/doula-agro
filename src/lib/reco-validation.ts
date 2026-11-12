@@ -248,6 +248,17 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
     deletePurchasesForReco(r.id);
   }
 
+  // Purge de la table supplier_purchases et du cache local
+  try {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("doula-suppliers");
+    }
+    await (supabase as any)
+      .from("supplier_purchases")
+      .delete()
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+  } catch {}
+
   // Purge de la file offline des résidus p-reco-
   try {
     const pendingRecoOps = await offlineDB.outbox

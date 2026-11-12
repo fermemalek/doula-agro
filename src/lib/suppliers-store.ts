@@ -410,18 +410,19 @@ export function useSupplierActions() {
   }, []);
 
   const deleteAllPurchases = useCallback(() => {
-    const ids = purchases.map((p) => p.id);
     purchases = [];
     persist();
 
-    for (const id of ids) {
-      void enqueueOp({
-        op: "purchase.delete",
-        table: "supplier_purchases",
-        record_id: id,
-        payload: { id },
-      });
-    }
+    void (async () => {
+      try {
+        await supabase
+          .from("supplier_purchases" as any)
+          .delete()
+          .neq("id" as never, "00000000-0000-0000-0000-000000000000" as never);
+      } catch (err) {
+        console.warn("Direct deleteAllPurchases failed:", err);
+      }
+    })();
   }, []);
 
   return { addPurchase, updatePurchase, deletePurchase, deleteAllPurchases };

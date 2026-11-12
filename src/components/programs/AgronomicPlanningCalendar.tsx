@@ -299,8 +299,14 @@ function formatDateFr(dateStr: string): string {
  * (Insensible à la casse, tolérant aux libellés composés "REDIX 25, NABLARA",
  * inspection du titre, du commentaire, des groupes et des parcelles ciblées).
  */
-function matchesCropForCalendar(r: Recommendation, crop: CropSpeciesConfig, allParcels: any[] = []): boolean {
+function matchesCropForCalendar(
+  r: Recommendation,
+  crop: CropSpeciesConfig,
+  allParcels: any[] = [],
+  onlyValidated = true
+): boolean {
   if (!r || r.status === "rejetee") return false;
+  if (onlyValidated && r.status !== "acceptee" && r.status !== "transferee") return false;
   const payload = (r.payload || {}) as any;
 
   // 1. Normalisation et aplatissement des groupes de cultures
@@ -396,6 +402,7 @@ export function AgronomicPlanningCalendar({
   const [activeView, setActiveView] = useState<"grid" | "cards" | "periods" | "consolidation">("grid");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedPrescriptionType, setSelectedPrescriptionType] = useState<PrescriptionFilterType>("all");
+  const [onlyValidated, setOnlyValidated] = useState<boolean>(true);
   const [consolidationGrouping, setConsolidationGrouping] = useState<"by_species" | "by_month" | "matrix">("by_species");
   const [consolidationSort, setConsolidationSort] = useState<"qty_desc" | "name_asc" | "category">("qty_desc");
 
@@ -425,7 +432,7 @@ export function AgronomicPlanningCalendar({
 
     cropsWithRealSurfaces.forEach((crop) => {
       // Filtrer les recommandations valides pour cette espèce avec matching multicritères complet
-      const matchingRecos = recos.filter((r) => matchesCropForCalendar(r, crop, parcels));
+      const matchingRecos = recos.filter((r) => matchesCropForCalendar(r, crop, parcels, onlyValidated));
 
       // A. Recommandations de Fertigation (au sol)
       const fertRecos = matchingRecos.filter((r) => {
@@ -1471,6 +1478,41 @@ export function AgronomicPlanningCalendar({
 
       {/* 3. Pont de Filtres Unifié et Réactif : Chaque rubrique sur sa propre ligne dédiée */}
       <div className="rounded-2xl border bg-card/90 p-3.5 sm:p-4 space-y-3 shadow-xs">
+        {/* Ligne 0 : Portée d'affichage (Validées uniquement par défaut) */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            <span>Portée du Planning :</span>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+            <button
+              type="button"
+              onClick={() => setOnlyValidated(true)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border shrink-0 ${
+                onlyValidated
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs font-black ring-2 ring-emerald-500/20"
+                  : "bg-background text-muted-foreground hover:bg-muted border-border"
+              }`}
+            >
+              <span>✅</span>
+              <span>Recommandations Validées uniquement</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOnlyValidated(false)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border shrink-0 ${
+                !onlyValidated
+                  ? "bg-foreground text-background border-foreground shadow-xs font-black"
+                  : "bg-background text-muted-foreground hover:bg-muted border-border"
+              }`}
+            >
+              <span>📋</span>
+              <span>Toutes les prescriptions (inclus prévisions)</span>
+            </button>
+          </div>
+        </div>
+
         {/* Ligne 1 : Type de Prescription */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2">
           <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground w-40 shrink-0">
@@ -1643,22 +1685,34 @@ export function AgronomicPlanningCalendar({
                   </tr>
                 </thead>
                 <tbody className="divide-y font-medium">
-                  {calendarGridRows.map((row, idx) => {
-                    const daysOfWeekCols = [6, 0, 1, 2, 3, 4, 5]; // samedi (6), Dimanche (0), lundi (1), mardi (2), mercredi (3), jeudi (4), vendredi (5)
+                  {calendarGridRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                        <div className="max-w-md mx-auto space-y-2">
+                          <p className="font-bold text-sm text-foreground">🌱 Aucun programme validé à afficher</p>
+                          <p className="text-xs">
+                            Tous les programmes précédents et achats ont été réinitialisés. Rendez-vous dans l'onglet <strong>Recommandations</strong> pour valider la 1ère recommandation (09 Mars 2026).
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    calendarGridRows.map((row, idx) => {
+                      const daysOfWeekCols = [6, 0, 1, 2, 3, 4, 5]; // samedi (6), Dimanche (0), lundi (1), mardi (2), mercredi (3), jeudi (4), vendredi (5)
 
-                    return (
-                      <tr
-                        key={row.date}
-                        className={`transition ${
-                          row.isPassageDay
-                            ? "bg-amber-400/15 dark:bg-amber-500/10 hover:bg-amber-400/25"
-                            : row.isNewRecoDay
-                            ? "bg-indigo-500/10 hover:bg-indigo-500/15 font-bold"
-                            : idx % 2 === 0
-                            ? "bg-background"
-                            : "bg-muted/10"
-                        }`}
-                      >
+                      return (
+                        <tr
+                          key={row.date}
+                          className={`transition ${
+                            row.isPassageDay
+                              ? "bg-amber-400/15 dark:bg-amber-500/10 hover:bg-amber-400/25"
+                              : row.isNewRecoDay
+                              ? "bg-indigo-500/10 hover:bg-indigo-500/15 font-bold"
+                              : idx % 2 === 0
+                              ? "bg-background"
+                              : "bg-muted/10"
+                          }`}
+                        >
                         <td className="p-2.5 border-r font-bold text-foreground bg-muted/30">
                           <div className="flex flex-col items-start gap-1">
                             <span className="text-xs font-bold leading-tight whitespace-nowrap">
@@ -1755,7 +1809,7 @@ export function AgronomicPlanningCalendar({
                         })}
                       </tr>
                     );
-                  })}
+                  }))}
                 </tbody>
               </table>
             </div>
