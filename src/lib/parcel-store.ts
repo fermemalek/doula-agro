@@ -24,6 +24,17 @@ function persist() {
 
 load();
 
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === STORAGE_KEY && e.newValue) {
+      try {
+        overrides = JSON.parse(e.newValue);
+        listeners.forEach((l) => l());
+      } catch {}
+    }
+  });
+}
+
 function merge(p: Parcel): Parcel {
   const o = overrides[p.id];
   if (!o) return p;

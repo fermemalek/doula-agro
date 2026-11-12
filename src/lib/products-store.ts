@@ -1,32 +1,165 @@
 import { useEffect, useState, useCallback } from "react";
 import { FERTILIZER_DATABASE, type FertilizerProduct } from "@/data/fertilizers";
+import { supabase } from "@/integrations/supabase/client";
 
 const KEY = "doula-products";
 
 let currentProducts: FertilizerProduct[] = [];
 const listeners = new Set<() => void>();
 
+function mergeWithDefaults(stored: FertilizerProduct[]): FertilizerProduct[] {
+  const map = new Map<string, FertilizerProduct>();
+
+  // 1. Initialiser avec la base de référence centrale FERTILIZER_DATABASE
+  for (const def of FERTILIZER_DATABASE) {
+    map.set(def.name.trim().toLowerCase(), { ...def });
+  }
+
+  // 2. Fusionner les produits stockés localement ou reçus du cloud
+  for (const item of stored) {
+    if (!item || !item.name) continue;
+    const key = item.name.trim().toLowerCase();
+    const existing = map.get(key);
+    if (existing) {
+      map.set(key, {
+        ...existing,
+        ...item,
+        type: item.type && item.type.trim() ? item.type : existing.type,
+        matiereActive: item.matiereActive && item.matiereActive.trim() ? item.matiereActive : existing.matiereActive,
+        matiereActiveAr: item.matiereActiveAr && item.matiereActiveAr.trim() ? item.matiereActiveAr : existing.matiereActiveAr,
+        price: typeof item.price === "number" ? item.price : existing.price,
+        solubility: typeof item.solubility === "number" ? item.solubility : existing.solubility,
+        unit: item.unit || existing.unit,
+        note: item.note !== undefined && item.note !== "" ? item.note : existing.note,
+      });
+    } else {
+      map.set(key, item);
+    }
+  }
+
+  return Array.from(map.values());
+}
+
 function load() {
   if (typeof window === "undefined") return;
   try {
     const raw = localStorage.getItem(KEY);
     if (raw) {
-      currentProducts = JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      currentProducts = Array.isArray(parsed) ? mergeWithDefaults(parsed) : [...FERTILIZER_DATABASE];
     } else {
       currentProducts = [...FERTILIZER_DATABASE];
-      localStorage.setItem(KEY, JSON.stringify(currentProducts));
     }
+    localStorage.setItem(KEY, JSON.stringify(currentProducts));
   } catch {
     currentProducts = [...FERTILIZER_DATABASE];
   }
 }
 load();
 
-function persist() {
+// Supabase Realtime broadcast channel pour synchronisation instantanée entre appareils
+const syncChannel = typeof window !== "undefined"
+  ? supabase.channel("doula-products-sync")
+  : null;
+
+if (syncChannel) {
+  syncChannel
+    .on("broadcast", { event: "products-update" }, (msg: any) => {
+      if (msg && Array.isArray(msg.payload?.products)) {
+        currentProducts = mergeWithDefaults(msg.payload.products);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(KEY, JSON.stringify(currentProducts));
+        }
+        listeners.forEach((l) => l());
+      }
+    })
+    .subscribe();
+}
+
+// Écoute de l'événement de stockage pour les onglets multiples sur un même appareil
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (e) => {
+    if (e.key === KEY && e.newValue) {
+      try {
+        const parsed = JSON.parse(e.newValue);
+        if (Array.isArray(parsed)) {
+          currentProducts = mergeWithDefaults(parsed);
+          listeners.forEach((l) => l());
+        }
+      } catch {}
+    }
+  });
+}
+
+async function dualWriteProducts(products: FertilizerProduct[]) {
+  try {
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) return;
+    await supabase.from("module_records").insert({
+      parcel_id: "p1",
+      kind: "phytosanitaire",
+      payload: {
+        _sync_type: "products_catalog",
+        products,
+        updated_at: new Date().toISOString(),
+      } as any,
+      created_by: u.user.id,
+      status: "execute",
+    });
+  } catch (err) {
+    // Non-bloquant si le réseau ou auth indisponible
+    console.debug("[products-store] cloud dual-write skipped or failed", err);
+  }
+}
+
+async function fetchCloudProducts() {
+  try {
+    const { data, error } = await supabase
+      .from("module_records")
+      .select("payload, created_at")
+      .eq("parcel_id", "p1")
+      .eq("kind", "phytosanitaire")
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    if (!error && data && data.length > 0) {
+      const record = data.find((r) => (r.payload as any)?._sync_type === "products_catalog");
+      if (record && Array.isArray((record.payload as any)?.products)) {
+        currentProducts = mergeWithDefaults((record.payload as any).products);
+        if (typeof window !== "undefined") {
+          localStorage.setItem(KEY, JSON.stringify(currentProducts));
+        }
+        listeners.forEach((l) => l());
+      }
+    }
+  } catch (err) {
+    console.debug("[products-store] cloud fetch skipped", err);
+  }
+}
+
+if (typeof window !== "undefined") {
+  setTimeout(() => {
+    void fetchCloudProducts();
+  }, 1000);
+}
+
+function persist(skipBroadcast = false) {
   if (typeof window !== "undefined") {
     localStorage.setItem(KEY, JSON.stringify(currentProducts));
   }
   listeners.forEach((l) => l());
+
+  if (!skipBroadcast && syncChannel) {
+    try {
+      syncChannel.send({
+        type: "broadcast",
+        event: "products-update",
+        payload: { products: currentProducts },
+      });
+    } catch {}
+  }
+
+  void dualWriteProducts(currentProducts);
 }
 
 export function useProducts(): FertilizerProduct[] {
@@ -43,7 +176,7 @@ export function useProducts(): FertilizerProduct[] {
 
 export function useProductActions() {
   const update = useCallback((name: string, patch: Partial<FertilizerProduct>) => {
-    const idx = currentProducts.findIndex((p) => p.name === name);
+    const idx = currentProducts.findIndex((p) => p.name.trim().toLowerCase() === name.trim().toLowerCase());
     if (idx >= 0) {
       const next = [...currentProducts];
       next[idx] = { ...next[idx], ...patch };
@@ -53,11 +186,33 @@ export function useProductActions() {
   }, []);
 
   const add = useCallback((product: FertilizerProduct) => {
-    if (!currentProducts.some((p) => p.name === product.name)) {
+    const exists = currentProducts.some(
+      (p) => p.name.trim().toLowerCase() === product.name.trim().toLowerCase()
+    );
+    if (!exists) {
       currentProducts = [...currentProducts, product];
+      persist();
+    } else {
+      // Si le produit existe déjà, mettre à jour ses propriétés
+      const next = currentProducts.map((p) =>
+        p.name.trim().toLowerCase() === product.name.trim().toLowerCase() ? { ...p, ...product } : p
+      );
+      currentProducts = next;
       persist();
     }
   }, []);
 
-  return { update, add };
+  const remove = useCallback((name: string) => {
+    currentProducts = currentProducts.filter(
+      (p) => p.name.trim().toLowerCase() !== name.trim().toLowerCase()
+    );
+    persist();
+  }, []);
+
+  const resetToDefaults = useCallback(() => {
+    currentProducts = [...FERTILIZER_DATABASE];
+    persist();
+  }, []);
+
+  return { update, add, remove, resetToDefaults };
 }

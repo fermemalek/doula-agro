@@ -399,11 +399,35 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   },
   {
     name: "Phytocap",
-    type: "",
+    type: "Phytosanitaire",
     solubility: 0,
     time: 0,
     note: "",
     price: 2500,
-    unit: "kg"
+    unit: "kg",
+    matiereActive: "Captane",
+    matiereActiveAr: "كابتان"
+  },
+  {
+    name: "Dicis",
+    type: "Phytosanitaire",
+    solubility: 0,
+    time: 0,
+    note: '{"cible":"","dosage":""}',
+    price: 0,
+    unit: "kg",
+    matiereActive: "",
+    matiereActiveAr: ""
+  },
+  {
+    name: "Difénoconazole Score",
+    type: "Phytosanitaire",
+    solubility: 14.0,
+    time: 0,
+    note: '{"cible":"Fongicide systémique (triazole)","dosage":""}',
+    price: 22000,
+    unit: "kg",
+    matiereActive: "Difénoconazole",
+    matiereActiveAr: "ديفينوكونازول"
   }
 ];
