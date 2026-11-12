@@ -511,14 +511,13 @@ export function AgronomicPlanningCalendar({
         const startDate = dateKey;
         const nextDate = distinctDates[dateIdx + 1];
         let endDate = "";
-        let isCurrent = false;
-
+        const todayStr = new Date().toISOString().slice(0, 10);
         if (nextDate) {
           endDate = addDays(nextDate, -1);
         } else {
-          isCurrent = true;
           endDate = addDays(startDate, 28);
         }
+        const isCurrent = startDate <= todayStr && todayStr <= endDate;
 
         const sortedSubRecos = [...dateRecos].sort((a, b) => {
           const lA = (a.payload as any)?.program?.label || a.title || "";
@@ -736,7 +735,9 @@ export function AgronomicPlanningCalendar({
           type: "pulverisation",
           startDate: dateStr,
           endDate: addDays(dateStr, 7),
-          isCurrent: dateStr <= new Date().toISOString().slice(0, 10),
+          isCurrent:
+            dateStr <= new Date().toISOString().slice(0, 10) &&
+            new Date().toISOString().slice(0, 10) <= addDays(dateStr, 7),
           frequency: 1,
           pureIrrigationFrequency: 0,
           pureIrrigationTime: "—",
@@ -844,7 +845,9 @@ export function AgronomicPlanningCalendar({
           type: "phyto",
           startDate: dateStr,
           endDate: addDays(dateStr, 7),
-          isCurrent: dateStr <= new Date().toISOString().slice(0, 10),
+          isCurrent:
+            dateStr <= new Date().toISOString().slice(0, 10) &&
+            new Date().toISOString().slice(0, 10) <= addDays(dateStr, 7),
           frequency: 1,
           pureIrrigationFrequency: 0,
           pureIrrigationTime: "—",
@@ -1403,7 +1406,11 @@ export function AgronomicPlanningCalendar({
                 {crop.surfaceHa.toFixed(2)} ha
               </p>
               <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold block">
-                {crop.id === "pommiers" ? "P1 (1 ha) + P2 (1 ha)" : "Surface vérifiée"}
+                {crop.id === "pommiers"
+                  ? "P1 (1 ha) + P2 (1 ha)"
+                  : crop.id === "oliviers"
+                  ? "Secteur 1 (P1+P2) · Secteur 2 (P3+P4)"
+                  : "Surface vérifiée"}
               </span>
             </div>
           ))}
@@ -2191,30 +2198,24 @@ export function AgronomicPlanningCalendar({
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left border-collapse">
-                        <thead className="bg-muted/20 text-[10px] uppercase font-bold text-muted-foreground border-b">
+                      <table className="w-full text-xs text-left border border-gray-300 dark:border-border border-collapse">
+                        <thead className="bg-gray-200 dark:bg-muted text-[11px] font-bold uppercase tracking-wider text-black dark:text-foreground border-b border-gray-300 dark:border-border">
                           <tr>
-                            <th className="p-3">Statut & Période d'Effet</th>
-                            <th className="p-3">Créneau & Application</th>
-                            <th className="p-3">Formule Prescrite (Doses/ha)</th>
-                            <th className="p-3 text-right">Passages</th>
-                            <th className="p-3 text-right">Action</th>
+                            <th className="p-3 border-r border-gray-300 dark:border-border font-bold">STATUT & PÉRIODE D'EFFET</th>
+                            <th className="p-3 border-r border-gray-300 dark:border-border font-bold">CRÉNEAU & APPLICATION</th>
+                            <th className="p-3 border-r border-gray-300 dark:border-border font-bold">FORMULE PRESCRITE (DOSES/HA)</th>
+                            <th className="p-3 text-center border-r border-gray-300 dark:border-border font-bold">PASSAGES</th>
+                            <th className="p-3 text-center font-bold">ACTION</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y">
+                        <tbody className="divide-y divide-gray-200 dark:divide-border">
                           {cropPeriods.map((period, pIdx) => {
-                            const is20Avr = period.startDate === "2026-04-20";
-
                             return (
                               <tr
                                 key={pIdx}
-                                className={`transition ${
-                                  is20Avr
-                                    ? "bg-indigo-500/10 hover:bg-indigo-500/15"
-                                    : "hover:bg-muted/10"
-                                }`}
+                                className="hover:bg-muted/10 transition border-b border-gray-200 dark:border-border"
                               >
-                                <td className="p-3">
+                                <td className="p-3 border-r border-gray-200 dark:border-border align-top">
                                   <div className="space-y-1">
                                     <div className="flex flex-wrap items-center gap-1.5">
                                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-muted/70 text-muted-foreground flex items-center gap-1">
@@ -2225,35 +2226,28 @@ export function AgronomicPlanningCalendar({
                                       {/* Badges de Prescription aux couleurs requises */}
                                       {(period.type === "fertigation" || !period.type) && (
                                         <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30">
-                                          💧 Fert. Irrigation
+                                          💧 FERT. IRRIGATION
                                         </span>
                                       )}
                                       {period.type === "pulverisation" && (
                                         <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30">
-                                          🌿 Fert. Foliaire
+                                          🌿 FERT. FOLIAIRE
                                         </span>
                                       )}
                                       {period.type === "phyto" && (
                                         <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full border bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30">
-                                          🛡️ Phytosanitaire
-                                        </span>
-                                      )}
-
-                                      {is20Avr && (
-                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-indigo-600 text-white shadow-xs flex items-center gap-1 animate-pulse">
-                                          <span>✨</span>
-                                          <span>Palier du 20 Avril</span>
+                                          🛡️ PHYTOSANITAIRE
                                         </span>
                                       )}
 
                                       {period.isCurrent ? (
-                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                          <span>En cours</span>
+                                          <span>EN COURS</span>
                                         </span>
                                       ) : (
-                                        <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
-                                          Palier {pIdx + 1}
+                                        <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-muted text-muted-foreground border">
+                                          PALIER {pIdx + 1}
                                         </span>
                                       )}
                                     </div>
@@ -2263,19 +2257,21 @@ export function AgronomicPlanningCalendar({
                                     <span className="text-[10px] text-muted-foreground block">
                                       {period.durationDays} jours · {period.totalPassages} passage(s)
                                     </span>
-                                    <span className="text-[10px] text-muted-foreground/80 block truncate max-w-xs" title={period.recoTitle}>
-                                      📋 {period.recoTitle}
-                                    </span>
+                                    {period.recoTitle && (
+                                      <span className="text-[10px] text-muted-foreground/80 block truncate max-w-xs" title={period.recoTitle}>
+                                        📋 {period.recoTitle}
+                                      </span>
+                                    )}
                                   </div>
                                 </td>
 
-                                <td className="p-3 font-bold">
+                                <td className="p-3 border-r border-gray-200 dark:border-border align-top font-bold">
                                   {period.type === "pulverisation" ? (
                                     <>
                                       <span className="font-mono text-xs text-blue-600 dark:text-blue-400 block">
                                         06h30 - 08h30 (Matinée)
                                       </span>
-                                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                                      <span className="text-[10px] text-muted-foreground block mt-0.5 font-normal">
                                         Pulvérisation foliaire à la fraîche
                                       </span>
                                     </>
@@ -2284,7 +2280,7 @@ export function AgronomicPlanningCalendar({
                                       <span className="font-mono text-xs text-amber-600 dark:text-amber-400 block">
                                         17h30 - 19h30 (Soirée)
                                       </span>
-                                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                                      <span className="text-[10px] text-muted-foreground block mt-0.5 font-normal">
                                         Traitement crépusculaire (vent faible)
                                       </span>
                                     </>
@@ -2297,22 +2293,22 @@ export function AgronomicPlanningCalendar({
                                           ? "06h30 - 08h00 (ou 06h00)"
                                           : "08h00 - 09h30 (ou 07h30)"}
                                       </span>
-                                      <span className="text-[10px] text-muted-foreground block mt-0.5">
+                                      <span className="text-[10px] text-muted-foreground block mt-0.5 font-normal">
                                         Durée: {period.irrigationTime} (Mouil. {period.wettingTime}m + Inj. {period.injectionTime}m + Rinc. {period.rinsingTime}m)
                                       </span>
                                     </>
                                   )}
                                 </td>
 
-                                <td className="p-3">
+                                <td className="p-3 border-r border-gray-200 dark:border-border align-top">
                                   {period.entries && period.entries.length > 0 ? (
-                                    <div className="space-y-1.5 max-w-sm">
+                                    <div className="space-y-1.5 max-w-md">
                                       {period.entries.map((e) => (
-                                        <div key={e.bac} className="text-[11px]">
-                                          <span className="font-extrabold text-primary uppercase text-[10px]">
-                                            Bac {e.bac} :
+                                        <div key={e.bac} className="text-[11px] leading-relaxed">
+                                          <span className="font-extrabold text-foreground uppercase text-[10px]">
+                                            BAC {e.bac} :
                                           </span>{" "}
-                                          <span className="text-foreground font-medium">
+                                          <span className="text-foreground/90 font-medium">
                                             {e.items
                                               .map((it) => `${it.name} (${it.qty} ${it.unit}/ha)`)
                                               .join(", ")}
@@ -2321,21 +2317,21 @@ export function AgronomicPlanningCalendar({
                                       ))}
                                     </div>
                                   ) : period.products && period.products.length > 0 ? (
-                                    <div className="space-y-1 max-w-sm text-[11px]">
+                                    <div className="space-y-1.5 max-w-md text-[11px]">
                                       {period.products.map((p, pidx) => (
                                         <div
                                           key={pidx}
-                                          className="flex items-center justify-between gap-2 border-b border-border/30 pb-0.5 last:border-0 last:pb-0"
+                                          className="flex items-start justify-between gap-2 border-b border-border/30 pb-0.5 last:border-0 last:pb-0"
                                         >
                                           <div>
-                                            <span className="font-medium text-foreground block">{p.name}</span>
+                                            <span className="font-bold text-foreground block">{p.name}</span>
                                             {(p.cible || p.dar) && (
                                               <span className="text-[9px] text-muted-foreground block">
                                                 {p.cible ? `Cible: ${p.cible}` : ""} {p.dar ? `· DAR: ${p.dar}` : ""}
                                               </span>
                                             )}
                                           </div>
-                                          <span className="font-bold text-muted-foreground shrink-0">
+                                          <span className="font-bold text-muted-foreground shrink-0 text-right">
                                             {p.doseHa} {p.unit}/ha
                                           </span>
                                         </div>
@@ -2348,7 +2344,7 @@ export function AgronomicPlanningCalendar({
                                   )}
                                 </td>
 
-                                <td className="p-3 text-right">
+                                <td className="p-3 border-r border-gray-200 dark:border-border align-middle text-center">
                                   <span className="font-black text-sm text-foreground">
                                     {period.totalPassages}
                                   </span>
@@ -2357,13 +2353,13 @@ export function AgronomicPlanningCalendar({
                                   </span>
                                 </td>
 
-                                <td className="p-3 text-right">
+                                <td className="p-3 align-middle text-center">
                                   {onSelectReco && (
                                     <Button
                                       variant="ghost"
                                       size="sm"
                                       onClick={() => onSelectReco(period.reco)}
-                                      className="text-xs font-bold gap-1 text-primary"
+                                      className="text-xs font-bold gap-1 text-primary hover:bg-primary/10"
                                     >
                                       <Eye className="h-3.5 w-3.5" />
                                       <span>Voir Reco</span>
