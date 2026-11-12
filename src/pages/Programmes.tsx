@@ -314,6 +314,22 @@ function EditPurchaseInlineForm({
   );
 }
 
+function formatProductNote(note: string | null | undefined): string | null {
+  if (!note) return null;
+  const trimmed = note.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      const parts: string[] = [];
+      if (parsed.cible && String(parsed.cible).trim()) parts.push(String(parsed.cible).trim());
+      if (parsed.dosage && String(parsed.dosage).trim()) parts.push(`Dosage : ${String(parsed.dosage).trim()}`);
+      if (parts.length > 0) return parts.join(" · ");
+      return null;
+    } catch {}
+  }
+  return trimmed;
+}
+
 function ProgrammesPage() {
   const irr = useAllModuleRecords<IrrRec>("irrigation");
   const fert = useAllModuleRecords<FertRec>("fertilisation");
@@ -980,10 +996,10 @@ function ProgrammesPage() {
                       )}
                     </div>
 
-                    {prod.note && (
+                    {formatProductNote(prod.note) && (
                       <div className="rounded-lg bg-yellow-500/10 p-2 flex items-start gap-1.5 text-[10px] text-amber-800 dark:text-amber-300">
                         <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                        <span>{prod.note}</span>
+                        <span>{formatProductNote(prod.note)}</span>
                       </div>
                     )}
                   </div>

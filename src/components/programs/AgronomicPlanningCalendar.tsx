@@ -2294,7 +2294,7 @@ export function AgronomicPlanningCalendar({
                                         </span>
                                       )}
 
-                                      {period.isCurrent ? (
+                                      {period.isCurrent && (period.reco?.status === "acceptee" || period.reco?.status === "transferee") ? (
                                         <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                           <span>EN COURS</span>

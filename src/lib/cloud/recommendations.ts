@@ -99,10 +99,29 @@ export function useRecommendations() {
         return true;
       });
 
-      return valid.map((r) => ({
-        ...r,
-        title: cleanRecoTitle(r.title),
-      })) as Recommendation[];
+      return valid.map((r) => {
+        let title = cleanRecoTitle(r.title);
+        let payload = (r.payload || {}) as Record<string, any>;
+
+        // Correction agronomique des prescriptions du 09 Mars 2026 (distinctes A1/A2 et Passage 1/Passage 2)
+        if (r.id === "f1134c54-4d72-4ac1-adec-fc351da039dd" || (title.includes("2026-03-09") && payload.program?.entries?.some((e: any) => e.bac === "B"))) {
+          title = "NABLARA, REDIX 25 - 2026-03-09 (Programme A2)";
+          if (payload.program) {
+            payload = { ...payload, program: { ...payload.program, label: "Programme A2" } };
+          }
+        } else if (r.id === "9c93efd3-9f1a-402d-9bbb-e498ec8ab34d" || (title.includes("2026-03-09") && payload.program?.items?.some((it: any) => (it.name || "").includes("Algreen")))) {
+          title = "NABLARA, REDIX 25 - 2026-03-09 (Passage 2)";
+          if (payload.program) {
+            payload = { ...payload, program: { ...payload.program, label: "Passage 2" } };
+          }
+        }
+
+        return {
+          ...r,
+          title,
+          payload,
+        };
+      }) as Recommendation[];
     },
   });
 }
