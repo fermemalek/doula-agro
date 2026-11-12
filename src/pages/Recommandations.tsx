@@ -29,7 +29,7 @@ import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useParcels, useParcelActions } from "@/lib/parcel-store";
 import { checkRecoStock, getTargetParcelsForReco } from "@/lib/stock-alerts";
-import { validateRecommendationAndPurchases } from "@/lib/reco-validation";
+import { validateRecommendationAndPurchases, resetAllAppliedRecoHistory } from "@/lib/reco-validation";
 
 type PrescriptionType = "all" | "fert_irrigation" | "fert_foliaire" | "phytosanitaire";
 
@@ -190,6 +190,7 @@ function RecommandationsPageContent() {
   const { setStatus: setParcelStatus } = useParcelActions();
   const [seeding, setSeeding] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [resettingHistory, setResettingHistory] = useState(false);
 
   // Filtres de recherche demandés par l'utilisateur
   const [selectedYear, setSelectedYear] = useState<string>("all");
@@ -247,6 +248,21 @@ function RecommandationsPageContent() {
       toast.error(e instanceof Error ? e.message : "Erreur lors de la suppression");
     } finally {
       setDeletingAll(false);
+    }
+  }
+
+  async function handleResetHistory() {
+    if (!window.confirm("Voulez-vous réinitialiser TOUT l'historique d'application des recommandations ? Les programmes exécutés et achats automatiques seront effacés, et toutes les recommandations repasseront au statut 'Envoyée'.")) return;
+    setResettingHistory(true);
+    try {
+      toast.info("Réinitialisation de l'historique d'application en cours...");
+      await resetAllAppliedRecoHistory(recos);
+      toast.success("Historique des applications réinitialisé avec succès !");
+      setTimeout(() => window.location.reload(), 600);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Erreur lors de la réinitialisation");
+    } finally {
+      setResettingHistory(false);
     }
   }
 
@@ -410,13 +426,25 @@ function RecommandationsPageContent() {
                 </button>
               )}
               {list.length > 0 && (
-                <button
-                  onClick={handleDeleteAll}
-                  disabled={deletingAll}
-                  className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-destructive/10 hover:bg-destructive/20 px-3 text-sm font-bold text-destructive active:scale-95 transition-all"
-                >
-                  {deletingAll ? "Suppression..." : "Supprimer tout"}
-                </button>
+                <>
+                  <button
+                    onClick={handleResetHistory}
+                    disabled={resettingHistory}
+                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 px-3 text-sm font-bold text-amber-700 dark:text-amber-300 border border-amber-500/30 active:scale-95 transition-all"
+                    title="Effacer les exécutions et remettre toutes les recommandations à l'état initial pour recommencer"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    {resettingHistory ? "Réinitialisation..." : "Réinitialiser applications"}
+                  </button>
+
+                  <button
+                    onClick={handleDeleteAll}
+                    disabled={deletingAll}
+                    className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-destructive/10 hover:bg-destructive/20 px-3 text-sm font-bold text-destructive active:scale-95 transition-all"
+                  >
+                    {deletingAll ? "Suppression..." : "Supprimer tout"}
+                  </button>
+                </>
               )}
             </>
           )}

@@ -3,6 +3,7 @@ import type { Parcel } from "@/data/parcels";
 import { type SupplierPurchase, debitProductStock, deletePurchasesForReco } from "@/lib/suppliers-store";
 import { checkRecoStock, getTargetParcelsForReco, safeParseFloat, parsePhytoProductQuantity } from "@/lib/stock-alerts";
 import { removeModuleRecordsByRecoId } from "@/lib/modules-store";
+import { supabase } from "@/integrations/supabase/client";
 
 export function parseDurationToMinutes(durationStr: string): number {
   if (!durationStr) return 90;
@@ -212,5 +213,64 @@ export async function validateRecommendationAndPurchases({
     targetParcelsCount: targetParcels.length,
     isPast,
   };
+}
+
+/**
+ * Réinitialise complètement tout l'historique d'application des recommandations :
+ * - Supprime tous les programmes enregistrés dans les modules issus des recommandations
+ * - Supprime les bons d'achats automatiques créés pour les recommandations
+ * - Remet le statut de chaque recommandation à "envoyee"
+ */
+export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
+  // 1. Purge des enregistrements de modules locaux
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("doula-modules");
+      if (raw) {
+        const data = JSON.parse(raw);
+        for (const pid of Object.keys(data)) {
+          for (const mod of Object.keys(data[pid])) {
+            if (Array.isArray(data[pid][mod])) {
+              data[pid][mod] = data[pid][mod].filter(
+                (item: any) => !item.reco_id && !item.payload?.reco_id && !String(item.id || "").startsWith("p-reco-")
+              );
+            }
+          }
+        }
+        localStorage.setItem("doula-modules", JSON.stringify(data));
+      }
+    } catch {}
+  }
+
+  // 2. Nettoyage de tous les achats automatiques de stock liés aux recommandations
+  for (const r of recos) {
+    deletePurchasesForReco(r.id);
+  }
+
+  // 3. Réinitialisation des statuts dans Supabase vers "envoyee"
+  for (const r of recos) {
+    try {
+      await (supabase as any)
+        .from("recommendations")
+        .update({
+          status: "envoyee",
+          reviewed_at: null,
+          reviewed_by: null,
+          transferred_record_id: null,
+        })
+        .eq("id", r.id);
+    } catch {}
+  }
+
+  // Dual-clean Supabase module_records si possible
+  try {
+    const { data: u } = await supabase.auth.getUser();
+    if (u?.user) {
+      await (supabase as any)
+        .from("module_records")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+    }
+  } catch {}
 }
 
