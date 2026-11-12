@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Droplet, FlaskConical, Sprout, CloudSun, ArrowRight, SprayCan, Copy } from "lucide-react";
+import { Plus, Droplet, FlaskConical, Sprout, CloudSun, ArrowRight, SprayCan, Copy, RotateCcw } from "lucide-react";
 import { useParcels } from "@/lib/parcel-store";
 import { getTargetParcelsForReco } from "@/lib/stock-alerts";
 import { useNavigate } from "@/lib/router-compat";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
-import { useRecommendations, type Recommendation } from "@/lib/cloud/recommendations";
+import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
 import { useRole } from "@/lib/role";
 import { RecommendationForm } from "@/components/ingenieur/RecommendationForm";
 import { RecommendationDetailDialog } from "@/components/RecommendationDetailDialog";
 import { useAllModuleRecords } from "@/lib/modules-store";
 import { useConfig, saveConfig } from "@/lib/config-store";
 import { useTranslation } from "@/lib/i18n";
+import { toast } from "sonner";
 
 export function IngenieurHome() {
   const navigate = useNavigate();
@@ -20,6 +21,8 @@ export function IngenieurHome() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingReco, setEditingReco] = useState<Recommendation | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const { resetAllToPending } = useRecommendationActions();
 
   // Passer automatiquement l'interface en Arabe dès l'ouverture de l'espace Ingénieur
   useEffect(() => {
@@ -36,45 +39,17 @@ export function IngenieurHome() {
   }, [localIrr, localFert, localPulv, localPhy]);
 
   const mine = useMemo(
-    () => recos.filter((r) => r.created_by === userId),
+    () => (recos.some((r) => r.created_by === userId) ? recos.filter((r) => r.created_by === userId) : recos),
     [recos, userId],
   );
 
   const pendingCount = useMemo(() => {
-    let count = 0;
-    for (const r of mine) {
-      if (r.status === "envoyee" || r.status === "rejetee") {
-        count++;
-      } else if (r.status === "acceptee" || r.status === "transferee") {
-        const matchingProgs = allPrograms.filter(p => p.reco_id === r.id || p.payload?.reco_id === r.id);
-        if (matchingProgs.length > 0) {
-          const hasUnexecuted = matchingProgs.some(p => p.status !== "execute" && p.executedAt === undefined && p.executed_at === null);
-          if (hasUnexecuted) {
-            count++;
-          }
-        }
-      }
-    }
-    return count;
-  }, [mine, allPrograms]);
+    return mine.filter((r) => r.status === "envoyee" || !r.status).length;
+  }, [mine]);
 
   const executedCount = useMemo(() => {
-    let count = 0;
-    for (const r of mine) {
-      if (r.status === "acceptee" || r.status === "transferee") {
-        const matchingProgs = allPrograms.filter(p => p.reco_id === r.id || p.payload?.reco_id === r.id);
-        if (matchingProgs.length > 0) {
-          const allExecuted = matchingProgs.every(p => p.status === "execute" || p.executedAt !== undefined || p.executed_at !== null);
-          if (allExecuted) {
-            count++;
-          }
-        } else {
-          count++;
-        }
-      }
-    }
-    return count;
-  }, [mine, allPrograms]);
+    return mine.filter((r) => r.status === "acceptee" || r.status === "transferee").length;
+  }, [mine]);
 
   const cfg = useConfig();
   const currentLang = cfg.lang || "ar";
@@ -84,15 +59,42 @@ export function IngenieurHome() {
     saveConfig({ lang });
   };
 
-  const getRecoStatusInfo = (r: Recommendation) => {
-    const matchingProgs = allPrograms.filter(p => p.reco_id === r.id || p.payload?.reco_id === r.id);
-    if (matchingProgs.length > 0) {
-      const allExecuted = matchingProgs.every(p => p.status === "execute" || p.executedAt !== undefined || p.executed_at !== null);
-      if (allExecuted) {
-        return { label: currentLang === "ar" ? "مقبول" : "Accepté", tone: "border-emerald-500/30 bg-emerald-500/5 text-emerald-700" };
-      }
+  const handleResetAllToPending = async () => {
+    if (!window.confirm(
+      currentLang === "ar"
+        ? "هل أنت متأكد من إعادة تعيين جميع التوصيات إلى «قيد الانتظار» للبدء من جديد والتأكيد واحدة تلو الأخرى؟"
+        : "Voulez-vous vraiment remettre TOUTES les recommandations en attente pour recommencer la validation pas à pas ?"
+    )) return;
+    setResetting(true);
+    try {
+      await resetAllToPending.mutateAsync();
+      toast.success(
+        currentLang === "ar"
+          ? "تمت إعادة تعيين جميع التوصيات إلى «قيد الانتظار» بنجاح!"
+          : "Toutes les recommandations sont désormais en attente !"
+      );
+    } catch (e: any) {
+      toast.error(e?.message || "Erreur lors de la réinitialisation");
+    } finally {
+      setResetting(false);
     }
-    return { label: currentLang === "ar" ? "قيد الانتظار" : "En attente", tone: "border-blue-500/30 bg-blue-500/5 text-blue-700" };
+  };
+
+  const getRecoStatusInfo = (r: Recommendation) => {
+    if (r.status === "acceptee" || r.status === "transferee") {
+      const matchingProgs = allPrograms.filter(p => p.reco_id === r.id || p.payload?.reco_id === r.id);
+      if (matchingProgs.length > 0) {
+        const allExecuted = matchingProgs.every(p => p.status === "execute" || p.executedAt !== undefined || p.executed_at !== null);
+        if (allExecuted) {
+          return { label: currentLang === "ar" ? "مقبول (منفذ)" : "Accepté (Exécuté)", tone: "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 font-bold" };
+        }
+      }
+      return { label: currentLang === "ar" ? "مقبول" : "Accepté", tone: "border-emerald-500/30 bg-emerald-500/5 text-emerald-700 font-bold" };
+    }
+    if (r.status === "rejetee") {
+      return { label: currentLang === "ar" ? "مرفوض" : "Rejeté", tone: "border-destructive/30 bg-destructive/5 text-destructive font-bold" };
+    }
+    return { label: currentLang === "ar" ? "قيد الانتظار" : "En attente", tone: "border-blue-500/30 bg-blue-500/5 text-blue-700 font-bold" };
   };
 
   return (
@@ -128,6 +130,20 @@ export function IngenieurHome() {
           <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wide mt-0.5">{t("eng.accepted", "Acceptés (Exécutés)")}</p>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={handleResetAllToPending}
+        disabled={resetting}
+        className="mt-2.5 w-full py-2.5 px-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 dark:text-amber-200 text-xs font-bold transition flex items-center justify-center gap-2 shadow-xs"
+      >
+        <RotateCcw className={`h-4 w-4 text-amber-700 ${resetting ? "animate-spin" : ""}`} />
+        <span>
+          {currentLang === "ar"
+            ? "🔄 إعادة تعيين جميع التوصيات إلى «قيد الانتظار» (68 قيد الانتظار · 0 مقبولة)"
+            : "🔄 Remettre toutes les recommandations en attente (68 en attente · 0 acceptée)"}
+        </span>
+      </button>
 
       {/* Raccourci Météo & Climat */}
       <button

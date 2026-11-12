@@ -233,6 +233,54 @@ export function useRecommendationActions() {
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 
+  const resetAllToPending = useMutation({
+    mutationFn: async () => {
+      // 1. Mise à jour optimiste immédiate dans le cache
+      qc.setQueryData<Recommendation[]>(KEY, (old) => {
+        if (!old) return old;
+        return old.map((r) => ({
+          ...r,
+          status: "envoyee" as RecoStatus,
+          reviewed_at: null,
+          reviewed_by: null,
+          transferred_record_id: null,
+        }));
+      });
+
+      // 2. Mise à jour directe dans Supabase pour toutes les recommandations
+      try {
+        await (supabase as any)
+          .from("recommendations")
+          .update({
+            status: "envoyee",
+            reviewed_at: null,
+            reviewed_by: null,
+            transferred_record_id: null,
+          })
+          .neq("id", "00000000-0000-0000-0000-000000000000");
+      } catch (err) {
+        console.warn("[recommendations] Direct resetAllToPending failed:", err);
+      }
+
+      // 3. Purge locale des enregistrements générés
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem("doula-modules");
+          localStorage.removeItem("doula-suppliers");
+        } catch {}
+      }
+
+      // 4. Dual-clean des achats dans Supabase
+      try {
+        await (supabase as any)
+          .from("supplier_purchases")
+          .delete()
+          .neq("id", "00000000-0000-0000-0000-000000000000");
+      } catch {}
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+  });
+
   const update = useMutation({
     mutationFn: async (input: {
       id: string;
@@ -405,7 +453,7 @@ export function useRecommendationActions() {
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
 
-  return { create, update, accept, reject, remove };
+  return { create, update, accept, reject, remove, resetAllToPending };
 }
 
 /** Upload photos via le tampon offline (compression auto + retry). */

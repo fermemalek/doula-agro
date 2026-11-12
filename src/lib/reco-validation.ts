@@ -269,19 +269,32 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
     }
   } catch {}
 
-  // 3. Réinitialisation des statuts dans Supabase vers "envoyee"
-  for (const r of recos) {
-    try {
-      await (supabase as any)
-        .from("recommendations")
-        .update({
-          status: "envoyee",
-          reviewed_at: null,
-          reviewed_by: null,
-          transferred_record_id: null,
-        })
-        .eq("id", r.id);
-    } catch {}
+  // 3. Réinitialisation des statuts dans Supabase vers "envoyee" en une seule requête groupée
+  try {
+    await (supabase as any)
+      .from("recommendations")
+      .update({
+        status: "envoyee",
+        reviewed_at: null,
+        reviewed_by: null,
+        transferred_record_id: null,
+      })
+      .neq("id", "00000000-0000-0000-0000-000000000000");
+  } catch (err) {
+    console.warn("Bulk update to envoyee failed, fallback by id:", err);
+    for (const r of recos) {
+      try {
+        await (supabase as any)
+          .from("recommendations")
+          .update({
+            status: "envoyee",
+            reviewed_at: null,
+            reviewed_by: null,
+            transferred_record_id: null,
+          })
+          .eq("id", r.id);
+      } catch {}
+    }
   }
 
   // Dual-clean Supabase module_records si possible
