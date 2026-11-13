@@ -191,6 +191,7 @@ function RecommandationsPageContent() {
   const [seeding, setSeeding] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const [resettingHistory, setResettingHistory] = useState(false);
+  const [isBatchValidating, setIsBatchValidating] = useState(false);
 
   // Filtres de recherche demandés par l'utilisateur
   const [selectedYear, setSelectedYear] = useState<string>("all");
@@ -336,6 +337,16 @@ function RecommandationsPageContent() {
       fert_foliaire: fertFol,
       phytosanitaire: phyto,
     };
+  }, [list]);
+
+  // Recommandations du 09 Mars 2026 en attente
+  const pendingMarchRecos = useMemo(() => {
+    return list.filter((r) => {
+      const isPending = r.status === "envoyee" || r.status === "rejetee";
+      if (!isPending) return false;
+      const d = getRecoDate(r);
+      return d === "2026-03-09" || (r.title && r.title.includes("2026-03-09"));
+    });
   }, [list]);
 
   // Filtrage combiné : Année, Mois, Espèce, Type de prescription, Recherche textuelle
@@ -635,6 +646,104 @@ function RecommandationsPageContent() {
       </div>
 
       {/* ========================================================= */}
+      {/* BANNIÈRE D'EXÉCUTION RAPIDE DU LOT DU 09 MARS 2026 */}
+      {/* ========================================================= */}
+      {pendingMarchRecos.length > 0 && (displayRole === "ingenieur" || displayRole === "admin") && (
+        <div className="mb-4 rounded-2xl border-2 border-emerald-500/50 bg-emerald-500/10 p-3.5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">⚡</span>
+            <div>
+              <h4 className="font-extrabold text-sm text-foreground flex items-center gap-2">
+                <span>Lot du 09 Mars 2026</span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold">
+                  {pendingMarchRecos.length} recommandations en attente
+                </span>
+              </h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Valider et exécuter l'ensemble des 6 recommandations (Programmes A1/A2, Pulvérisations 1/2 et Traitement Azostar) avec alignement parfait des achats.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              disabled={isBatchValidating}
+              onClick={async () => {
+                if (!window.confirm(`Exécuter et valider l'ensemble des ${pendingMarchRecos.length} recommandations du 09 Mars 2026 ?`)) return;
+                setIsBatchValidating(true);
+                let doneCount = 0;
+                try {
+                  for (const r of pendingMarchRecos) {
+                    await validateRecommendationAndPurchases({
+                      reco: r,
+                      parcels,
+                      suppliers,
+                      addPurchase,
+                      acceptReco: async (id) => accept.mutateAsync(id),
+                      addModuleRecord,
+                      setParcelStatus,
+                      options: {
+                        supplierName: "Achat Validé (Historique Ingénieur)",
+                        markAsExecutedIfPast: true,
+                      },
+                    });
+                    doneCount++;
+                  }
+                  toast.success(`✅ Les ${doneCount} recommandations du 09 Mars ont été validées et exécutées avec succès !`);
+                } catch (err: any) {
+                  toast.error(err?.message || "Erreur lors du traitement du lot");
+                } finally {
+                  setIsBatchValidating(false);
+                }
+              }}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 text-xs font-black shadow-sm active:scale-95 transition"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              <span>{isBatchValidating ? "Exécution en cours..." : `⚡ Valider & Exécuter (${pendingMarchRecos.length})`}</span>
+            </button>
+
+            <button
+              type="button"
+              disabled={isBatchValidating}
+              onClick={async () => {
+                if (!window.confirm(`Planifier l'ensemble des ${pendingMarchRecos.length} recommandations du 09 Mars 2026 (sans marquer exécuté) ?`)) return;
+                setIsBatchValidating(true);
+                let doneCount = 0;
+                try {
+                  for (const r of pendingMarchRecos) {
+                    await validateRecommendationAndPurchases({
+                      reco: r,
+                      parcels,
+                      suppliers,
+                      addPurchase,
+                      acceptReco: async (id) => accept.mutateAsync(id),
+                      addModuleRecord,
+                      setParcelStatus,
+                      options: {
+                        supplierName: "Achat Validé (Historique Ingénieur)",
+                        markAsExecutedIfPast: false,
+                      },
+                    });
+                    doneCount++;
+                  }
+                  toast.success(`✅ Les ${doneCount} recommandations du 09 Mars ont été planifiées avec succès !`);
+                } catch (err: any) {
+                  toast.error(err?.message || "Erreur lors de la planification");
+                } finally {
+                  setIsBatchValidating(false);
+                }
+              }}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-600 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 px-3 py-2 text-xs font-bold transition"
+            >
+              <Calendar className="h-4 w-4" />
+              <span>Planifier seulement</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
       {/* LISTE DES RECOMMANDATIONS AVEC COULEURS DE PRESCRIPTION */}
       {/* ========================================================= */}
       {list.length === 0 ? (
@@ -732,44 +841,83 @@ function RecommandationsPageContent() {
 
                   <div className="flex items-center gap-1">
                     {isPending && (displayRole === "ingenieur" || displayRole === "admin") && (
-                      <button
-                        type="button"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (
-                            !window.confirm(
-                              `Valider la recommandation "${r.title}" et enregistrer automatiquement les achats pour les produits requis ?`
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (
+                              !window.confirm(
+                                `Valider et EXÉCUTER la recommandation "${r.title}" (statut Exécuté avec achats exacts 100% payés) ?`
+                              )
                             )
-                          )
-                            return;
-                          try {
-                            const res = await validateRecommendationAndPurchases({
-                              reco: r,
-                              parcels,
-                              suppliers,
-                              addPurchase,
-                              acceptReco: async (id) => accept.mutateAsync(id),
-                              addModuleRecord,
-                              setParcelStatus,
-                              options: {
-                                supplierName: "Achat Validé (Historique Ingénieur)",
-                                markAsExecutedIfPast: false,
-                              },
-                            });
-                            toast.success(
-                              `Recommandation et achats validés avec succès ! (${res.clonedCount} parcelles affectées${res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats créés` : ""
-                              }).`
-                            );
-                          } catch (err: any) {
-                            toast.error(err?.message || "Erreur lors de la validation");
-                          }
-                        }}
-                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition"
-                        title="Valider la recommandation et ses achats"
-                      >
-                        <CheckCircle2 className="h-3 w-3" />
-                        <span>Valider Reco & Achats</span>
-                      </button>
+                              return;
+                            try {
+                              const res = await validateRecommendationAndPurchases({
+                                reco: r,
+                                parcels,
+                                suppliers,
+                                addPurchase,
+                                acceptReco: async (id) => accept.mutateAsync(id),
+                                addModuleRecord,
+                                setParcelStatus,
+                                options: {
+                                  supplierName: "Achat Validé (Historique Ingénieur)",
+                                  markAsExecutedIfPast: true,
+                                },
+                              });
+                              toast.success(
+                                `Recommandation validée & exécutée ! (${res.clonedCount} tâches créées${res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats alignés` : ""}).`
+                              );
+                            } catch (err: any) {
+                              toast.error(err?.message || "Erreur lors de la validation");
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition"
+                          title="Valider la recommandation et marquer exécutée sur le terrain"
+                        >
+                          <CheckCircle2 className="h-3 w-3" />
+                          <span>Valider & Exécuter</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            if (
+                              !window.confirm(
+                                `Planifier la recommandation "${r.title}" (statut Planifié) ?`
+                              )
+                            )
+                              return;
+                            try {
+                              const res = await validateRecommendationAndPurchases({
+                                reco: r,
+                                parcels,
+                                suppliers,
+                                addPurchase,
+                                acceptReco: async (id) => accept.mutateAsync(id),
+                                addModuleRecord,
+                                setParcelStatus,
+                                options: {
+                                  supplierName: "Achat Validé (Historique Ingénieur)",
+                                  markAsExecutedIfPast: false,
+                                },
+                              });
+                              toast.success(
+                                `Recommandation planifiée avec succès ! (${res.clonedCount} tâches planifiées).`
+                              );
+                            } catch (err: any) {
+                              toast.error(err?.message || "Erreur lors de la planification");
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition"
+                          title="Planifier sans marquer comme exécuté"
+                        >
+                          <Calendar className="h-3 w-3" />
+                          <span>Planifier</span>
+                        </button>
+                      </div>
                     )}
 
                     {(displayRole === "ingenieur" || displayRole === "admin") && (
