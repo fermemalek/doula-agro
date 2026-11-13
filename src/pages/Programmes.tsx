@@ -24,6 +24,7 @@ import {
   X,
   Calendar,
   RefreshCw,
+  FileText,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -557,6 +558,8 @@ function ProgrammesPage() {
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null);
   const [addPurchaseOpen, setAddPurchaseOpen] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState<SupplierPurchase | null>(null);
+  const [supplierViewMode, setSupplierViewMode] = useState<"cumul" | "bons">("cumul");
+  const [selectedBonFilter, setSelectedBonFilter] = useState<string>("all");
 
   // Purchase Form Input States
   const [pSupplierName, setPSupplierName] = useState("");
@@ -684,15 +687,22 @@ function ProgrammesPage() {
 
   // Tab 3: Suppliers dynamic calculations
   const supplierSummaries = useMemo(() => {
-    const map = new Map<string, { name: string; totalCost: number; paidAmount: number; debt: number }>();
+    const map = new Map<string, { name: string; totalCost: number; paidAmount: number; debt: number; baNumbers: Set<string> }>();
     let grandTotal = 0;
 
     for (const p of purchases) {
       const normName = p.supplierName.trim().toLowerCase();
-      const current = map.get(normName) || { name: p.supplierName.trim(), totalCost: 0, paidAmount: 0, debt: 0 };
+      const current = map.get(normName) || { name: p.supplierName.trim(), totalCost: 0, paidAmount: 0, debt: 0, baNumbers: new Set<string>() };
       current.totalCost += p.totalCost;
       current.paidAmount += p.paidAmount;
       current.debt = current.totalCost - current.paidAmount;
+      if (p.orderNumber) {
+        current.baNumbers.add(p.orderNumber);
+      } else if (p.id.startsWith("p-ba-")) {
+        const parts = p.id.split("-");
+        const datePart = parts.find((pt) => /^\d{4}-\d{2}-\d{2}$/.test(pt));
+        if (datePart) current.baNumbers.add("BA-" + datePart);
+      }
       map.set(normName, current);
       grandTotal += p.totalCost;
     }
@@ -1108,6 +1118,11 @@ function ProgrammesPage() {
                         >
                           {supp.name}
                         </span>
+                        {supp.baNumbers && supp.baNumbers.size > 0 && (
+                          <span className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 text-[10px] font-bold">
+                            {supp.baNumbers.size} Bon{supp.baNumbers.size > 1 ? "s" : ""} d'Achat
+                          </span>
+                        )}
                       </div>
                       <div className="text-right">
                         <span className="font-mono font-black text-sm text-foreground">
@@ -1467,6 +1482,84 @@ function ProgrammesPage() {
           const totalPaid = supplierPurchases.reduce((sum, p) => sum + p.paidAmount, 0);
           const remainingDebt = totalCost - totalPaid;
 
+          // Helper to extract or resolve the Bon d'Achat order number
+          const getBonNumber = (p: SupplierPurchase) => {
+            if (p.orderNumber && p.orderNumber.trim()) return p.orderNumber.trim();
+            if (p.id.startsWith("p-ba-")) {
+              const parts = p.id.split("-");
+              const datePart = parts.find((pt) => /^\d{4}-\d{2}-\d{2}$/.test(pt));
+              if (datePart) return "BA-" + datePart;
+            }
+            return `Achat Direct (${p.purchaseDate})`;
+          };
+
+          // Group by distinct Bons d'Achat
+          const bonMap = new Map<string, { orderNumber: string; date: string; items: SupplierPurchase[]; totalCost: number; paidAmount: number }>();
+          for (const p of supplierPurchases) {
+            const bNum = getBonNumber(p);
+            const bEntry = bonMap.get(bNum) || { orderNumber: bNum, date: p.purchaseDate, items: [], totalCost: 0, paidAmount: 0 };
+            bEntry.items.push(p);
+            bEntry.totalCost = parseFloat((bEntry.totalCost + p.totalCost).toFixed(2));
+            bEntry.paidAmount = parseFloat((bEntry.paidAmount + p.paidAmount).toFixed(2));
+            bonMap.set(bNum, bEntry);
+          }
+          const distinctBons = Array.from(bonMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+
+          // Group by Product for automatic cumulative summary (Vue Synthèse Cumulée)
+          const aggMap = new Map<string, {
+            productName: string;
+            unit: string;
+            quantity: number;
+            consumed: number;
+            totalCost: number;
+            paidAmount: number;
+            bonNumbers: Set<string>;
+            dates: Set<string>;
+            rawPurchases: SupplierPurchase[];
+          }>();
+
+          for (const p of supplierPurchases) {
+            const norm = p.productName.trim().toLowerCase();
+            const existing = aggMap.get(norm) || {
+              productName: p.productName.trim(),
+              unit: p.unit || "kg",
+              quantity: 0,
+              consumed: 0,
+              totalCost: 0,
+              paidAmount: 0,
+              bonNumbers: new Set<string>(),
+              dates: new Set<string>(),
+              rawPurchases: [],
+            };
+            existing.quantity = parseFloat((existing.quantity + p.quantity).toFixed(2));
+            existing.consumed = parseFloat((existing.consumed + p.consumed).toFixed(2));
+            existing.totalCost = parseFloat((existing.totalCost + p.totalCost).toFixed(2));
+            existing.paidAmount = parseFloat((existing.paidAmount + p.paidAmount).toFixed(2));
+            existing.bonNumbers.add(getBonNumber(p));
+            if (p.purchaseDate) existing.dates.add(p.purchaseDate);
+            existing.rawPurchases.push(p);
+            aggMap.set(norm, existing);
+          }
+
+          const aggregatedProducts = Array.from(aggMap.values()).map(item => {
+            const avgPu = item.quantity > 0 ? parseFloat((item.totalCost / item.quantity).toFixed(2)) : 0;
+            const remainingQty = parseFloat((item.quantity - item.consumed).toFixed(2));
+            const remainingDebt = parseFloat((item.totalCost - item.paidAmount).toFixed(2));
+            const isSolded = item.paidAmount >= item.totalCost;
+            return {
+              ...item,
+              avgPu,
+              remainingQty,
+              remainingDebt,
+              isSolded,
+            };
+          }).sort((a, b) => a.productName.localeCompare(b.productName));
+
+          // Filtered list of Bons for the "bons" view mode
+          const displayedBons = selectedBonFilter === "all"
+            ? distinctBons
+            : distinctBons.filter(b => b.orderNumber === selectedBonFilter);
+
           return (
             <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl md:max-w-6xl w-[96vw] rounded-2xl bg-card text-card-foreground">
               <DialogHeader className="border-b pb-2">
@@ -1514,6 +1607,60 @@ function ProgrammesPage() {
                 </div>
               </div>
 
+              {/* Mode Switcher: Cumul Automatique vs Bons d'Achat */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-y py-2.5 my-1">
+                <div className="flex items-center gap-1.5 bg-muted/70 p-1 rounded-xl border">
+                  <button
+                    type="button"
+                    onClick={() => setSupplierViewMode("cumul")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      supplierViewMode === "cumul"
+                        ? "bg-card text-primary shadow-xs font-black border border-primary/20"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    Vue Synthèse Cumulée (Comptable)
+                    <span className="ml-1 text-[10px] bg-primary/10 text-primary px-1.5 py-0.2 rounded-full">
+                      {aggregatedProducts.length}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSupplierViewMode("bons")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      supplierViewMode === "bons"
+                        ? "bg-card text-primary shadow-xs font-black border border-primary/20"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    Vue par Bon d'Achat (Détail Interventions)
+                    <span className="ml-1 text-[10px] bg-primary/10 text-primary px-1.5 py-0.2 rounded-full">
+                      {distinctBons.length}
+                    </span>
+                  </button>
+                </div>
+
+                {supplierViewMode === "bons" && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-muted-foreground">Filtrer par Bon :</span>
+                    <select
+                      value={selectedBonFilter}
+                      onChange={(e) => setSelectedBonFilter(e.target.value)}
+                      className="h-8 rounded-xl border bg-background px-3 text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      <option value="all">Tous les Bons d'Achat ({distinctBons.length})</option>
+                      {distinctBons.map((b) => (
+                        <option key={b.orderNumber} value={b.orderNumber}>
+                          {b.orderNumber} ({b.date}) — {b.items.length} produit{b.items.length > 1 ? "s" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
               {/* Panneau de modification de ligne sélectionnée */}
               {editingPurchase && (
                 <EditPurchaseInlineForm
@@ -1527,105 +1674,240 @@ function ProgrammesPage() {
                 />
               )}
 
-              {/* Table of purchased products */}
-              <div className="overflow-x-auto rounded-xl border bg-muted/10 shadow-xs">
-                <table className="w-full text-xs text-left border-collapse">
-                  <thead>
-                    <tr className="bg-muted text-muted-foreground border-b uppercase font-bold text-[9px]">
-                      <th className="p-2 border whitespace-nowrap">Date</th>
-                      <th className="p-2 border">Produit</th>
-                      <th className="p-2 border text-right whitespace-nowrap bg-primary/5 text-primary font-black">P.U. (DA)</th>
-                      <th className="p-2 border text-center whitespace-nowrap">Acheté</th>
-                      <th className="p-2 border text-center whitespace-nowrap">Consommé</th>
-                      <th className="p-2 border text-center whitespace-nowrap">Restant</th>
-                      <th className="p-2 border text-right whitespace-nowrap">Total (DA)</th>
-                      <th className="p-2 border text-right whitespace-nowrap">Payé / Avance</th>
-                      <th className="p-2 border text-right whitespace-nowrap">Reste</th>
-                      <th className="p-2 border text-center whitespace-nowrap">Statut</th>
-                      <th className="p-2 border text-center whitespace-nowrap">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y font-medium text-foreground">
-                    {supplierPurchases.map((p) => {
-                      const remainingQty = parseFloat((p.quantity - p.consumed).toFixed(2));
-                      const remainingPay = parseFloat((p.totalCost - p.paidAmount).toFixed(2));
-                      const isSolded = p.paidAmount >= p.totalCost;
-                      const actionText = isSolded ? "Soldé" : "Dette";
-                      const pu = p.pricePerUnit > 0 ? p.pricePerUnit : (p.quantity > 0 ? Math.round((p.totalCost / p.quantity) * 100) / 100 : 0);
-                      const isEditing = editingPurchase?.id === p.id;
+              {/* VIEW MODE 1: SYNTHÈSE CUMULÉE PAR PRODUIT */}
+              {supplierViewMode === "cumul" && (
+                <div className="space-y-2">
+                  <div className="overflow-x-auto rounded-xl border bg-muted/10 shadow-xs">
+                    <table className="w-full text-xs text-left border-collapse">
+                      <thead>
+                        <tr className="bg-muted text-muted-foreground border-b uppercase font-bold text-[9px]">
+                          <th className="p-2.5 border">Produit & Unité</th>
+                          <th className="p-2.5 border text-right whitespace-nowrap bg-primary/5 text-primary font-black">P.U. Moyen</th>
+                          <th className="p-2.5 border text-center whitespace-nowrap bg-emerald-50/50 dark:bg-emerald-950/20 font-black text-emerald-800 dark:text-emerald-300">Total Acheté</th>
+                          <th className="p-2.5 border text-center whitespace-nowrap text-amber-700 font-bold">Total Consommé</th>
+                          <th className="p-2.5 border text-center whitespace-nowrap">Restant</th>
+                          <th className="p-2.5 border text-right whitespace-nowrap font-black">Total Facturé</th>
+                          <th className="p-2.5 border text-right whitespace-nowrap text-emerald-600 font-bold">Total Payé</th>
+                          <th className="p-2.5 border text-right whitespace-nowrap">Reste à Payer</th>
+                          <th className="p-2.5 border text-center whitespace-nowrap">Statut</th>
+                          <th className="p-2.5 border whitespace-nowrap">Bons d'Achat Associés</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y font-medium text-foreground">
+                        {aggregatedProducts.length === 0 ? (
+                          <tr>
+                            <td colSpan={10} className="p-6 text-center text-muted-foreground italic">
+                              Aucun produit acheté enregistré pour ce fournisseur.
+                            </td>
+                          </tr>
+                        ) : (
+                          aggregatedProducts.map((item) => (
+                            <tr key={item.productName} className="hover:bg-muted/40 transition-colors">
+                              <td className="p-2.5 border font-bold text-foreground">
+                                <div className="flex flex-col">
+                                  <span>{item.productName.split("/")[0]}</span>
+                                  <span className="text-[10px] text-muted-foreground font-normal">
+                                    {item.rawPurchases.length} intervention{item.rawPurchases.length > 1 ? "s" : ""} planifiée{item.rawPurchases.length > 1 ? "s" : ""}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="p-2.5 border text-right font-mono font-bold text-primary whitespace-nowrap bg-primary/5">
+                                {formatMoney(item.avgPu)}
+                              </td>
+                              <td className="p-2.5 border text-center whitespace-nowrap font-black bg-emerald-50/40 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 text-[13px]">
+                                {item.quantity} {item.unit}
+                              </td>
+                              <td className="p-2.5 border text-center text-amber-700 whitespace-nowrap font-bold">
+                                {item.consumed} {item.unit}
+                              </td>
+                              <td className={`p-2.5 border text-center whitespace-nowrap font-bold ${item.remainingQty > 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
+                                {item.remainingQty} {item.unit}
+                              </td>
+                              <td className="p-2.5 border text-right font-mono font-black whitespace-nowrap">
+                                {formatMoney(item.totalCost)}
+                              </td>
+                              <td className="p-2.5 border text-right font-mono text-emerald-600 font-bold whitespace-nowrap">
+                                {formatMoney(item.paidAmount)}
+                              </td>
+                              <td className={`p-2.5 border text-right font-mono font-bold whitespace-nowrap ${item.remainingDebt > 0 ? "text-destructive" : "text-emerald-600"}`}>
+                                {formatMoney(item.remainingDebt)}
+                              </td>
+                              <td className="p-2.5 border text-center whitespace-nowrap">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${item.isSolded ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"}`}>
+                                  {item.isSolded ? "Soldé" : "Dette"}
+                                </span>
+                              </td>
+                              <td className="p-2.5 border">
+                                <div className="flex flex-wrap gap-1">
+                                  {Array.from(item.bonNumbers).map((bNum) => (
+                                    <button
+                                      type="button"
+                                      key={bNum}
+                                      onClick={() => {
+                                        setSelectedBonFilter(bNum);
+                                        setSupplierViewMode("bons");
+                                      }}
+                                      className="text-[10px] bg-primary/10 hover:bg-primary/20 text-primary font-mono font-bold px-2 py-0.5 rounded-md border border-primary/20 transition-colors cursor-pointer"
+                                      title="Cliquer pour voir le détail de ce bon"
+                                    >
+                                      {bNum}
+                                    </button>
+                                  ))}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-muted-foreground px-1">
+                    <span>
+                      💡 Cumul automatique sur l'ensemble des bons d'achat d'interventions ({distinctBons.length} bon{distinctBons.length > 1 ? "s" : ""}).
+                    </span>
+                    <span className="font-semibold">
+                      Total Articles : {aggregatedProducts.reduce((sum, it) => sum + it.quantity, 0)} (kg/L)
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* VIEW MODE 2: DÉTAIL PAR BON D'ACHAT */}
+              {supplierViewMode === "bons" && (
+                <div className="space-y-4">
+                  {displayedBons.length === 0 ? (
+                    <div className="p-8 text-center text-muted-foreground border rounded-xl bg-muted/10">
+                      Aucun bon d'achat correspondant.
+                    </div>
+                  ) : (
+                    displayedBons.map((bon) => {
+                      const isBonSolded = bon.paidAmount >= bon.totalCost;
+                      const bonDebt = bon.totalCost - bon.paidAmount;
 
                       return (
-                        <tr
-                          key={p.id}
-                          className={`hover:bg-muted/40 transition-colors ${isEditing ? "bg-primary/10 ring-2 ring-primary/40 font-bold" : ""}`}
-                          onDoubleClick={() => setEditingPurchase(p)}
-                          title="Double-cliquer pour modifier cette ligne"
-                        >
-                          <td className="p-2 border whitespace-nowrap font-mono text-[11px]">{p.purchaseDate}</td>
-                          <td className="p-2 border font-bold truncate max-w-[170px]" title={p.productName}>
-                            {p.productName.split("/")[0]}
-                          </td>
-                          <td className="p-2 border text-right font-mono font-bold text-primary whitespace-nowrap bg-primary/5">
-                            {formatMoney(pu)}
-                          </td>
-                          <td className="p-2 border text-center whitespace-nowrap font-semibold">
-                            {p.quantity} {p.unit}
-                          </td>
-                          <td className="p-2 border text-center text-amber-700 whitespace-nowrap font-semibold">
-                            {p.consumed} {p.unit}
-                          </td>
-                          <td className={`p-2 border text-center whitespace-nowrap font-bold ${remainingQty > 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
-                            {remainingQty} {p.unit}
-                          </td>
-                          <td className="p-2 border text-right font-mono font-bold whitespace-nowrap">
-                            {formatMoney(p.totalCost)}
-                          </td>
-                          <td className="p-2 border text-right font-mono text-emerald-600 font-bold whitespace-nowrap">
-                            {formatMoney(p.paidAmount)}
-                          </td>
-                          <td className={`p-2 border text-right font-mono font-bold whitespace-nowrap ${remainingPay > 0 ? "text-destructive" : "text-emerald-600"}`}>
-                            {formatMoney(remainingPay)}
-                          </td>
-                          <td className="p-2 border text-center whitespace-nowrap">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isSolded ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"}`}>
-                              {actionText}
-                            </span>
-                          </td>
-                          <td className="p-2 border text-center whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1">
-                              <Button
-                                size="sm"
-                                variant={isEditing ? "default" : "outline"}
-                                onClick={() => setEditingPurchase(isEditing ? null : p)}
-                                className={`h-7 px-2.5 text-[11px] font-bold gap-1 rounded-lg ${isEditing ? "bg-primary text-primary-foreground shadow-xs" : "bg-primary/10 border-primary/20 text-primary hover:bg-primary hover:text-white"}`}
-                                title="Modifier cette transaction"
-                              >
-                                <Pencil className="h-3 w-3" />
-                                {isEditing ? "En cours" : "Modifier"}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  if (window.confirm(`Voulez-vous vraiment supprimer l'achat de "${p.productName}" ?`)) {
-                                    deletePurchase(p.id);
-                                    if (editingPurchase?.id === p.id) setEditingPurchase(null);
-                                    toast.success("Achat supprimé avec succès !");
-                                  }
-                                }}
-                                className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                title="Supprimer la transaction"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
+                        <div key={bon.orderNumber} className="rounded-xl border bg-card shadow-xs overflow-hidden">
+                          {/* Bon d'Achat Header */}
+                          <div className="bg-muted/40 border-b p-3 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="bg-primary text-primary-foreground text-xs font-mono font-black px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-xs">
+                                <FileText className="h-3.5 w-3.5" />
+                                {bon.orderNumber}
+                              </span>
+                              <span className="text-xs font-bold text-foreground">
+                                Intervention du {bon.date}
+                              </span>
+                              <span className="text-[11px] text-muted-foreground font-medium">
+                                ({bon.items.length} produit{bon.items.length > 1 ? "s" : ""})
+                              </span>
                             </div>
-                          </td>
-                        </tr>
+                            <div className="flex items-center gap-3 text-xs">
+                              <div className="font-mono">
+                                <span className="text-muted-foreground text-[10px] uppercase font-bold mr-1">Montant Bon :</span>
+                                <span className="font-bold text-foreground">{formatMoney(bon.totalCost)}</span>
+                              </div>
+                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${isBonSolded ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"}`}>
+                                {isBonSolded ? "Soldé" : `Reste : ${formatMoney(bonDebt)}`}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Items Table for this Bon */}
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs text-left border-collapse">
+                              <thead>
+                                <tr className="bg-muted/20 text-muted-foreground border-b uppercase font-bold text-[9px]">
+                                  <th className="p-2 border whitespace-nowrap">Date</th>
+                                  <th className="p-2 border">Produit</th>
+                                  <th className="p-2 border text-right whitespace-nowrap bg-primary/5 text-primary font-black">P.U. (DA)</th>
+                                  <th className="p-2 border text-center whitespace-nowrap font-bold">Acheté</th>
+                                  <th className="p-2 border text-center whitespace-nowrap">Consommé</th>
+                                  <th className="p-2 border text-center whitespace-nowrap">Restant</th>
+                                  <th className="p-2 border text-right whitespace-nowrap">Total (DA)</th>
+                                  <th className="p-2 border text-right whitespace-nowrap text-emerald-600">Payé</th>
+                                  <th className="p-2 border text-right whitespace-nowrap">Reste</th>
+                                  <th className="p-2 border text-center whitespace-nowrap">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y font-medium text-foreground">
+                                {bon.items.map((p) => {
+                                  const remainingQty = parseFloat((p.quantity - p.consumed).toFixed(2));
+                                  const remainingPay = parseFloat((p.totalCost - p.paidAmount).toFixed(2));
+                                  const pu = p.pricePerUnit > 0 ? p.pricePerUnit : (p.quantity > 0 ? Math.round((p.totalCost / p.quantity) * 100) / 100 : 0);
+                                  const isEditing = editingPurchase?.id === p.id;
+
+                                  return (
+                                    <tr
+                                      key={p.id}
+                                      className={`hover:bg-muted/40 transition-colors ${isEditing ? "bg-primary/10 ring-2 ring-primary/40 font-bold" : ""}`}
+                                      onDoubleClick={() => setEditingPurchase(p)}
+                                      title="Double-cliquer pour modifier cette ligne"
+                                    >
+                                      <td className="p-2 border whitespace-nowrap font-mono text-[11px]">{p.purchaseDate}</td>
+                                      <td className="p-2 border font-bold truncate max-w-[170px]" title={p.productName}>
+                                        {p.productName.split("/")[0]}
+                                      </td>
+                                      <td className="p-2 border text-right font-mono font-bold text-primary whitespace-nowrap bg-primary/5">
+                                        {formatMoney(pu)}
+                                      </td>
+                                      <td className="p-2 border text-center whitespace-nowrap font-semibold">
+                                        {p.quantity} {p.unit}
+                                      </td>
+                                      <td className="p-2 border text-center text-amber-700 whitespace-nowrap font-semibold">
+                                        {p.consumed} {p.unit}
+                                      </td>
+                                      <td className={`p-2 border text-center whitespace-nowrap font-bold ${remainingQty > 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
+                                        {remainingQty} {p.unit}
+                                      </td>
+                                      <td className="p-2 border text-right font-mono font-bold whitespace-nowrap">
+                                        {formatMoney(p.totalCost)}
+                                      </td>
+                                      <td className="p-2 border text-right font-mono text-emerald-600 font-bold whitespace-nowrap">
+                                        {formatMoney(p.paidAmount)}
+                                      </td>
+                                      <td className={`p-2 border text-right font-mono font-bold whitespace-nowrap ${remainingPay > 0 ? "text-destructive" : "text-emerald-600"}`}>
+                                        {formatMoney(remainingPay)}
+                                      </td>
+                                      <td className="p-2 border text-center whitespace-nowrap">
+                                        <div className="flex items-center justify-center gap-1">
+                                          <Button
+                                            size="sm"
+                                            variant={isEditing ? "default" : "outline"}
+                                            onClick={() => setEditingPurchase(isEditing ? null : p)}
+                                            className={`h-7 px-2.5 text-[11px] font-bold gap-1 rounded-lg ${isEditing ? "bg-primary text-primary-foreground shadow-xs" : "bg-primary/10 border-primary/20 text-primary hover:bg-primary hover:text-white"}`}
+                                            title="Modifier cette transaction"
+                                          >
+                                            <Pencil className="h-3 w-3" />
+                                            {isEditing ? "En cours" : "Modifier"}
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => {
+                                              if (window.confirm(`Voulez-vous vraiment supprimer l'achat de "${p.productName}" ?`)) {
+                                                deletePurchase(p.id);
+                                                if (editingPurchase?.id === p.id) setEditingPurchase(null);
+                                                toast.success("Achat supprimé avec succès !");
+                                              }
+                                            }}
+                                            className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                            title="Supprimer la transaction"
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                          </Button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                       );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                    })
+                  )}
+                </div>
+              )}
 
               <DialogFooter className="mt-4 gap-2">
                 <Button variant="outline" onClick={() => setSelectedSupplier(null)} className="rounded-xl">

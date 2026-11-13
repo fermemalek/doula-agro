@@ -7,6 +7,7 @@ const KEY = "doula-suppliers";
 export interface SupplierPurchase {
   id: string;
   recoId?: string;
+  orderNumber?: string; // N° de Bon d'Achat (ex: "BA-2026-03-10")
   supplierName: string;
   productName: string;
   purchaseDate: string;
@@ -22,9 +23,23 @@ let purchases: SupplierPurchase[] = [];
 const listeners = new Set<() => void>();
 
 function mapFromDb(dbItem: any): SupplierPurchase {
+  const idStr = String(dbItem.id || "");
+  let recoId = dbItem.reco_id;
+  let orderNumber = dbItem.order_number;
+
+  if (idStr.startsWith("p-ba-")) {
+    const parts = idStr.split("-");
+    if (!recoId && parts[2]) recoId = parts[2];
+    if (!orderNumber && parts[3]) orderNumber = `BA-${parts[3]}`;
+  } else if (idStr.startsWith("p-reco-")) {
+    const parts = idStr.split("-");
+    if (!recoId && parts[2]) recoId = parts[2];
+  }
+
   return {
     id: dbItem.id,
-    recoId: dbItem.reco_id || (dbItem.id && dbItem.id.startsWith("p-reco-") ? dbItem.id.split("-")[2] : undefined),
+    recoId,
+    orderNumber,
     supplierName: dbItem.supplier_name,
     productName: dbItem.product_name,
     purchaseDate: dbItem.purchase_date,
@@ -82,7 +97,7 @@ export function reconcilePurchases(sourceList: SupplierPurchase[]): { clean: Sup
 
   for (const p of list) {
     const sNorm = (p.supplierName || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const isRecoPurchase = sNorm.includes("achat valide") || sNorm.includes("historique") || (p.id && p.id.startsWith("p-reco-"));
+    const isRecoPurchase = sNorm.includes("achat valide") || sNorm.includes("historique") || (p.id && (p.id.startsWith("p-reco-") || p.id.startsWith("p-ba-")));
     let itemChanged = false;
 
     // Cas 1 : Produits foliaires où le débit initial a été multiplié par le nombre de parcelles (ex: Algreen ou Calcium-Bore 1.5 L acheté vs 3 L consommé)
@@ -173,7 +188,7 @@ export function deletePurchasesForReco(recoId: string, recoProductNames?: string
     if (p.recoId && p.recoId === recoId) return true;
     if (p.id.includes(recoId)) return true;
     const sNorm = (p.supplierName || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const isRecoPurchase = sNorm.includes("achat valide") || sNorm.includes("historique") || (p.id && p.id.startsWith("p-reco-"));
+    const isRecoPurchase = sNorm.includes("achat valide") || sNorm.includes("historique") || (p.id && (p.id.startsWith("p-reco-") || p.id.startsWith("p-ba-")));
     if (recoProductNames && recoProductNames.length > 0 && isRecoPurchase) {
       const pNorm = p.productName.trim().toLowerCase();
       if (recoProductNames.some((rName) => {

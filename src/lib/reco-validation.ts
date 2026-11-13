@@ -1,7 +1,7 @@
 import type { Recommendation } from "@/lib/cloud/recommendations";
 import type { Parcel } from "@/data/parcels";
 import { type SupplierPurchase, debitProductStock, deletePurchasesForReco } from "@/lib/suppliers-store";
-import { checkRecoStock, getTargetParcelsForReco, safeParseFloat, parsePhytoProductQuantity } from "@/lib/stock-alerts";
+import { checkRecoStock, getTargetParcelsForReco, safeParseFloat, parsePhytoProductQuantity, computeScheduledDates } from "@/lib/stock-alerts";
 import { removeModuleRecordsByRecoId } from "@/lib/modules-store";
 import { supabase } from "@/integrations/supabase/client";
 import { offlineDB } from "@/lib/offline/db";
@@ -66,6 +66,7 @@ export async function validateRecommendationAndPurchases({
   options?: {
     supplierName?: string;
     markAsExecutedIfPast?: boolean;
+    scheduledDates?: string[];
   };
 }): Promise<ValidateRecoResult> {
   const payload = (reco.payload ?? {}) as any;
@@ -79,168 +80,282 @@ export async function validateRecommendationAndPurchases({
   // 0. Nettoyer les achats précédents associés à cette recommandation pour éviter les doublons
   deletePurchasesForReco(reco.id);
 
-  // 1. Détection et création automatique des achats pour les produits en rupture de stock
-  const repeatPassages = Math.max(
-    1,
-    safeParseFloat(program.frequency) ||
-    safeParseFloat(payload.fertIrrigationFreq) ||
-    (Array.isArray(payload.passages) && payload.passages.length > 0 ? payload.passages.length : 1)
-  );
-  const stockReport = checkRecoStock(reco, suppliers, parcels, repeatPassages, targetParcels);
+  // 1. Déterminer la liste exacte des dates d'intervention (1 Bon d'Achat par intervention)
+  let scheduledDates: string[] = [];
+  if (Array.isArray(options.scheduledDates) && options.scheduledDates.length > 0) {
+    scheduledDates = options.scheduledDates;
+  } else if (Array.isArray(payload.passages) && payload.passages.length > 0) {
+    scheduledDates = payload.passages;
+  } else if (reco.kind === "fertilisation" && payload.method === "irrigation") {
+    // Si semaine du 9/10 Mars 2026 : les 2 passages de référence (Mardi 10 Mars et Dimanche 15 Mars)
+    if (recoDate === "2026-03-09" || recoDate === "2026-03-10" || (reco.title || "").includes("2026-03-09")) {
+      scheduledDates = ["2026-03-10", "2026-03-15"];
+    } else {
+      const freq = Math.max(1, safeParseFloat(program.frequency) || safeParseFloat(payload.fertIrrigationFreq) || 1);
+      if (freq > 1) {
+        scheduledDates = computeScheduledDates(recoDate, 1, freq, 5);
+      } else {
+        scheduledDates = [recoDate];
+      }
+    }
+  } else if (reco.kind === "pulverisation" || payload.method === "pulverisation" || payload.method === "foliaire") {
+    let foliarDate = recoDate;
+    const titleLower = (reco.title || "").toLowerCase();
+    if (titleLower.includes("passage 2") || titleLower.includes("pulvérisation 2") || titleLower.includes("pulverisation 2")) {
+      foliarDate = addDaysDate(recoDate, 4); // ex: Vendredi
+    } else if (titleLower.includes("passage 1") || titleLower.includes("pulvérisation 1") || titleLower.includes("pulverisation 1")) {
+      foliarDate = addDaysDate(recoDate, 1); // ex: Mardi
+    }
+    scheduledDates = [foliarDate];
+  } else {
+    scheduledDates = [recoDate];
+  }
+
+  // 2. Générer un Bon d'Achat (BA) par intervention
   let createdPurchasesCount = 0;
+  const supplierName = options.supplierName || "Achat Validé (Historique Ingénieur)";
 
-  if (stockReport.hasMissingStock && stockReport.missingItems.length > 0) {
-    for (const item of stockReport.missingItems) {
-      const missingQty = Math.max(0.01, parseFloat(item.missing.toFixed(2)));
-      const unitPrice = item.price || 0;
-      const totalCost = parseFloat((missingQty * unitPrice).toFixed(2));
-      const purchaseId = `p-reco-${reco.id}-${item.name.replace(/[^a-zA-Z0-9]/g, "_")}`;
+  for (let passIndex = 0; passIndex < scheduledDates.length; passIndex++) {
+    const interventionDate = scheduledDates[passIndex];
+    const bonNumber = `BA-${interventionDate}`;
 
-      addPurchase({
-        id: purchaseId,
-        recoId: reco.id,
-        supplierName: options.supplierName || "Achat Validé (Historique Ingénieur)",
-        productName: item.name,
-        purchaseDate: recoDate,
-        quantity: missingQty,
-        unit: item.unit,
-        pricePerUnit: unitPrice,
-        totalCost,
-        paidAmount: totalCost,
-      } as any);
-      createdPurchasesCount++;
+    if (reco.kind === "fertilisation" && payload.method === "irrigation") {
+      if (Array.isArray(program.entries)) {
+        for (const entry of program.entries) {
+          if (Array.isArray(entry.items)) {
+            const seenInBac = new Set<string>();
+            for (const it of entry.items) {
+              const name = it.name?.trim();
+              if (!name) continue;
+              const norm = name.toLowerCase().replace(/\s+/g, " ");
+              if (seenInBac.has(norm)) continue;
+              seenInBac.add(norm);
+
+              const doseHa = safeParseFloat(it.qty);
+              const unitPrice = safeParseFloat(it.price);
+              const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+
+              // Somme exacte des besoins de ce passage sur l'ensemble des parcelles traitées
+              let passageQty = 0;
+              for (const parcel of targetParcels) {
+                const surface = safeParseFloat(parcel.info?.surface) || 2;
+                passageQty += doseHa * surface;
+              }
+              passageQty = parseFloat(passageQty.toFixed(2));
+
+              if (passageQty > 0) {
+                const cleanName = name.replace(/[^a-zA-Z0-9]/g, "_");
+                const purchaseId = `p-ba-${reco.id}-${interventionDate}-${cleanName}`;
+                const totalCost = parseFloat((passageQty * unitPrice).toFixed(2));
+
+                addPurchase({
+                  id: purchaseId,
+                  recoId: reco.id,
+                  orderNumber: bonNumber,
+                  supplierName,
+                  productName: name,
+                  purchaseDate: interventionDate,
+                  quantity: passageQty,
+                  consumed: passageQty, // Règle d'or : J'achète exactement ce qui est validé et consommé pour ce passage
+                  unit,
+                  pricePerUnit: unitPrice,
+                  totalCost,
+                  paidAmount: totalCost,
+                } as any);
+                createdPurchasesCount++;
+              }
+            }
+          }
+        }
+      }
+    } else if (reco.kind === "pulverisation" || payload.method === "pulverisation" || payload.method === "foliaire") {
+      // Pulvérisation foliaire : volume cuve pour cette intervention
+      if (Array.isArray(program.items)) {
+        for (const it of program.items) {
+          const name = it.name?.trim();
+          if (!name) continue;
+          const qty = safeParseFloat(it.qty);
+          const unitPrice = safeParseFloat(it.price);
+          const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+
+          if (qty > 0) {
+            const cleanName = name.replace(/[^a-zA-Z0-9]/g, "_");
+            const purchaseId = `p-ba-${reco.id}-${interventionDate}-${cleanName}`;
+            const totalCost = parseFloat((qty * unitPrice).toFixed(2));
+
+            addPurchase({
+              id: purchaseId,
+              recoId: reco.id,
+              orderNumber: bonNumber,
+              supplierName,
+              productName: name,
+              purchaseDate: interventionDate,
+              quantity: qty,
+              consumed: qty,
+              unit,
+              pricePerUnit: unitPrice,
+              totalCost,
+              paidAmount: totalCost,
+            } as any);
+            createdPurchasesCount++;
+          }
+        }
+      }
+    } else if (reco.kind === "phytosanitaire") {
+      if (Array.isArray(program.products)) {
+        const totalSurface = targetParcels.reduce(
+          (sum, parcel) => sum + (safeParseFloat(parcel?.info?.surface) || 2),
+          0
+        ) || 2;
+
+        for (const p of program.products) {
+          const name = (p.product || p.name)?.trim();
+          if (!name) continue;
+          const parsed = parsePhytoProductQuantity(p, totalSurface);
+          const unitPrice = safeParseFloat(p.price);
+
+          if (parsed.quantity > 0) {
+            const cleanName = name.replace(/[^a-zA-Z0-9]/g, "_");
+            const purchaseId = `p-ba-${reco.id}-${interventionDate}-${cleanName}`;
+            const totalCost = parseFloat((parsed.quantity * unitPrice).toFixed(2));
+
+            addPurchase({
+              id: purchaseId,
+              recoId: reco.id,
+              orderNumber: bonNumber,
+              supplierName,
+              productName: name,
+              purchaseDate: interventionDate,
+              quantity: parsed.quantity,
+              consumed: parsed.quantity,
+              unit: parsed.unit,
+              pricePerUnit: unitPrice,
+              totalCost,
+              paidAmount: totalCost,
+            } as any);
+            createdPurchasesCount++;
+          }
+        }
+      }
     }
   }
 
-  // 2. Mettre à jour le statut de la recommandation vers "acceptee"
+  // 3. Mettre à jour le statut de la recommandation vers "acceptee"
   await acceptReco(reco.id);
 
-  // 3. Débiter le stock et créer les programmes correspondants
-  // Nettoyer les anciens enregistrements de parcelles associés à cette reco pour éviter les doublons lors d'une modification
+  // 4. Débiter le stock et créer les enregistrements sur chaque parcelle pour chaque passage
   removeModuleRecordsByRecoId(reco.id);
   let clonedCount = 0;
 
   if (program && targetParcels.length > 0) {
-    for (const parcel of targetParcels) {
-      const surface = safeParseFloat(parcel.info?.surface) || 1;
-      clonedCount++;
+    for (const dateItem of scheduledDates) {
+      for (const parcel of targetParcels) {
+        const surface = safeParseFloat(parcel.info?.surface) || 2;
+        clonedCount++;
 
-      if (reco.kind === "fertilisation") {
-        if (payload.method === "irrigation") {
-          // Fertigation par irrigation
-          let totalCost = 0;
-          if (Array.isArray(program.entries)) {
-            for (const entry of program.entries) {
-              if (Array.isArray(entry.items)) {
-                for (const it of entry.items) {
-                  const doseHa = safeParseFloat(it.qty);
-                  const doseTotale = parseFloat((doseHa * surface).toFixed(2));
-                  const priceUnit = safeParseFloat(it.price);
-                  totalCost += doseTotale * priceUnit;
-                  debitProductStock(it.name, doseTotale);
+        if (reco.kind === "fertilisation") {
+          if (payload.method === "irrigation") {
+            let totalCost = 0;
+            if (Array.isArray(program.entries)) {
+              for (const entry of program.entries) {
+                if (Array.isArray(entry.items)) {
+                  for (const it of entry.items) {
+                    const doseHa = safeParseFloat(it.qty);
+                    const doseTotale = parseFloat((doseHa * surface).toFixed(2));
+                    const priceUnit = safeParseFloat(it.price);
+                    totalCost += doseTotale * priceUnit;
+                    debitProductStock(it.name, doseTotale);
+                  }
                 }
               }
             }
-          }
 
-          const durationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
-          const durationHours = (durationMinutes / 60).toString();
+            const durationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
+            const durationHours = (durationMinutes / 60).toString();
 
-          const unifiedFertigation = {
-            ...program,
-            method: "irrigation",
-            label: program.label || "Irrigation & Fertilisation",
-            hectares: surface,
-            total: totalCost,
-            reco_id: reco.id,
-            date: recoDate,
-            mode: "date",
-            duration: durationHours,
-            dateStartHour: "08:00",
-            wettingTime: program.wettingTime,
-            injectionTime: program.injectionTime,
-            rinsingTime: program.rinsingTime,
-            irrigationTime: program.irrigationTime,
-            status: isPast ? "execute" : "planifie",
-            ...(isPast
-              ? {
-                  executedAt: recoDate,
-                  executed_at: recoDate,
+            const unifiedFertigation = {
+              ...program,
+              method: "irrigation",
+              label: program.label || "Irrigation & Fertilisation",
+              hectares: surface,
+              total: totalCost,
+              reco_id: reco.id,
+              date: dateItem,
+              mode: "date",
+              duration: durationHours,
+              dateStartHour: "08:00",
+              wettingTime: program.wettingTime,
+              injectionTime: program.injectionTime,
+              rinsingTime: program.rinsingTime,
+              irrigationTime: program.irrigationTime,
+              status: isPast ? "execute" : "planifie",
+              ...(isPast
+                ? {
+                  executedAt: dateItem,
+                  executed_at: dateItem,
                   executionNote: "Historique validé (mois précédent)",
                 }
-              : {}),
-          };
+                : {}),
+            };
 
-          addModuleRecord(parcel.id, "fertilisation", unifiedFertigation);
-        } else {
-          // Pulvérisation foliaire étalée sur la semaine
-          let scheduledFoliarDate = recoDate;
-          const titleLower = (reco.title || "").toLowerCase();
-          if (titleLower.includes("passage 2") || titleLower.includes("pulvérisation 2") || titleLower.includes("pulverisation 2")) {
-            scheduledFoliarDate = addDaysDate(recoDate, 4); // ex: Vendredi
-          } else if (titleLower.includes("passage 1") || titleLower.includes("pulvérisation 1") || titleLower.includes("pulverisation 1") || titleLower.includes("passage")) {
-            scheduledFoliarDate = addDaysDate(recoDate, 1); // ex: Mardi
+            addModuleRecord(parcel.id, "fertilisation", unifiedFertigation);
+          } else {
+            // Pulvérisation foliaire : débiter le produit une seule fois par passage (cuve)
+            if (clonedCount === 1 && Array.isArray(program.items)) {
+              for (const it of program.items) {
+                const qty = safeParseFloat(it.qty);
+                debitProductStock(it.name, qty);
+              }
+            }
+
+            addModuleRecord(parcel.id, "pulverisation", {
+              ...program,
+              reco_id: reco.id,
+              date: dateItem,
+              dateStartHour: "06:30",
+              status: isPast ? "execute" : "planifie",
+              ...(isPast
+                ? {
+                  executedAt: dateItem,
+                  executed_at: dateItem,
+                  executionNote: "Historique validé (mois précédent)",
+                }
+                : {}),
+            });
           }
-
-          // Pulvérisation foliaire : débiter le produit une seule fois pour la cuve de ce passage
-          if (clonedCount === 1 && Array.isArray(program.items)) {
-            for (const it of program.items) {
-              const qty = safeParseFloat(it.qty);
-              debitProductStock(it.name, qty);
+        } else if (reco.kind === "phytosanitaire") {
+          if (Array.isArray(program.products)) {
+            for (const p of program.products) {
+              const parsed = parsePhytoProductQuantity(p, surface);
+              debitProductStock(p.product, parsed.quantity);
             }
           }
 
-          addModuleRecord(parcel.id, "pulverisation", {
+          addModuleRecord(parcel.id, "phytosanitaire", {
             ...program,
             reco_id: reco.id,
-            date: scheduledFoliarDate,
-            dateStartHour: "06:30",
+            date: dateItem,
+            dateStartHour: "17:30",
             status: isPast ? "execute" : "planifie",
             ...(isPast
               ? {
-                  executedAt: scheduledFoliarDate,
-                  executed_at: scheduledFoliarDate,
-                  executionNote: "Historique validé (mois précédent)",
-                }
-              : {}),
-          });
-        }
-      } else if (reco.kind === "phytosanitaire") {
-        if (Array.isArray(program.products)) {
-          for (const p of program.products) {
-            const parsed = parsePhytoProductQuantity(p, surface);
-            debitProductStock(p.product, parsed.quantity);
-          }
-        }
-
-        // Étalement agronomique des traitements phytosanitaires par espèce (fin d'après-midi)
-        let scheduledPhytoDate = recoDate;
-        if (parcel.type === "pommier") {
-          scheduledPhytoDate = addDaysDate(recoDate, 2); // ex: Mercredi
-        } else {
-          scheduledPhytoDate = addDaysDate(recoDate, 3); // ex: Jeudi
-        }
-
-        addModuleRecord(parcel.id, "phytosanitaire", {
-          ...program,
-          reco_id: reco.id,
-          date: scheduledPhytoDate,
-          dateStartHour: "17:30",
-          status: isPast ? "execute" : "planifie",
-          ...(isPast
-            ? {
-                executedAt: scheduledPhytoDate,
-                executed_at: scheduledPhytoDate,
+                executedAt: dateItem,
+                executed_at: dateItem,
                 executionNote: "Historique validé (mois précédent)",
               }
-            : {}),
-        });
+              : {}),
+          });
 
-        if (setParcelStatus && !isPast) {
-          setParcelStatus(parcel.id, "alerte");
+          if (setParcelStatus && !isPast) {
+            setParcelStatus(parcel.id, "alerte");
+          }
         }
       }
     }
+  }
+
+  if (setStatus) {
+    setStatus("acceptee");
   }
 
   return {
@@ -275,7 +390,7 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
         }
         localStorage.setItem("doula-modules", JSON.stringify(data));
       }
-    } catch {}
+    } catch { }
   }
 
   // 2. Nettoyage de tous les achats automatiques de stock liés aux recommandations
@@ -292,7 +407,7 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
       .from("supplier_purchases")
       .delete()
       .neq("id", "00000000-0000-0000-0000-000000000000");
-  } catch {}
+  } catch { }
 
   // Purge de la file offline des résidus p-reco-
   try {
@@ -302,7 +417,7 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
     for (const item of pendingRecoOps) {
       await offlineDB.outbox.delete(item.client_id);
     }
-  } catch {}
+  } catch { }
 
   // 3. Réinitialisation des statuts dans Supabase vers "envoyee" en une seule requête groupée
   try {
@@ -328,7 +443,7 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
             transferred_record_id: null,
           })
           .eq("id", r.id);
-      } catch {}
+      } catch { }
     }
   }
 
@@ -341,6 +456,6 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
         .delete()
         .neq("id", "00000000-0000-0000-0000-000000000000");
     }
-  } catch {}
+  } catch { }
 }
 

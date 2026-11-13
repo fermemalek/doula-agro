@@ -613,6 +613,7 @@ export function RecommendationDetailDialog({
                           options: {
                             supplierName: "Achat Validé (Historique Ingénieur)",
                             markAsExecutedIfPast: true,
+                            scheduledDates,
                           },
                         });
                         toast.success(
@@ -1071,159 +1072,65 @@ export function RecommendationDetailDialog({
                           return toast.error("Aucune parcelle ciblée pour cette recommandation.");
                         }
 
-                        if (stockReport.hasMissingStock) {
-                          const missingNames = stockReport.missingItems.map(x => x.name).join(", ");
-                          const confirmPlan = window.confirm(
-                            `⚠️ Attention : Les stocks disponibles sont insuffisants pour (${missingNames}).\n\nSouhaitez-vous quand même enregistrer la planification répétée (${scheduledDates.length} passages) pour l'exécutant ?`
-                          );
-                          if (!confirmPlan) return;
-                        }
+                        const res = await validateRecommendationAndPurchases({
+                          reco,
+                          parcels,
+                          suppliers,
+                          addPurchase,
+                          acceptReco: async (id) => accept.mutateAsync(id),
+                          addModuleRecord,
+                          setParcelStatus: setStatus,
+                          options: {
+                            supplierName: "Achat Validé (Historique Ingénieur)",
+                            markAsExecutedIfPast: true,
+                            scheduledDates,
+                          },
+                        });
 
-                        await accept.mutateAsync(reco.id);
+                        // 2. Génération des passages d'irrigation seule (eau claire)
+                        if (reco.kind === "fertilisation" && payload.method === "irrigation" && pureScheduledDates.length > 0) {
+                          const pureDurationMinutes = parseDurationToMinutes(pureIrrigationDuration || "1h30");
+                          const pureDurationHours = (pureDurationMinutes / 60).toString();
 
-                        const safeParseFloat = (val: any): number => {
-                          if (val === null || val === undefined) return 0;
-                          if (typeof val === "number") return val;
-                          return parseFloat(String(val).trim().replace(",", ".")) || 0;
-                        };
+                          for (const pureDateItem of pureScheduledDates) {
+                            const sw = getSeasonalWindow(pureDateItem);
+                            const groups = groupParcelsForIrrigation(targetParcels);
+                            let currentStart = sw.startHour;
 
-                        let clonedCount = 0;
-                        if (program) {
-                          // 1. Répéter pour chaque date de fertilisation calculée
-                          for (const dateItem of scheduledDates) {
-                            if (reco.kind === "fertilisation") {
-                              if (payload.method === "irrigation") {
-                                const sw = getSeasonalWindow(dateItem);
-                                const groups = groupParcelsForIrrigation(targetParcels);
-                                let currentStart = sw.startHour;
-                                const durationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
+                            for (const group of groups) {
+                              const groupStart = currentStart;
+                              const groupEnd = addMinutesToTime(groupStart, pureDurationMinutes);
 
-                                for (const group of groups) {
-                                  const groupStart = currentStart;
-                                  const groupEnd = addMinutesToTime(groupStart, durationMinutes);
+                              for (const parcel of group) {
+                                const surface = safeParseFloat(parcel.info?.surface) || 1;
 
-                                  for (const parcel of group) {
-                                    const surface = safeParseFloat(parcel.info?.surface) || 1;
-                                    clonedCount++;
-
-                                    let totalCost = 0;
-                                    if (Array.isArray(program.entries)) {
-                                      for (const entry of program.entries) {
-                                        if (Array.isArray(entry.items)) {
-                                          for (const it of entry.items) {
-                                            const doseHa = safeParseFloat(it.qty);
-                                            const doseTotale = parseFloat((doseHa * surface).toFixed(2));
-                                            const priceUnit = safeParseFloat(it.price);
-                                            totalCost += doseTotale * priceUnit;
-                                            debitProductStock(it.name, doseTotale);
-                                          }
-                                        }
-                                      }
-                                    }
-
-                                    const durationHours = (durationMinutes / 60).toString();
-                                    // Programme unifié : Irrigation avec Fertilisation (Fertigation = 1 seule entrée par passage)
-                                    const unifiedFertigation = {
-                                      ...program,
-                                      method: "irrigation",
-                                      label: program.label || "Irrigation & Fertilisation",
-                                      hectares: surface,
-                                      total: totalCost,
-                                      reco_id: reco.id,
-                                      date: dateItem,
-                                      mode: "date",
-                                      duration: durationHours,
-                                      dateStartHour: groupStart,
-                                      wettingTime: program.wettingTime,
-                                      injectionTime: program.injectionTime,
-                                      rinsingTime: program.rinsingTime,
-                                      irrigationTime: program.irrigationTime,
-                                    };
-                                    addModuleRecord(parcel.id, "fertilisation", unifiedFertigation);
-                                  }
-
-                                  currentStart = addMinutesToTime(groupEnd, 5);
-                                }
-                              } else {
-                                // Pulvérisation foliaire : débiter le stock une seule fois par passage pour la cuve globale
-                                let debitedForDate = false;
-                                for (const parcel of targetParcels) {
-                                  clonedCount++;
-                                  if (!debitedForDate && Array.isArray(program.items)) {
-                                    for (const it of program.items) {
-                                      const qty = safeParseFloat(it.qty);
-                                      debitProductStock(it.name, qty);
-                                    }
-                                    debitedForDate = true;
-                                  }
-                                  addModuleRecord(parcel.id, "pulverisation", { ...program, reco_id: reco.id, date: dateItem });
-                                }
+                                const pureIrrigationRecord = {
+                                  kind: "irrigation",
+                                  method: "irrigation",
+                                  mode: "date",
+                                  label: `${program.label || "Irrigation"} - Eau claire (Sans fertilisation)`,
+                                  title: `Irrigation seule (${parcel.name})`,
+                                  reco_id: reco.id,
+                                  date: pureDateItem,
+                                  dateStartHour: groupStart,
+                                  duration: pureDurationHours,
+                                  durationMinutes: pureDurationMinutes,
+                                  hectares: surface,
+                                  total: 0,
+                                  isPureIrrigation: true,
+                                  status: "planifie",
+                                };
+                                addModuleRecord(parcel.id, "irrigation", pureIrrigationRecord);
                               }
-                            } else if (reco.kind === "phytosanitaire") {
-                              for (const parcel of targetParcels) {
-                                clonedCount++;
-                                const surface = safeParseFloat(parcel?.info?.surface) || 1;
-                                if (Array.isArray(program.products)) {
-                                  for (const p of program.products) {
-                                    const parsed = parsePhytoProductQuantity(p, surface);
-                                    debitProductStock(p.product, parsed.quantity);
-                                  }
-                                }
-                                addModuleRecord(parcel.id, "phytosanitaire", { ...program, reco_id: reco.id, date: dateItem });
-                                setStatus(parcel.id, "alerte");
-                              }
-                            }
-                          }
 
-                          // 2. Génération des passages d'irrigation seule (eau claire)
-                          if (reco.kind === "fertilisation" && payload.method === "irrigation" && pureScheduledDates.length > 0) {
-                            const pureDurationMinutes = parseDurationToMinutes(pureIrrigationDuration || "1h30");
-                            const pureDurationHours = (pureDurationMinutes / 60).toString();
-
-                            for (const pureDateItem of pureScheduledDates) {
-                              const sw = getSeasonalWindow(pureDateItem);
-                              const groups = groupParcelsForIrrigation(targetParcels);
-                              let currentStart = sw.startHour;
-
-                              for (const group of groups) {
-                                const groupStart = currentStart;
-                                const groupEnd = addMinutesToTime(groupStart, pureDurationMinutes);
-
-                                for (const parcel of group) {
-                                  const surface = safeParseFloat(parcel.info?.surface) || 1;
-                                  clonedCount++;
-
-                                  const pureIrrigationRecord = {
-                                    kind: "irrigation",
-                                    method: "irrigation",
-                                    mode: "date",
-                                    label: `${program.label || "Irrigation"} - Eau claire (Sans fertilisation)`,
-                                    title: `Irrigation seule (${parcel.name})`,
-                                    reco_id: reco.id,
-                                    date: pureDateItem,
-                                    dateStartHour: groupStart,
-                                    duration: pureDurationHours,
-                                    durationMinutes: pureDurationMinutes,
-                                    hectares: surface,
-                                    total: 0,
-                                    isPureIrrigation: true,
-                                    status: "planifie",
-                                  };
-                                  addModuleRecord(parcel.id, "irrigation", pureIrrigationRecord);
-                                }
-
-                                currentStart = addMinutesToTime(groupEnd, 5);
-                              }
+                              currentStart = addMinutesToTime(groupEnd, 5);
                             }
                           }
                         }
 
-                        const totalPassages = scheduledDates.length + pureScheduledDates.length;
-                        if (clonedCount > 0) {
-                          toast.success(`Planification validée avec succès ! ${scheduledDates.length} fert. + ${pureScheduledDates.length} irr. seule (${clonedCount} tâches créées).`);
-                        } else {
-                          toast.success("Recommandation planifiée.");
-                        }
+                        toast.success(
+                          `Planification et Bons d'Achat validés avec succès ! (${res.clonedCount} tâches créées, ${res.createdPurchasesCount} achats/bons enregistrés).`
+                        );
                         onOpenChange(false);
                       } catch (e) {
                         toast.error(e instanceof Error ? e.message : "Erreur de validation");
