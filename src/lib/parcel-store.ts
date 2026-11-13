@@ -10,6 +10,44 @@ type Overrides = Record<string, { info?: Partial<ParcelInfo>; status?: ParcelSta
 let overrides: Overrides = {};
 const listeners = new Set<() => void>();
 
+function reconcileParcelSurfaces(): boolean {
+  let changed = false;
+  const EXPECTED_SURFACES: Record<string, string> = {
+    p1: "2,00",
+    p2: "2,00",
+    p3: "2,00",
+    p4: "2,00",
+    nablara: "2,00",
+    redix25: "2,00",
+    pommier1: "1,00",
+    pommier2: "1,00",
+  };
+
+  for (const [id, targetSurface] of Object.entries(EXPECTED_SURFACES)) {
+    const o = overrides[id];
+    const currentSurface = o?.info?.surface?.trim();
+    if (
+      currentSurface === "2,16" ||
+      currentSurface === "2.16" ||
+      currentSurface === "1,6" ||
+      currentSurface === "1.6" ||
+      currentSurface === "1,60" ||
+      currentSurface === "1.60"
+    ) {
+      overrides[id] = {
+        ...overrides[id],
+        info: {
+          ...(overrides[id]?.info || {}),
+          surface: targetSurface,
+        },
+      };
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
 function load() {
   if (typeof window === "undefined") return;
   try {
@@ -17,6 +55,9 @@ function load() {
     if (raw) overrides = JSON.parse(raw);
   } catch {
     overrides = {};
+  }
+  if (reconcileParcelSurfaces()) {
+    persist();
   }
 }
 load();
@@ -59,7 +100,16 @@ export async function fetchCloudParcels() {
       let changed = false;
       for (const cp of cloudParcels) {
         const meta = typeof cp.metadata === "object" && cp.metadata !== null ? (cp.metadata as any) : {};
-        const info = meta.info || {};
+        const info = { ...(meta.info || {}) };
+
+        // Rectification des surfaces erronées historiques stockées dans Supabase
+        const s = String(info.surface || "").trim();
+        if (s === "2,16" || s === "2.16") {
+          info.surface = "2,00";
+        } else if (s === "1,6" || s === "1.6" || s === "1,60" || s === "1.60") {
+          info.surface = "1,00";
+        }
+
         const currentO = overrides[cp.id] || {};
 
         overrides[cp.id] = {
@@ -68,6 +118,10 @@ export async function fetchCloudParcels() {
           status: (cp.status as ParcelStatus) || currentO.status,
           info: { ...(currentO.info || {}), ...info },
         };
+        changed = true;
+      }
+
+      if (reconcileParcelSurfaces()) {
         changed = true;
       }
 
@@ -120,7 +174,7 @@ async function syncParcelToCloud(id: string) {
     const name = currentO.name ?? pDef.name;
     const status = currentO.status ?? pDef.status;
     const info = { ...pDef.info, ...(currentO.info || {}) };
-    const position = parseInt(id.replace("p", ""), 10) || 1;
+    const position = PARCELS.findIndex((p) => p.id === id) + 1 || 1;
 
     await supabase.from("parcels").upsert({
       id,

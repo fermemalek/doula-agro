@@ -141,7 +141,7 @@ function load() {
       void (async () => {
         try {
           await supabase.from("supplier_purchases" as any).delete().eq("id" as never, b.id as never);
-        } catch {}
+        } catch { }
       })();
     }
   }
@@ -157,7 +157,7 @@ function load() {
       void (async () => {
         try {
           await supabase.from("supplier_purchases" as any).upsert(mapToDb(item) as never, { onConflict: "id" });
-        } catch {}
+        } catch { }
       })();
     }
   }
@@ -172,9 +172,14 @@ export function deletePurchasesForReco(recoId: string, recoProductNames?: string
   const toDelete = purchases.filter((p) => {
     if (p.recoId && p.recoId === recoId) return true;
     if (p.id.includes(recoId)) return true;
-    if (recoProductNames && recoProductNames.length > 0 && p.supplierName.includes("Achat Validé")) {
+    const sNorm = (p.supplierName || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const isRecoPurchase = sNorm.includes("achat valide") || sNorm.includes("historique") || (p.id && p.id.startsWith("p-reco-"));
+    if (recoProductNames && recoProductNames.length > 0 && isRecoPurchase) {
       const pNorm = p.productName.trim().toLowerCase();
-      if (recoProductNames.some((rName) => rName.trim().toLowerCase() === pNorm || pNorm.includes(rName.trim().toLowerCase()))) {
+      if (recoProductNames.some((rName) => {
+        const rn = rName.trim().toLowerCase();
+        return pNorm === rn || pNorm.includes(rn) || rn.includes(pNorm);
+      })) {
         return true;
       }
     }
@@ -235,7 +240,7 @@ async function fetchOnline() {
         void (async () => {
           try {
             await supabase.from("supplier_purchases" as any).upsert(mapToDb(item) as never, { onConflict: "id" });
-          } catch {}
+          } catch { }
         })();
       }
 
@@ -244,7 +249,7 @@ async function fetchOnline() {
           void (async () => {
             try {
               await supabase.from("supplier_purchases" as any).upsert(mapToDb(loc) as never, { onConflict: "id" });
-            } catch {}
+            } catch { }
           })();
         }
       }
@@ -253,7 +258,7 @@ async function fetchOnline() {
         for (const b of removed) {
           try {
             await supabase.from("supplier_purchases" as any).delete().eq("id" as never, b.id as never);
-          } catch {}
+          } catch { }
         }
       }
     }
@@ -287,7 +292,7 @@ if (typeof window !== "undefined") {
           if (!purchases.some((p) => p.id === mapped.id)) {
             purchases.unshift(mapped);
             purchases = [...purchases];
-  persist();
+            persist();
           }
         } else if (eventType === "UPDATE") {
           const mapped = mapFromDb(newRecord);
@@ -295,14 +300,14 @@ if (typeof window !== "undefined") {
           if (idx >= 0) {
             purchases[idx] = mapped;
             purchases = [...purchases];
-  persist();
+            persist();
           }
         } else if (eventType === "DELETE") {
           const idx = purchases.findIndex((p) => p.id === oldRecord.id);
           if (idx >= 0) {
             purchases.splice(idx, 1);
             purchases = [...purchases];
-  persist();
+            persist();
           }
         }
       }
@@ -348,22 +353,22 @@ export function useSuppliers(): SupplierPurchase[] {
  */
 export function debitProductStock(productName: string, quantityToDebit: number) {
   const normName = productName.trim().toLowerCase();
-  
+
   const matches = purchases.filter(
     (p) => p.productName.trim().toLowerCase() === normName && p.quantity > p.consumed
   );
-  
+
   matches.sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate));
-  
+
   let remainingToDebit = quantityToDebit;
   const updatedPurchases: { id: string; consumed: number }[] = [];
-  
+
   for (const purchase of matches) {
     if (remainingToDebit <= 0) break;
-    
+
     const available = purchase.quantity - purchase.consumed;
     const toConsume = Math.min(remainingToDebit, available);
-    
+
     const idx = purchases.findIndex((p) => p.id === purchase.id);
     if (idx >= 0) {
       purchases[idx].consumed = parseFloat((purchases[idx].consumed + toConsume).toFixed(2));
@@ -371,7 +376,7 @@ export function debitProductStock(productName: string, quantityToDebit: number) 
       updatedPurchases.push({ id: purchase.id, consumed: purchases[idx].consumed });
     }
   }
-  
+
   if (remainingToDebit > 0) {
     const fallback = purchases.find((p) => p.productName.trim().toLowerCase() === normName);
     if (fallback) {
@@ -382,7 +387,7 @@ export function debitProductStock(productName: string, quantityToDebit: number) 
       }
     }
   }
-  
+
   purchases = [...purchases];
   persist();
 
@@ -532,7 +537,7 @@ export function useSupplierActions() {
         void (async () => {
           try {
             await supabase.from("supplier_purchases" as any).upsert(mapToDb(item) as never, { onConflict: "id" });
-          } catch {}
+          } catch { }
         })();
       }
     }

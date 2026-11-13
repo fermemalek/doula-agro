@@ -404,6 +404,22 @@ export function useRecommendationActions() {
             if (n) productNames.push(n);
           }
         }
+        if (Array.isArray(pProgram?.entries)) {
+          for (const entry of pProgram.entries) {
+            if (Array.isArray(entry.items)) {
+              for (const it of entry.items) {
+                const n = it.name?.trim();
+                if (n) productNames.push(n);
+              }
+            }
+          }
+        }
+        if (Array.isArray(pProgram?.items)) {
+          for (const it of pProgram.items) {
+            const n = it.name?.trim();
+            if (n) productNames.push(n);
+          }
+        }
         deletePurchasesForReco(id, productNames);
       } catch (err) {
         console.warn("deletePurchasesForReco error:", err);
