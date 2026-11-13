@@ -91,21 +91,27 @@ if (typeof window !== "undefined") {
   });
 }
 
+const SYSTEM_CATALOG_ID = "00000000-0000-4000-8000-000000000002";
+
 async function dualWriteProducts(products: FertilizerProduct[]) {
   try {
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) return;
-    await supabase.from("module_records").insert({
-      parcel_id: "p1",
-      kind: "phytosanitaire",
+    await supabase.from("recommendations").upsert({
+      id: SYSTEM_CATALOG_ID,
+      farm_id: "00000000-0000-0000-0000-000000000001",
+      title: "__SYSTEM_PRODUCTS_CATALOG__",
+      kind: "fertilisation",
+      status: "acceptee",
+      parcel_ids: ["p1"],
+      photo_urls: [],
       payload: {
-        _sync_type: "products_catalog",
         products,
         updated_at: new Date().toISOString(),
       } as any,
       created_by: u.user.id,
-      status: "execute",
-    });
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
   } catch (err) {
     // Non-bloquant si le réseau ou auth indisponible
     console.debug("[products-store] cloud dual-write skipped or failed", err);
@@ -115,17 +121,15 @@ async function dualWriteProducts(products: FertilizerProduct[]) {
 async function fetchCloudProducts() {
   try {
     const { data, error } = await supabase
-      .from("module_records")
-      .select("payload, created_at")
-      .eq("parcel_id", "p1")
-      .eq("kind", "phytosanitaire")
-      .order("created_at", { ascending: false })
-      .limit(10);
+      .from("recommendations")
+      .select("payload, updated_at")
+      .eq("title", "__SYSTEM_PRODUCTS_CATALOG__")
+      .maybeSingle();
 
-    if (!error && data && data.length > 0) {
-      const record = data.find((r) => (r.payload as any)?._sync_type === "products_catalog");
-      if (record && Array.isArray((record.payload as any)?.products)) {
-        currentProducts = mergeWithDefaults((record.payload as any).products);
+    if (!error && data && (data.payload as any)?.products) {
+      const prods = (data.payload as any).products;
+      if (Array.isArray(prods)) {
+        currentProducts = mergeWithDefaults(prods);
         if (typeof window !== "undefined") {
           localStorage.setItem(KEY, JSON.stringify(currentProducts));
         }
@@ -140,7 +144,17 @@ async function fetchCloudProducts() {
 if (typeof window !== "undefined") {
   setTimeout(() => {
     void fetchCloudProducts();
-  }, 1000);
+  }, 500);
+
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+      void fetchCloudProducts();
+    }
+  });
+
+  window.addEventListener("focus", () => {
+    void fetchCloudProducts();
+  });
 }
 
 function persist(skipBroadcast = false) {

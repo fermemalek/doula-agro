@@ -96,6 +96,7 @@ export function useRecommendations() {
         if (allDeletedIds.has(r.id)) return false;
         if (r.payload?.deleted === true) return false;
         if (typeof r.title === "string" && r.title.startsWith("[SUPPRIMÉ]")) return false;
+        if (typeof r.title === "string" && r.title.startsWith("__SYSTEM_")) return false;
         return true;
       });
 

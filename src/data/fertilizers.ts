@@ -219,6 +219,51 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
     unit: "litres"
   },
   {
+    name: "Oligo-elements",
+    type: "Pulvérisation Foliaire",
+    solubility: 60.0,
+    time: 10,
+    note: "Mélange complet d'oligo-éléments chélatés.",
+    price: 0,
+    unit: "kg"
+  },
+  {
+    name: "phosphate de potasium",
+    type: "Pulvérisation Foliaire",
+    solubility: 5000,
+    time: 0,
+    note: "Apport foliaire de phosphore et potassium",
+    price: 0,
+    unit: "kg"
+  },
+  {
+    name: "Acide Ascorbique",
+    type: "Pulvérisation Foliaire",
+    solubility: 590.0,
+    time: 4,
+    note: "Anti-oxydant et soutien de la photosynthèse",
+    price: 2500,
+    unit: "kg"
+  },
+  {
+    name: "citrate de potasium",
+    type: "Pulvérisation Foliaire",
+    solubility: 5000,
+    time: 0,
+    note: "Source de potassium organique facilement assimilable",
+    price: 0,
+    unit: "kg"
+  },
+  {
+    name: "Borne et zinc",
+    type: "Pulvérisation Foliaire",
+    solubility: 5000,
+    time: 0,
+    note: "Complexe Bore et Zinc pour la nouaison et vigueur",
+    price: 3450,
+    unit: "kg"
+  },
+  {
     name: "Calypso",
     type: "Phytosanitaire",
     matiereActive: "Thiaclopride",
@@ -413,7 +458,7 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
     type: "Phytosanitaire",
     solubility: 0,
     time: 0,
-    note: '{"cible":"","dosage":""}',
+    note: "",
     price: 0,
     unit: "kg",
     matiereActive: "",
@@ -424,7 +469,7 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
     type: "Phytosanitaire",
     solubility: 14.0,
     time: 0,
-    note: '{"cible":"Fongicide systémique (triazole)","dosage":""}',
+    note: "Fongicide systémique (triazole)",
     price: 22000,
     unit: "kg",
     matiereActive: "Difénoconazole",
