@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const KEY = "doula-trees";
+const FARM_ID = "00000000-0000-0000-0000-000000000001";
 
 export type Vitality = "sain" | "replante" | "faible" | "mort" | "oublie";
 export type Problem = "aucun" | "fuite" | "tuyau" | "maladie";
@@ -66,15 +68,87 @@ export function treeKey(l: number, p: number) {
   return `L${l}P${p}`;
 }
 
+export async function fetchCloudTrees() {
+  try {
+    const { data: cloudTrees, error } = await supabase.from("trees").select("*");
+    if (!error && cloudTrees && cloudTrees.length > 0) {
+      let changed = false;
+      for (const ct of cloudTrees) {
+        const key = treeKey(ct.l, ct.p);
+        if (!data[ct.parcel_id]) data[ct.parcel_id] = {};
+        const cur = data[ct.parcel_id][key] || DEFAULT_TREE;
+        data[ct.parcel_id][key] = {
+          ...cur,
+          vitality: (ct.vitality as Vitality) || cur.vitality,
+          pollinator: ct.pollinator ? "P" : cur.pollinator,
+          heightCm: ct.height_cm != null ? String(ct.height_cm) : cur.heightCm,
+          trunkMm: ct.trunk_mm != null ? String(ct.trunk_mm) : cur.trunkMm,
+          notes: ct.notes ?? cur.notes,
+          photos: ct.photo_urls && ct.photo_urls.length > 0 ? ct.photo_urls : cur.photos,
+        };
+        changed = true;
+      }
+      if (changed) {
+        persist();
+      }
+    }
+  } catch (err) {
+    console.debug("[tree-store] fetch trees skipped", err);
+  }
+}
+
+async function syncTreeToCloud(parcelId: string, key: string, tree: Tree) {
+  try {
+    const match = key.match(/L(\d+)P(\d+)/i);
+    if (!match) return;
+    const l = parseInt(match[1], 10);
+    const p = parseInt(match[2], 10);
+    const id = `${parcelId}-l${l}-p${p}`;
+    await supabase.from("trees").upsert({
+      id,
+      farm_id: FARM_ID,
+      parcel_id: parcelId,
+      l,
+      p,
+      vitality: tree.vitality,
+      pollinator: Boolean(tree.pollinator),
+      height_cm: parseFloat(tree.heightCm) || null,
+      trunk_mm: parseFloat(tree.trunkMm) || null,
+      notes: tree.notes || null,
+      photo_urls: tree.photos || [],
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "id" });
+  } catch (err) {
+    console.debug("[tree-store] sync tree skipped", err);
+  }
+}
+
+if (typeof window !== "undefined") {
+  setTimeout(() => {
+    void fetchCloudTrees();
+  }, 600);
+
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+      void fetchCloudTrees();
+    }
+  });
+
+  window.addEventListener("focus", () => {
+    void fetchCloudTrees();
+  });
+}
+
 export function useTrees(parcelId: string) {
   const [, setTick] = useState(0);
   useEffect(() => {
+    void fetchCloudTrees();
     const fn = () => setTick((t) => t + 1);
     listeners.add(fn);
     return () => {
       listeners.delete(fn);
     };
-  }, []);
+  }, [parcelId]);
   return data[parcelId] || {};
 }
 
@@ -85,17 +159,18 @@ export function getTree(parcelId: string, key: string): Tree {
 export function useTreeActions() {
   const update = useCallback((parcelId: string, key: string, patch: Partial<Tree>) => {
     const cur = (data[parcelId] && data[parcelId][key]) || DEFAULT_TREE;
-    // Nouvelles références à chaque mise à jour pour déclencher les re-renders.
+    const updatedTree = { ...cur, ...patch };
     data = {
       ...data,
-      [parcelId]: { ...(data[parcelId] || {}), [key]: { ...cur, ...patch } },
+      [parcelId]: { ...(data[parcelId] || {}), [key]: updatedTree },
     };
     persist();
+    void syncTreeToCloud(parcelId, key, updatedTree);
   }, []);
   return { update };
 }
 
-// Alerts (fuite/tuyau go to in-app exécutant feed)
+// Alerts (fuite/tuyau go to in-app exécutant feed & cloud alerts table)
 const ALERT_KEY = "doula-alerts";
 export interface Alert {
   id: string;
@@ -136,14 +211,25 @@ export function useAlerts() {
 }
 
 export function pushAlert(a: Omit<Alert, "id" | "createdAt" | "resolved">) {
-  alerts.unshift({ id: crypto.randomUUID(), createdAt: Date.now(), resolved: false, ...a });
+  const id = crypto.randomUUID();
+  alerts.unshift({ id, createdAt: Date.now(), resolved: false, ...a });
   persistAlerts();
-}
 
-export function resolveAlert(id: string) {
-  const a = alerts.find((x) => x.id === id);
-  if (a) {
-    a.resolved = true;
-    persistAlerts();
-  }
+  void (async () => {
+    try {
+      const match = a.treeKey.match(/L(\d+)P(\d+)/i);
+      const l = match ? parseInt(match[1], 10) : null;
+      const p = match ? parseInt(match[2], 10) : null;
+      await supabase.from("alerts").insert({
+        id,
+        farm_id: FARM_ID,
+        parcel_id: a.parcelId,
+        kind: (a.problem === "aucun" ? "autre" : a.problem) as any,
+        status: "ouvert",
+        l,
+        p,
+        message: `Signalement arbre ${a.treeKey} : ${a.problem}`,
+      });
+    } catch {}
+  })();
 }

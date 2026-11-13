@@ -156,8 +156,23 @@ async function fetchOnline() {
     if (!error && dbData) {
       const mapped = dbData.map(mapFromDb);
       const { clean, removed } = cleanBuggyPurchases(mapped);
-      purchases = [...clean];
+
+      // Si le stockage local a des achats que le cloud n'a pas encore, on les synchronise vers Supabase
+      const cloudIds = new Set(clean.map((c) => c.id));
+      const localOnly = purchases.filter((p) => !cloudIds.has(p.id) && !p.id.startsWith("sys-del-"));
+
+      purchases = [...clean, ...localOnly];
       persist();
+
+      if (localOnly.length > 0) {
+        for (const loc of localOnly) {
+          void (async () => {
+            try {
+              await supabase.from("supplier_purchases" as any).upsert(mapToDb(loc) as never, { onConflict: "id" });
+            } catch {}
+          })();
+        }
+      }
 
       if (removed.length > 0) {
         for (const b of removed) {
@@ -174,6 +189,14 @@ async function fetchOnline() {
 
 // Lancement de la récupération en arrière-plan au chargement
 fetchOnline();
+
+if (typeof window !== "undefined") {
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+      void fetchOnline();
+    }
+  });
+}
 
 // Abonnement en temps réel aux changements de la table
 if (typeof window !== "undefined") {

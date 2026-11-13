@@ -135,6 +135,9 @@ async function fetchCloudProducts() {
         }
         listeners.forEach((l) => l());
       }
+    } else if (!error && !data) {
+      // Si la base cloud n'a pas encore le catalogue, on y pousse notre catalogue courant
+      void dualWriteProducts(currentProducts);
     }
   } catch (err) {
     console.debug("[products-store] cloud fetch skipped", err);
@@ -144,7 +147,7 @@ async function fetchCloudProducts() {
 if (typeof window !== "undefined") {
   setTimeout(() => {
     void fetchCloudProducts();
-  }, 500);
+  }, 300);
 
   supabase.auth.onAuthStateChange((event) => {
     if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
@@ -155,6 +158,20 @@ if (typeof window !== "undefined") {
   window.addEventListener("focus", () => {
     void fetchCloudProducts();
   });
+
+  // Abonnement aux mises à jour cloud de catalogue
+  supabase
+    .channel("realtime-catalog-sync")
+    .on(
+      "postgres_changes" as never,
+      { event: "*", schema: "public", table: "recommendations" } as never,
+      (payload: any) => {
+        if (payload?.new?.title === "__SYSTEM_PRODUCTS_CATALOG__") {
+          void fetchCloudProducts();
+        }
+      }
+    )
+    .subscribe();
 }
 
 function persist(skipBroadcast = false) {
@@ -179,6 +196,7 @@ function persist(skipBroadcast = false) {
 export function useProducts(): FertilizerProduct[] {
   const [data, setData] = useState<FertilizerProduct[]>(() => [...currentProducts]);
   useEffect(() => {
+    void fetchCloudProducts();
     const fn = () => setData([...currentProducts]);
     listeners.add(fn);
     return () => {
