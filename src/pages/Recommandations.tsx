@@ -753,7 +753,7 @@ function RecommandationsPageContent() {
                               setParcelStatus,
                               options: {
                                 supplierName: "Achat Validé (Historique Ingénieur)",
-                                markAsExecutedIfPast: true,
+                                markAsExecutedIfPast: false,
                               },
                             });
                             toast.success(

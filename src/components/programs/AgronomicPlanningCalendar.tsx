@@ -390,6 +390,49 @@ function matchesCropForCalendar(
 
 const DAY_NAMES_FR = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
 
+function getEventBadgeInfo(ev: ScheduledDayEvent): { text: string; tone: string } {
+  const title = (ev.recoTitle || "").trim();
+
+  // 1. Programme A1 / A2 / etc.
+  const progMatch = title.match(/Programme\s*([A-Za-z0-9]+)/i);
+  if (progMatch) {
+    const pName = progMatch[1].toUpperCase();
+    return {
+      text: pName === "A1" || pName === "A2" ? `Prog. ${pName}` : `Programme ${pName}`,
+      tone: pName === "A1"
+        ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border-emerald-500/30"
+        : "bg-teal-500/15 text-teal-800 dark:text-teal-200 border-teal-500/30",
+    };
+  }
+
+  // 2. Pulvérisation 1 / 2 (ou Passage 1 / 2)
+  const pulvMatch = title.match(/(?:Pulv[ée]risation|Passage)\s*([0-9]+)/i);
+  if (pulvMatch) {
+    return {
+      text: `Pulvérisation ${pulvMatch[1]}`,
+      tone: "bg-blue-500/15 text-blue-800 dark:text-blue-200 border-blue-500/30",
+    };
+  }
+
+  // 3. Traitement 1 / 2
+  const traitMatch = title.match(/Traitement\s*([0-9]+)/i);
+  if (traitMatch) {
+    return {
+      text: `Traitement ${traitMatch[1]}`,
+      tone: "bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30",
+    };
+  }
+
+  // 4. Fallbacks intelligents selon le type
+  if (ev.type === "fertigation" || ev.type === "pure_irrigation") {
+    return { text: "Prog. A1", tone: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 border-emerald-500/30" };
+  }
+  if (ev.type === "pulverisation") {
+    return { text: "Pulvérisation 1", tone: "bg-blue-500/15 text-blue-800 dark:text-blue-200 border-blue-500/30" };
+  }
+  return { text: "Traitement 1", tone: "bg-amber-500/15 text-amber-800 dark:text-amber-200 border-amber-500/30" };
+}
+
 export function AgronomicPlanningCalendar({
   recos,
   parcels,
@@ -692,12 +735,23 @@ export function AgronomicPlanningCalendar({
         const payload = (r.payload || {}) as any;
         const prog = payload.program || {};
         const titleMatch = (r.title || "").match(/(\d{4}-\d{2}-\d{2})/);
-        const dateStr =
+        const baseDateStr =
           prog.date ||
           payload.date ||
           titleMatch?.[1] ||
           r.created_at?.slice(0, 10) ||
-          "2026-04-20";
+          "2026-03-09";
+
+        // Étalement agronomique sur la semaine (matinée à la fraîche) :
+        // Passage 1 / Pulvérisation 1 -> Jour +1 (ex: Mardi 10 Mars)
+        // Passage 2 / Pulvérisation 2 -> Jour +4 (ex: Vendredi 13 Mars)
+        let dateStr = baseDateStr;
+        const titleLower = (r.title || "").toLowerCase();
+        if (titleLower.includes("passage 2") || titleLower.includes("pulvérisation 2") || titleLower.includes("pulverisation 2")) {
+          dateStr = addDays(baseDateStr, 4);
+        } else if (titleLower.includes("passage 1") || titleLower.includes("pulvérisation 1") || titleLower.includes("pulverisation 1") || titleLower.includes("passage")) {
+          dateStr = addDays(baseDateStr, 1);
+        }
         const dObj = new Date(dateStr);
         const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
 
@@ -790,12 +844,22 @@ export function AgronomicPlanningCalendar({
         const payload = (r.payload || {}) as any;
         const prog = payload.program || {};
         const titleMatch = (r.title || "").match(/(\d{4}-\d{2}-\d{2})/);
-        const dateStr =
+        const baseDateStr =
           prog.date ||
           payload.date ||
           titleMatch?.[1] ||
           r.created_at?.slice(0, 10) ||
-          "2026-04-20";
+          "2026-03-09";
+
+        // Étalement agronomique des traitements phytosanitaires par espèce (fin d'après-midi) :
+        // Pommier Gala One (Traitement 1) -> Jour +2 (ex: Mercredi 11 Mars)
+        // Nectarine Nablara & Redix 25 (Traitement 1) -> Jour +3 (ex: Jeudi 12 Mars)
+        let dateStr = baseDateStr;
+        if (crop.id === "pommiers") {
+          dateStr = addDays(baseDateStr, 2);
+        } else {
+          dateStr = addDays(baseDateStr, 3);
+        }
         const dObj = new Date(dateStr);
         const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
 
@@ -1773,28 +1837,38 @@ export function AgronomicPlanningCalendar({
                                     })}
                                   </div>
 
-                                  {/* Détail par espèce et horaires séquentiels */}
+                                  {/* Détail par espèce, horaires séquentiels et mention exacte du programme */}
                                   <div className="space-y-1">
-                                    {row.events.map((ev, evIdx) => (
-                                      <div
-                                        key={evIdx}
-                                        className="bg-background/95 px-1.5 py-0.5 rounded border shadow-2xs font-mono font-bold text-[9px] flex items-center justify-between gap-1"
-                                      >
-                                        <span className="flex items-center gap-0.5">
-                                          <span>{ev.cropConfig.icon}</span>
-                                          <span>
-                                            {ev.speciesId === "pommiers"
-                                              ? "Pom"
-                                              : ev.speciesId === "nablara"
-                                              ? "Nab"
-                                              : ev.speciesId === "redix25"
-                                              ? "Red"
-                                              : "Oli"}
-                                          </span>
-                                        </span>
-                                        <span className="text-muted-foreground">{ev.hours}</span>
-                                      </div>
-                                    ))}
+                                    {row.events.map((ev, evIdx) => {
+                                      const badge = getEventBadgeInfo(ev);
+                                      return (
+                                        <div
+                                          key={evIdx}
+                                          className="bg-background/95 px-2 py-1 rounded border shadow-2xs font-mono font-bold text-[9px] flex flex-col gap-0.5 text-left"
+                                        >
+                                          <div className="flex items-center justify-between gap-1">
+                                            <span className="flex items-center gap-0.5">
+                                              <span>{ev.cropConfig.icon}</span>
+                                              <span className="font-extrabold text-[9.5px]">
+                                                {ev.speciesId === "pommiers"
+                                                  ? "Pom"
+                                                  : ev.speciesId === "nablara"
+                                                  ? "Nab"
+                                                  : ev.speciesId === "redix25"
+                                                  ? "Red"
+                                                  : "Oli"}
+                                              </span>
+                                            </span>
+                                            <span className="text-muted-foreground text-[8.5px] whitespace-nowrap">{ev.hours}</span>
+                                          </div>
+                                          <div className="flex items-center justify-start mt-0.5">
+                                            <span className={`text-[8.5px] font-black px-1.5 py-0.5 rounded border leading-none ${badge.tone}`}>
+                                              {badge.text}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
                                   </div>
                                 </div>
                               </td>

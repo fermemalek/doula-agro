@@ -24,6 +24,16 @@ export function parseDurationToMinutes(durationStr: string): number {
   return !isNaN(num) ? Math.round(num * 60) : 90;
 }
 
+function addDaysDate(dateStr: string, days: number): string {
+  try {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  } catch {
+    return dateStr;
+  }
+}
+
 export interface ValidateRecoResult {
   createdPurchasesCount: number;
   clonedCount: number;
@@ -157,23 +167,25 @@ export async function validateRecommendationAndPurchases({
 
           addModuleRecord(parcel.id, "fertilisation", unifiedFertigation);
         } else {
-          // Pulvérisation foliaire
-          if (Array.isArray(program.items)) {
-            for (const it of program.items) {
-              const qty = safeParseFloat(it.qty);
-              debitProductStock(it.name, qty);
-            }
+          // Pulvérisation foliaire étalée sur la semaine
+          let scheduledFoliarDate = recoDate;
+          const titleLower = (reco.title || "").toLowerCase();
+          if (titleLower.includes("passage 2") || titleLower.includes("pulvérisation 2") || titleLower.includes("pulverisation 2")) {
+            scheduledFoliarDate = addDaysDate(recoDate, 4); // ex: Vendredi
+          } else if (titleLower.includes("passage 1") || titleLower.includes("pulvérisation 1") || titleLower.includes("pulverisation 1") || titleLower.includes("passage")) {
+            scheduledFoliarDate = addDaysDate(recoDate, 1); // ex: Mardi
           }
 
           addModuleRecord(parcel.id, "pulverisation", {
             ...program,
             reco_id: reco.id,
-            date: recoDate,
+            date: scheduledFoliarDate,
+            dateStartHour: "06:30",
             status: isPast ? "execute" : "planifie",
             ...(isPast
               ? {
-                  executedAt: recoDate,
-                  executed_at: recoDate,
+                  executedAt: scheduledFoliarDate,
+                  executed_at: scheduledFoliarDate,
                   executionNote: "Historique validé (mois précédent)",
                 }
               : {}),
@@ -187,15 +199,24 @@ export async function validateRecommendationAndPurchases({
           }
         }
 
+        // Étalement agronomique des traitements phytosanitaires par espèce (fin d'après-midi)
+        let scheduledPhytoDate = recoDate;
+        if (parcel.type === "pommier") {
+          scheduledPhytoDate = addDaysDate(recoDate, 2); // ex: Mercredi
+        } else {
+          scheduledPhytoDate = addDaysDate(recoDate, 3); // ex: Jeudi
+        }
+
         addModuleRecord(parcel.id, "phytosanitaire", {
           ...program,
           reco_id: reco.id,
-          date: recoDate,
+          date: scheduledPhytoDate,
+          dateStartHour: "17:30",
           status: isPast ? "execute" : "planifie",
           ...(isPast
             ? {
-                executedAt: recoDate,
-                executed_at: recoDate,
+                executedAt: scheduledPhytoDate,
+                executed_at: scheduledPhytoDate,
                 executionNote: "Historique validé (mois précédent)",
               }
             : {}),
