@@ -50,6 +50,38 @@ export function addLocalDeletedRecoId(id: string) {
   } catch {}
 }
 
+const STATUS_OVERRIDES_KEY = "doula_recos_status_overrides";
+
+export function getRecoStatusOverrides(): Record<string, RecoStatus> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(STATUS_OVERRIDES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function setRecoStatusOverride(id: string, status: RecoStatus) {
+  if (typeof window === "undefined") return;
+  try {
+    const overrides = getRecoStatusOverrides();
+    overrides[id] = status;
+    localStorage.setItem(STATUS_OVERRIDES_KEY, JSON.stringify(overrides));
+  } catch {}
+}
+
+export function resetAllRecoStatusOverrides(allIds: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    const overrides: Record<string, RecoStatus> = {};
+    for (const id of allIds) {
+      overrides[id] = "envoyee";
+    }
+    localStorage.setItem(STATUS_OVERRIDES_KEY, JSON.stringify(overrides));
+  } catch {}
+}
+
 export function cleanRecoTitle(title: string | null | undefined): string {
   if (!title) return "";
   let s = title.replace(/(\([^)]+\))\s*\1+/g, (_, p1) => p1);
@@ -103,9 +135,12 @@ export function useRecommendations() {
         return true;
       });
 
+      const statusOverrides = getRecoStatusOverrides();
+
       return valid.map((r) => {
         let title = cleanRecoTitle(r.title);
         let payload = (r.payload || {}) as Record<string, any>;
+        const status = statusOverrides[r.id] ?? r.status ?? "envoyee";
 
         // Remplacement systématique de Passage par Pulvérisation dans le titre et les sous-programmes
         title = title.replace(/\bPassage\s*(\d+)/gi, "Pulvérisation $1").replace(/\bPassage\b/gi, "Pulvérisation");
@@ -130,15 +165,40 @@ export function useRecommendations() {
         }
 
         // Correction agronomique des prescriptions du 09 Mars 2026 (distinctes A1/A2 et Pulvérisation 1/Pulvérisation 2)
-        if (r.id === "f1134c54-4d72-4ac1-adec-fc351da039dd" || (title.includes("2026-03-09") && payload.program?.entries?.some((e: any) => e.bac === "B"))) {
-          title = "NABLARA, REDIX 25 - 2026-03-09 (Programme A2)";
-          if (payload.program) {
-            payload = { ...payload, program: { ...payload.program, label: "Programme A2" } };
-          }
-        } else if (r.id === "9c93efd3-9f1a-402d-9bbb-e498ec8ab34d" || (title.includes("2026-03-09") && payload.program?.items?.some((it: any) => (it.name || "").includes("Algreen")))) {
-          title = "NABLARA, REDIX 25 - 2026-03-09 (Pulvérisation 2)";
-          if (payload.program) {
-            payload = { ...payload, program: { ...payload.program, label: "Pulvérisation 2" } };
+        if (title.includes("2026-03-09")) {
+          const isIrrig = r.kind === "fertilisation" && (payload.method === "irrigation" || payload.program?.kind === "irrigation" || title.toLowerCase().includes("irrigation"));
+          const isFoliar = r.kind === "fertilisation" && !isIrrig;
+          const isNablara = title.toUpperCase().includes("NABLARA") || title.toUpperCase().includes("REDIX");
+
+          if (isNablara && isIrrig) {
+            const isA2 =
+              r.id === "f1134c54-4d72-4ac1-adec-fc351da039dd" ||
+              title.includes("A2") ||
+              payload.program?.label?.includes("A2") ||
+              payload.program?.entries?.some((e: any) => e.bac === "B" || (e.name && e.name.includes("B")));
+            if (isA2) {
+              title = "NABLARA, REDIX 25 - 2026-03-09 (Programme A2)";
+              if (payload.program) payload = { ...payload, program: { ...payload.program, label: "Programme A2" } };
+            } else {
+              title = "NABLARA, REDIX 25 - 2026-03-09 (Programme A1)";
+              if (payload.program) payload = { ...payload, program: { ...payload.program, label: "Programme A1" } };
+            }
+          } else if (isNablara && isFoliar) {
+            const isP2 =
+              r.id === "9c93efd3-9f1a-402d-9bbb-e498ec8ab34d" ||
+              title.includes("2") ||
+              payload.program?.label?.includes("2") ||
+              payload.program?.items?.some((it: any) => (it.name || "").toLowerCase().includes("algreen"));
+            if (isP2) {
+              title = "NABLARA, REDIX 25 - 2026-03-09 (Pulvérisation 2)";
+              if (payload.program) payload = { ...payload, program: { ...payload.program, label: "Pulvérisation 2" } };
+            } else {
+              title = "NABLARA, REDIX 25 - 2026-03-09 (Pulvérisation 1)";
+              if (payload.program) payload = { ...payload, program: { ...payload.program, label: "Pulvérisation 1" } };
+            }
+          } else if (isNablara && r.kind === "phytosanitaire") {
+            title = "NABLARA, REDIX 25 - 2026-03-09 (Traitement 1)";
+            if (payload.program) payload = { ...payload, program: { ...payload.program, label: "Traitement 1" } };
           }
         }
 
@@ -146,6 +206,7 @@ export function useRecommendations() {
           ...r,
           title,
           payload,
+          status,
         };
       }) as Recommendation[];
     },
@@ -221,7 +282,8 @@ export function useRecommendationActions() {
     const u = { user: __s?.user ?? null };
     const reviewedAt = new Date().toISOString();
 
-    // 1. Optimistic update in query cache for instant UI response
+    // 1. Optimistic update in query cache for instant UI response and persistent override
+    setRecoStatusOverride(id, status);
     qc.setQueryData<Recommendation[]>(KEY, (old) => {
       if (!old) return old;
       return old.map((r) =>
@@ -280,7 +342,10 @@ export function useRecommendationActions() {
 
   const resetAllToPending = useMutation({
     mutationFn: async () => {
-      // 1. Mise à jour optimiste immédiate dans le cache
+      // 1. Mise à jour optimiste immédiate dans le cache et écriture de l'état persistant
+      const currentList = qc.getQueryData<Recommendation[]>(KEY) || [];
+      resetAllRecoStatusOverrides(currentList.map((r) => r.id));
+
       qc.setQueryData<Recommendation[]>(KEY, (old) => {
         if (!old) return old;
         return old.map((r) => ({

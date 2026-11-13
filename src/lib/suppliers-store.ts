@@ -76,6 +76,18 @@ function safeParseFloat(val: any): number {
 function cleanBuggyPurchases(sourceList: SupplierPurchase[]): { clean: SupplierPurchase[]; removed: SupplierPurchase[] } {
   const removed: SupplierPurchase[] = [];
   const clean = sourceList.filter((p) => {
+    // 1. Filtrer les marqueurs techniques internes ou enregistrements de suppression
+    if (
+      !p.supplierName ||
+      p.supplierName.startsWith("__SYSTEM_") ||
+      p.supplierName.startsWith("sys-") ||
+      p.id.startsWith("del_reco_") ||
+      (p.quantity <= 0 && p.totalCost <= 0)
+    ) {
+      removed.push(p);
+      return false;
+    }
+
     const isRecoPurchase = p.supplierName.includes("Achat Validé") || (p.id && p.id.startsWith("p-reco-"));
     const isAbnormalVolume = p.quantity >= 500;
     if (isRecoPurchase && isAbnormalVolume) {
@@ -90,6 +102,7 @@ function cleanBuggyPurchases(sourceList: SupplierPurchase[]): { clean: SupplierP
 /**
  * Réaligne strictement les achats générés par les recommandations :
  * Règle d'or : J'achète ce que je valide dans la recommandation (Acheté = Consommé = Validé, Restant = 0).
+ * Pour l'historique : 100% payé, aucune dette restante fictive.
  */
 export function reconcilePurchases(sourceList: SupplierPurchase[]): { clean: SupplierPurchase[]; changedItems: SupplierPurchase[] } {
   const changedItems: SupplierPurchase[] = [];
@@ -97,8 +110,25 @@ export function reconcilePurchases(sourceList: SupplierPurchase[]): { clean: Sup
 
   for (const p of list) {
     const sNorm = (p.supplierName || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    const isRecoPurchase = sNorm.includes("achat valide") || sNorm.includes("historique") || (p.id && (p.id.startsWith("p-reco-") || p.id.startsWith("p-ba-")));
+    const isRecoPurchase =
+      sNorm.includes("achat valide") ||
+      sNorm.includes("historique") ||
+      Boolean(p.recoId) ||
+      (p.id && (p.id.startsWith("p-reco-") || p.id.startsWith("p-ba-")));
     let itemChanged = false;
+
+    // Réalignement de la dette pour l'historique ingénieur :
+    // Si un achat issu d'une recommandation est resté affecté à "Fournisseur à désigner" ou a une dette
+    if (isRecoPurchase) {
+      if (sNorm.includes("designer")) {
+        p.supplierName = "Achat Validé (Historique Ingénieur)";
+        itemChanged = true;
+      }
+      if (p.paidAmount !== p.totalCost) {
+        p.paidAmount = p.totalCost; // 100% payé = 0 DA de dette
+        itemChanged = true;
+      }
+    }
 
     // Cas 1 : Produits foliaires où le débit initial a été multiplié par le nombre de parcelles (ex: Algreen ou Calcium-Bore 1.5 L acheté vs 3 L consommé)
     const norm = (p.productName || "").trim().toLowerCase();

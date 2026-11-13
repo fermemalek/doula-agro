@@ -141,3 +141,4 @@ export function getSolarTimesForDate(dateInput: string | Date): SolarTimes {
     duskStr: formatMinutesToHHMM(duskMin),
   };
 }
+

@@ -270,3 +270,4 @@ export async function checkWeatherSuitabilityForDate(targetDateStr: string): Pro
     return { isSafe: true, shouldDelayToNextDay: false };
   }
 }
+
