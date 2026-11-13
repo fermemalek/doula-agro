@@ -612,7 +612,7 @@ export function RecommendationDetailDialog({
                           setParcelStatus: setStatus,
                           options: {
                             supplierName: "Achat Validé (Historique Ingénieur)",
-                            markAsExecutedIfPast: true,
+                            markAsExecutedIfPast: false,
                           },
                         });
                         toast.success(

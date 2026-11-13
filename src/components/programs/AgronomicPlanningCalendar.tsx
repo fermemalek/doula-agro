@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { type Recommendation } from "@/lib/cloud/recommendations";
 import { type Parcel } from "@/data/parcels";
 import { useTranslation } from "@/lib/i18n";
+import { getSolarTimesForDate } from "@/lib/astronomy";
 
 export interface AgronomicPlanningCalendarProps {
   recos: Recommendation[];
@@ -558,12 +559,13 @@ export function AgronomicPlanningCalendar({
 
       distinctDates.forEach((dateKey, dateIdx) => {
         const dateRecos = recosByDate[dateKey];
-        const startDate = dateKey;
+        // Démarrage officiel glissant à J+1 (date_recommandation + 1 jour)
+        const startDate = addDays(dateKey, 1);
         const nextDate = distinctDates[dateIdx + 1];
         let endDate = "";
         const todayStr = new Date().toISOString().slice(0, 10);
         if (nextDate) {
-          endDate = addDays(nextDate, -1);
+          endDate = addDays(addDays(nextDate, 1), -1);
         } else {
           endDate = addDays(startDate, 28);
         }
@@ -742,15 +744,17 @@ export function AgronomicPlanningCalendar({
           r.created_at?.slice(0, 10) ||
           "2026-03-09";
 
-        // Étalement agronomique sur la semaine (matinée à la fraîche) :
-        // Passage 1 / Pulvérisation 1 -> Jour +1 (ex: Mardi 10 Mars)
-        // Passage 2 / Pulvérisation 2 -> Jour +4 (ex: Vendredi 13 Mars)
-        let dateStr = baseDateStr;
+        // Étalement agronomique glissant & exclusion mutuelle (au lever du soleil) :
+        // Démarrage J+1 = Fertigation. Pulvérisation 1 -> J+2 (ex: Mercredi 11 Mars)
+        // Pulvérisation 2 -> J+5 (ex: Samedi 14 Mars)
+        let dateStr = addDays(baseDateStr, 2);
         const titleLower = (r.title || "").toLowerCase();
-        if (titleLower.includes("passage 2") || titleLower.includes("pulvérisation 2") || titleLower.includes("pulverisation 2")) {
-          dateStr = addDays(baseDateStr, 4);
-        } else if (titleLower.includes("passage 1") || titleLower.includes("pulvérisation 1") || titleLower.includes("pulverisation 1") || titleLower.includes("passage")) {
-          dateStr = addDays(baseDateStr, 1);
+        if (
+          titleLower.includes("passage 2") ||
+          titleLower.includes("pulvérisation 2") ||
+          titleLower.includes("pulverisation 2")
+        ) {
+          dateStr = addDays(baseDateStr, 5);
         }
         const dObj = new Date(dateStr);
         const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
@@ -851,14 +855,13 @@ export function AgronomicPlanningCalendar({
           r.created_at?.slice(0, 10) ||
           "2026-03-09";
 
-        // Étalement agronomique des traitements phytosanitaires par espèce (fin d'après-midi) :
-        // Pommier Gala One (Traitement 1) -> Jour +2 (ex: Mercredi 11 Mars)
-        // Nectarine Nablara & Redix 25 (Traitement 1) -> Jour +3 (ex: Jeudi 12 Mars)
-        let dateStr = baseDateStr;
-        if (crop.id === "pommiers") {
-          dateStr = addDays(baseDateStr, 2);
-        } else {
-          dateStr = addDays(baseDateStr, 3);
+        // Étalement agronomique non saturant & exclusion mutuelle (soir au crépuscule) :
+        // Traitement 1 -> Jour +4 (ex: Vendredi 13 Mars)
+        // Traitement 2 -> Jour +7 (ex: Lundi 16 Mars)
+        let dateStr = addDays(baseDateStr, 4);
+        const titleLower = (r.title || "").toLowerCase();
+        if (titleLower.includes("traitement 2")) {
+          dateStr = addDays(baseDateStr, 7);
         }
         const dObj = new Date(dateStr);
         const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
@@ -971,19 +974,20 @@ export function AgronomicPlanningCalendar({
 
     Object.keys(eventsByDateMap).sort().forEach((dateKey) => {
       const dayList = eventsByDateMap[dateKey];
+      const solar = getSolarTimesForDate(dateKey);
 
-      // A. Fertigation séquentielle station
+      // A. Fertigation séquentielle station (démarrage dynamique au LEVER DU SOLEIL à Benhar)
       const fertEvents = dayList.filter((e) => e.type === "fertigation" || e.type === "pure_irrigation");
       const foliarEvents = dayList.filter((e) => e.type === "pulverisation");
       const phytoEvents = dayList.filter((e) => e.type === "phyto");
 
+      // Ordre des groupes hydrauliques stricts : Pommiers (P7+P8 simultanés), Nablara (seule), Redix 25 (séquentiel), Oliviers
       const priorityOrder = ["pommiers", "nablara", "redix25", "oliviers"];
       fertEvents.sort(
         (a, b) => priorityOrder.indexOf(a.speciesId) - priorityOrder.indexOf(b.speciesId)
       );
 
-      const hasPommier = fertEvents.some((e) => e.speciesId === "pommiers");
-      let currentStationTime = hasPommier ? 5 * 60 : 6 * 60;
+      let currentStationTime = solar.sunriseMinutes;
 
       fertEvents.forEach((ev) => {
         const startMin = currentStationTime;
@@ -998,8 +1002,8 @@ export function AgronomicPlanningCalendar({
         });
       });
 
-      // B. Pulvérisation foliaire (Matinée à la fraîche)
-      let foliarTime = 6 * 60 + 30; // 06h30
+      // B. Pulvérisation foliaire (démarrage dynamique au LEVER DU SOLEIL à Benhar)
+      let foliarTime = solar.sunriseMinutes;
       foliarEvents.forEach((ev) => {
         const startMin = foliarTime;
         const endMin = startMin + ev.durationMinutes;
@@ -1013,8 +1017,8 @@ export function AgronomicPlanningCalendar({
         });
       });
 
-      // C. Traitement phytosanitaire (Fin d'après-midi / absence de vent)
-      let phytoTime = 17 * 60 + 30; // 17h30
+      // C. Traitement phytosanitaire (planifié le soir au COUCHER DU SOLEIL / CRÉPUSCULE à Benhar)
+      let phytoTime = solar.sunsetMinutes;
       phytoEvents.forEach((ev) => {
         const startMin = phytoTime;
         const endMin = startMin + ev.durationMinutes;
@@ -2286,13 +2290,15 @@ export function AgronomicPlanningCalendar({
                           </span>
                         </h4>
                         <p className="text-[11px] text-muted-foreground">
-                          Créneau pompe séquentiel :{" "}
+                          Horaire dynamique (Benhar) :{" "}
                           <span className="font-mono font-bold text-foreground">
                             {crop.id === "pommiers"
-                              ? "05h00 - 06h30"
+                              ? "Au lever du soleil · Simultané P7+P8"
                               : crop.id === "nablara"
-                              ? "06h30 - 08h00 (ou 06h00 si pas de pommier)"
-                              : "08h00 - 09h30 (ou 07h30)"}
+                              ? "Au lever du soleil · Passage seul"
+                              : crop.id === "redix25"
+                              ? "Séquentiel après Nablara"
+                              : "Au lever du soleil · S1 (P1+P2) puis S2 (P3+P4)"}
                           </span>
                         </p>
                       </div>
@@ -2397,32 +2403,28 @@ export function AgronomicPlanningCalendar({
                                   {period.type === "pulverisation" ? (
                                     <>
                                       <span className="font-mono text-xs text-blue-600 dark:text-blue-400 block">
-                                        06h30 - 08h30 (Matinée)
+                                        Lever du soleil ({getSolarTimesForDate(period.startDate).sunriseStr})
                                       </span>
                                       <span className="text-[10px] text-muted-foreground block mt-0.5 font-normal">
-                                        Pulvérisation foliaire à la fraîche
+                                        Pulvérisation foliaire à la fraîche (Benhar)
                                       </span>
                                     </>
                                   ) : period.type === "phyto" ? (
                                     <>
                                       <span className="font-mono text-xs text-amber-600 dark:text-amber-400 block">
-                                        17h30 - 19h30 (Soirée)
+                                        Crépuscule / Coucher ({getSolarTimesForDate(period.startDate).sunsetStr})
                                       </span>
                                       <span className="text-[10px] text-muted-foreground block mt-0.5 font-normal">
-                                        Traitement crépusculaire (vent faible)
+                                        Traitement crépusculaire (vent faible, Benhar)
                                       </span>
                                     </>
                                   ) : (
                                     <>
                                       <span className="font-mono text-xs text-primary block">
-                                        {crop.id === "pommiers"
-                                          ? "05h00 - 06h30"
-                                          : crop.id === "nablara"
-                                          ? "06h30 - 08h00 (ou 06h00)"
-                                          : "08h00 - 09h30 (ou 07h30)"}
+                                        Lever du soleil ({getSolarTimesForDate(period.startDate).sunriseStr}) · {period.irrigationTime}
                                       </span>
                                       <span className="text-[10px] text-muted-foreground block mt-0.5 font-normal">
-                                        Durée: {period.irrigationTime} (Mouil. {period.wettingTime}m + Inj. {period.injectionTime}m + Rinc. {period.rinsingTime}m)
+                                        Station Fertigation (Mouil. {period.wettingTime}m + Inj. {period.injectionTime}m + Rinc. {period.rinsingTime}m)
                                       </span>
                                     </>
                                   )}
