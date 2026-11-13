@@ -21,6 +21,8 @@ import {
   Layers,
   ShoppingCart,
   Check,
+  CheckCircle2,
+  CheckSquare,
   X,
   Calendar,
   RefreshCw,
@@ -60,6 +62,7 @@ import { RecommendationDetailDialog } from "@/components/RecommendationDetailDia
 import { StatsModule } from "@/components/stats/StatsModule";
 import { getMatiereActive } from "@/data/phytosanitaires";
 import { AgronomicPlanningCalendar } from "@/components/programs/AgronomicPlanningCalendar";
+import { validateRecommendationAndPurchases } from "@/lib/reco-validation";
 
 interface IrrRec {
   id: string;
@@ -408,119 +411,98 @@ function ProgrammesPage() {
   };
 
   const handleValidatePurchase = async (reco: Recommendation) => {
-    const payload = (reco.payload ?? {}) as any;
-    const program = payload.program;
+    try {
+      const res = await validateRecommendationAndPurchases({
+        reco,
+        parcels,
+        suppliers,
+        addPurchase,
+        acceptReco: async (id) => accept.mutateAsync(id),
+        addModuleRecord,
+        setParcelStatus: setStatus,
+        options: {
+          supplierName: "Achat Validé (Historique Ingénieur)",
+          markAsExecutedIfPast: false,
+        },
+      });
+      toast.success(`Achat et prescription validés ! (${res.clonedCount} tâches planifiées, ${res.createdPurchasesCount} bons d'achat enregistrés).`);
+    } catch (e: any) {
+      toast.error(e instanceof Error ? e.message : "Erreur lors de la validation");
+    }
+  };
+
+  const [selectedPurchaseRecoIds, setSelectedPurchaseRecoIds] = useState<Set<string>>(new Set());
+  const [isValidatingPurchaseBatch, setIsValidatingPurchaseBatch] = useState(false);
+
+  const toggleSelectPurchaseReco = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedPurchaseRecoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBatchValidatePurchases = async () => {
+    const toValidate = purchaseRecos.filter((r) => selectedPurchaseRecoIds.has(r.id));
+    if (toValidate.length === 0) return toast.info("Aucun achat sélectionné.");
+
+    const count = toValidate.length;
+    if (
+      !window.confirm(
+        `Voulez-vous vraiment valider simultanément les ${count} achats et prescriptions sélectionnés ?\n\nDes Bons d'Achat individuels seront générés pour chaque intervention et les programmes correspondants seront créés pour chaque parcelle.`
+      )
+    ) {
+      return;
+    }
+
+    setIsValidatingPurchaseBatch(true);
+    let successCount = 0;
+    let totalTasks = 0;
+    let totalPurchases = 0;
+    const errors: string[] = [];
 
     try {
-      // 1) Determine target parcelles based on crop group
-      const targetParcels = getTargetParcels(reco);
-
-      // 2) Mutate status to accepted in database
-      await accept.mutateAsync(reco.id);
-
-      const safeParseFloat = (val: any): number => {
-        if (val === null || val === undefined) return 0;
-        if (typeof val === "number") return val;
-        const str = String(val).trim().replace(",", ".");
-        const parsed = parseFloat(str);
-        return isNaN(parsed) ? 0 : parsed;
-      };
-
-      let clonedCount = 0;
-      if (program) {
-        for (const parcel of targetParcels) {
-          const surface = safeParseFloat(parcel.info?.surface) || 1;
-          clonedCount++;
-
-          if (reco.kind === "fertilisation") {
-            if (payload.method === "irrigation") {
-              // 1. Débiter le stock en FIFO
-              let totalCost = 0;
-              if (Array.isArray(program.entries)) {
-                for (const entry of program.entries) {
-                  if (Array.isArray(entry.items)) {
-                    for (const it of entry.items) {
-                      const doseHa = safeParseFloat(it.qty);
-                      const doseTotale = parseFloat((doseHa * surface).toFixed(2));
-                      const priceUnit = safeParseFloat(it.price);
-                      totalCost += doseTotale * priceUnit;
-                      debitProductStock(it.name, doseTotale);
-                    }
-                  }
-                }
-              }
-
-              // 2. Envoyer le programme de fertilisation à l'exécutant
-              const frequency = safeParseFloat(program.frequency) || 1;
-              const adjustedProgram = {
-                ...program,
-                hectares: surface,
-                total: totalCost * frequency,
-                reco_id: reco.id,
-              };
-              addModuleRecord(parcel.id, "fertilisation", adjustedProgram);
-
-              // 3. Créer un plan d'irrigation automatique
-              const totalMin =
-                program.irrigationTime === "1h"
-                  ? 60
-                  : program.irrigationTime === "1h30"
-                    ? 90
-                    : program.irrigationTime === "2h"
-                      ? 120
-                      : program.irrigationTime === "2h30"
-                        ? 150
-                        : program.irrigationTime === "3h"
-                          ? 180
-                          : 90;
-              const durationHours = (totalMin / 60).toString();
-              const irrigationPayload = {
-                mode: "date",
-                date: program.date || new Date().toISOString().slice(0, 10),
-                duration: durationHours,
-                dateStartHour: "08:00",
-                wettingTime: program.wettingTime,
-                injectionTime: program.injectionTime,
-                rinsingTime: program.rinsingTime,
-                irrigationTime: program.irrigationTime,
-                reco_id: reco.id,
-              };
-              addModuleRecord(parcel.id, "irrigation", irrigationPayload);
-            } else {
-              // Fertilisation par Pulvérisation (Foliaire)
-              // 1. Débiter le stock en FIFO une seule fois pour la cuve globale
-              if (clonedCount === 1 && Array.isArray(program.items)) {
-                for (const it of program.items) {
-                  const qty = safeParseFloat(it.qty);
-                  debitProductStock(it.name, qty);
-                }
-              }
-              // 2. Envoyer le programme à l'exécutant
-              addModuleRecord(parcel.id, "pulverisation", { ...program, reco_id: reco.id });
-            }
-          } else if (reco.kind === "phytosanitaire") {
-            // 1. Débiter le stock en FIFO
-            if (Array.isArray(program.products)) {
-              const surface = safeParseFloat(parcel?.info?.surface) || 1;
-              for (const p of program.products) {
-                const parsed = parsePhytoProductQuantity(p, surface);
-                debitProductStock(p.product, parsed.quantity);
-              }
-            }
-            // 2. Envoyer le programme à l'exécutant
-            addModuleRecord(parcel.id, "phytosanitaire", { ...program, reco_id: reco.id });
-            setStatus(parcel.id, "alerte");
-          }
+      toast.info(`Validation groupée en cours (0/${count})...`);
+      for (let i = 0; i < toValidate.length; i++) {
+        const r = toValidate[i];
+        try {
+          const res = await validateRecommendationAndPurchases({
+            reco: r,
+            parcels,
+            suppliers,
+            addPurchase,
+            acceptReco: async (id) => accept.mutateAsync(id),
+            addModuleRecord,
+            setParcelStatus: setStatus,
+            options: {
+              supplierName: "Achat Validé (Historique Ingénieur)",
+              markAsExecutedIfPast: false,
+            },
+          });
+          successCount++;
+          totalTasks += res.clonedCount;
+          totalPurchases += res.createdPurchasesCount;
+        } catch (err: any) {
+          errors.push(`${r.title}: ${err?.message || "Erreur"}`);
         }
       }
 
-      if (clonedCount > 0) {
-        toast.success(`Achat validé et stock débité ! Programme généré pour ${clonedCount} parcelle(s) et envoyé à l'exécutant.`);
-      } else {
-        toast.success("Achat validé et stock débité !");
+      if (successCount > 0) {
+        toast.success(
+          `${successCount} achat(s) et prescription(s) validé(s) avec succès ! (${totalTasks} tâches créées, ${totalPurchases} bons d'achat enregistrés).`
+        );
+        setSelectedPurchaseRecoIds(new Set());
       }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Erreur lors de la validation");
+
+      if (errors.length > 0) {
+        toast.error(`${errors.length} erreur(s) :\n${errors.join("\n")}`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Erreur lors de la validation groupée");
+    } finally {
+      setIsValidatingPurchaseBatch(false);
     }
   };
 
@@ -1237,10 +1219,47 @@ function ProgrammesPage() {
       {/* TAB 5: PURCHASE */}
       {effectiveTab === "purchase" && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center px-1">
+          <div className="flex flex-wrap justify-between items-center gap-2 px-1">
             <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
               Achats en attente d'approvisionnement ({purchaseRecos.length})
             </h3>
+
+            {purchaseRecos.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedPurchaseRecoIds.size === purchaseRecos.length) {
+                      setSelectedPurchaseRecoIds(new Set());
+                    } else {
+                      setSelectedPurchaseRecoIds(new Set(purchaseRecos.map((r) => r.id)));
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-xl border bg-muted/60 hover:bg-muted text-foreground transition active:scale-95 cursor-pointer"
+                >
+                  <CheckSquare className="h-3.5 w-3.5 text-primary" />
+                  <span>
+                    {selectedPurchaseRecoIds.size === purchaseRecos.length
+                      ? "Tout désélectionner"
+                      : `Tout cocher (${purchaseRecos.length})`}
+                  </span>
+                </button>
+
+                {selectedPurchaseRecoIds.size > 0 && (
+                  <Button
+                    size="sm"
+                    disabled={isValidatingPurchaseBatch}
+                    onClick={handleBatchValidatePurchases}
+                    className="h-8 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-xs"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {isValidatingPurchaseBatch
+                      ? "Validation..."
+                      : `Valider la sélection (${selectedPurchaseRecoIds.size})`}
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           {purchaseRecos.length === 0 ? (
@@ -1334,11 +1353,32 @@ function ProgrammesPage() {
                 const RecoIcon = reco.kind === "irrigation" ? Droplets : reco.kind === "phytosanitaire" ? Bug : Sprout;
 
                 return (
-                  <Card key={reco.id} className="p-4 space-y-4 hover:shadow-md transition-shadow">
+                  <Card
+                    key={reco.id}
+                    className={`p-4 space-y-4 hover:shadow-md transition-shadow ${
+                      selectedPurchaseRecoIds.has(reco.id) ? "ring-2 ring-primary border-primary bg-primary/5" : ""
+                    }`}
+                  >
                     {/* Header */}
                     <div className="flex items-start justify-between gap-3 border-b pb-3">
                       <div className="flex items-center gap-3">
-                        <div className="rounded-xl bg-amber-500/10 p-2.5 text-amber-600">
+                        <div
+                          onClick={(e) => toggleSelectPurchaseReco(reco.id, e)}
+                          className="cursor-pointer shrink-0"
+                          title={selectedPurchaseRecoIds.has(reco.id) ? "Désélectionner" : "Cocher pour valider"}
+                        >
+                          <div
+                            className={`h-5 w-5 rounded-lg border-2 flex items-center justify-center transition-all ${
+                              selectedPurchaseRecoIds.has(reco.id)
+                                ? "bg-primary border-primary text-primary-foreground shadow-xs"
+                                : "border-muted-foreground/40 hover:border-primary bg-background"
+                            }`}
+                          >
+                            {selectedPurchaseRecoIds.has(reco.id) && <CheckSquare className="h-3.5 w-3.5" />}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl bg-amber-500/10 p-2.5 text-amber-600 shrink-0">
                           <RecoIcon className="h-5 w-5" />
                         </div>
                         <div>

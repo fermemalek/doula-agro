@@ -10,6 +10,7 @@ import {
   Droplet,
   Trash2,
   CheckCircle2,
+  CheckSquare,
   Copy,
   Calendar,
   CalendarDays,
@@ -397,6 +398,103 @@ function RecommandationsPageContent() {
 
   const pendingCount = list.filter((r) => r.status === "envoyee" || r.status === "rejetee").length;
 
+  // Sélection multiple pour validation groupée
+  const [selectedRecoIds, setSelectedRecoIds] = useState<Set<string>>(new Set());
+  const [isValidatingBatch, setIsValidatingBatch] = useState(false);
+
+  const toggleSelectReco = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedRecoIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const pendingInFiltered = useMemo(() => {
+    return filteredList.filter((r) => r.status === "envoyee" || r.status === "rejetee");
+  }, [filteredList]);
+
+  const allPendingSelected =
+    pendingInFiltered.length > 0 &&
+    pendingInFiltered.every((r) => selectedRecoIds.has(r.id));
+
+  const handleSelectAllPending = () => {
+    if (allPendingSelected) {
+      setSelectedRecoIds(new Set());
+    } else {
+      const next = new Set(selectedRecoIds);
+      pendingInFiltered.forEach((r) => next.add(r.id));
+      setSelectedRecoIds(next);
+    }
+  };
+
+  const handleBatchValidate = async () => {
+    const toValidate = list.filter((r) => selectedRecoIds.has(r.id) && (r.status === "envoyee" || r.status === "rejetee"));
+    if (toValidate.length === 0) {
+      return toast.info("Aucune recommandation en attente sélectionnée.");
+    }
+
+    const count = toValidate.length;
+    if (
+      !window.confirm(
+        `Voulez-vous vraiment valider simultanément ces ${count} recommandation(s) ?\n\nDes Bons d'Achat individuels seront générés pour chaque intervention et les programmes correspondants seront créés pour chaque parcelle.`
+      )
+    ) {
+      return;
+    }
+
+    setIsValidatingBatch(true);
+    let successCount = 0;
+    let totalTasks = 0;
+    let totalPurchases = 0;
+    const errors: string[] = [];
+
+    try {
+      toast.info(`Validation groupée en cours (0/${count})...`);
+
+      for (let i = 0; i < toValidate.length; i++) {
+        const r = toValidate[i];
+        try {
+          const res = await validateRecommendationAndPurchases({
+            reco: r,
+            parcels,
+            suppliers,
+            addPurchase,
+            acceptReco: async (id) => accept.mutateAsync(id),
+            addModuleRecord,
+            setParcelStatus,
+            options: {
+              supplierName: "Achat Validé (Historique Ingénieur)",
+              markAsExecutedIfPast: false,
+            },
+          });
+          successCount++;
+          totalTasks += res.clonedCount;
+          totalPurchases += res.createdPurchasesCount;
+        } catch (err: any) {
+          errors.push(`${r.title}: ${err?.message || "Erreur"}`);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(
+          `${successCount} recommandation(s) validée(s) avec succès ! (${totalTasks} tâches créées, ${totalPurchases} achats enregistrés).`
+        );
+        setSelectedRecoIds(new Set());
+      }
+
+      if (errors.length > 0) {
+        toast.error(`${errors.length} erreur(s) lors de la validation groupée :\n${errors.join("\n")}`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Erreur lors de la validation groupée");
+    } finally {
+      setIsValidatingBatch(false);
+    }
+  };
+
   return (
     <main className="mx-auto max-w-4xl px-4 pb-24 pt-4">
       <button
@@ -635,6 +733,69 @@ function RecommandationsPageContent() {
       </div>
 
       {/* ========================================================= */}
+      {/* BARRE D'ACTIONS GROUPÉES / VALIDATION MULTIPLE           */}
+      {/* ========================================================= */}
+      {pendingInFiltered.length > 0 && (displayRole === "ingenieur" || displayRole === "admin") && (
+        <div
+          className={`flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border p-3 transition-all ${
+            selectedRecoIds.size > 0
+              ? "bg-primary/10 border-primary/40 shadow-sm"
+              : "bg-muted/30 border-dashed"
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleSelectAllPending}
+              className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition active:scale-95 cursor-pointer ${
+                allPendingSelected
+                  ? "bg-primary text-primary-foreground border-primary shadow-xs font-black"
+                  : "bg-background hover:bg-muted text-foreground border-input"
+              }`}
+            >
+              <CheckSquare className="h-4 w-4" />
+              <span>
+                {allPendingSelected
+                  ? "Tout désélectionner"
+                  : `Tout cocher (${pendingInFiltered.length} en attente)`}
+              </span>
+            </button>
+
+            {selectedRecoIds.size > 0 && (
+              <span className="text-xs font-black text-primary bg-primary/15 px-2.5 py-1 rounded-xl border border-primary/20">
+                {selectedRecoIds.size} sélectionnée{selectedRecoIds.size > 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+
+          {selectedRecoIds.size > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedRecoIds(new Set())}
+                className="text-xs font-semibold text-muted-foreground hover:text-foreground px-2 py-1"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={isValidatingBatch}
+                onClick={handleBatchValidate}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 text-xs font-black shadow-md transition active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span>
+                  {isValidatingBatch
+                    ? "Validation en cours..."
+                    : `Valider la sélection (${selectedRecoIds.size})`}
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ========================================================= */}
       {/* LISTE DES RECOMMANDATIONS AVEC COULEURS DE PRESCRIPTION */}
       {/* ========================================================= */}
       {list.length === 0 ? (
@@ -682,8 +843,29 @@ function RecommandationsPageContent() {
                     setDetail(r);
                   }
                 }}
-                className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3.5 shadow-xs transition active:scale-[0.99] hover:shadow-md ${config.cardTone}`}
+                className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3.5 shadow-xs transition active:scale-[0.99] hover:shadow-md ${config.cardTone} ${
+                  selectedRecoIds.has(r.id) ? "ring-2 ring-primary border-primary bg-primary/10" : ""
+                }`}
               >
+                {/* Case à cocher pour sélection multiple */}
+                {(displayRole === "ingenieur" || displayRole === "admin") && isPending && (
+                  <div
+                    onClick={(e) => toggleSelectReco(r.id, e)}
+                    className="pt-1.5 shrink-0 flex items-center justify-center cursor-pointer"
+                    title={selectedRecoIds.has(r.id) ? "Désélectionner" : "Cocher pour valider en groupe"}
+                  >
+                    <div
+                      className={`h-5 w-5 rounded-lg border-2 flex items-center justify-center transition-all ${
+                        selectedRecoIds.has(r.id)
+                          ? "bg-primary border-primary text-primary-foreground shadow-xs"
+                          : "border-muted-foreground/40 hover:border-primary bg-background"
+                      }`}
+                    >
+                      {selectedRecoIds.has(r.id) && <CheckSquare className="h-3.5 w-3.5" />}
+                    </div>
+                  </div>
+                )}
+
                 {/* Icône Prescription avec la couleur attribuée (Vert, Bleu, Orange) */}
                 <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${config.iconTone}`}>
                   <Icon className="h-5 w-5" />
