@@ -837,7 +837,7 @@ export function RecommendationForm({
                   addModuleRecord,
                   options: {
                     supplierName: "Achat Validé (Historique Ingénieur)",
-                    markAsExecutedIfPast: true,
+                    markAsExecutedIfPast: false,
                   },
                 });
                 totalCreatedPurchases += res.createdPurchasesCount;
@@ -886,7 +886,7 @@ export function RecommendationForm({
                   addModuleRecord,
                   options: {
                     supplierName: "Achat Validé (Historique Ingénieur)",
-                    markAsExecutedIfPast: true,
+                    markAsExecutedIfPast: false,
                   },
                 });
                 totalCreatedPurchases += res.createdPurchasesCount;
@@ -937,7 +937,7 @@ export function RecommendationForm({
                   addModuleRecord,
                   options: {
                     supplierName: "Achat Validé (Historique Ingénieur)",
-                    markAsExecutedIfPast: true,
+                    markAsExecutedIfPast: false,
                   },
                 });
                 totalCreatedPurchases += res.createdPurchasesCount;
@@ -1117,6 +1117,20 @@ export function RecommendationForm({
                   className="mt-1.5 w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm font-bold shadow-xs focus:ring-2 focus:ring-primary/20"
                 />
               </label>
+
+              {appDate && appDate < new Date().toISOString().slice(0, 10) && (
+                <div className="mt-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                  <span className="text-base leading-none">⏳</span>
+                  <div>
+                    <span className="font-extrabold block">
+                      Mode Spécial Historique Détecté ({appDate} &lt; Aujourd'hui)
+                    </span>
+                    <span className="text-[11px] text-amber-800 dark:text-amber-300 block mt-0.5 leading-relaxed">
+                      Règle Ferme Malek : Lors de la validation, cette recommandation remplacera automatiquement toute recommandation antérieure pour les espèces sélectionnées ({cropGroups.join(", ") || "choisies"}). Tous les achats de produits seront générés pour être <b>strictement égaux aux quantités prescrites</b> (100% réglés, 0 DA de déficit théorique).
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Bloc Irrigation Seule (Sans fertilisation / Eau claire) - Positionné en haut après la date d'application */}

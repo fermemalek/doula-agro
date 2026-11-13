@@ -1,10 +1,20 @@
 import type { Recommendation } from "@/lib/cloud/recommendations";
 import type { Parcel } from "@/data/parcels";
 import { type SupplierPurchase, debitProductStock, deletePurchasesForReco } from "@/lib/suppliers-store";
-import { checkRecoStock, getTargetParcelsForReco, safeParseFloat, parsePhytoProductQuantity, computeScheduledDates } from "@/lib/stock-alerts";
+import {
+  checkRecoStock,
+  getTargetParcelsForReco,
+  safeParseFloat,
+  parsePhytoProductQuantity,
+  matchProductName,
+  computeScheduledDates,
+} from "@/lib/stock-alerts";
 import { removeModuleRecordsByRecoId } from "@/lib/modules-store";
 import { supabase } from "@/integrations/supabase/client";
 import { offlineDB } from "@/lib/offline/db";
+import { getSolarTimesForDate, formatMinutesToHHMM } from "@/lib/astronomy";
+import { checkDARCompliance, checkFRACIRACRotation, checkWeatherSuitabilityForDate } from "@/lib/safety-checks";
+import { cleanRecoTitle } from "@/lib/cloud/recommendations";
 
 export function parseDurationToMinutes(durationStr: string): number {
   if (!durationStr) return 90;
@@ -24,10 +34,10 @@ export function parseDurationToMinutes(durationStr: string): number {
   return !isNaN(num) ? Math.round(num * 60) : 90;
 }
 
-function addDaysDate(dateStr: string, days: number): string {
+export function addDaysDate(dateStr: string, days: number): string {
   try {
-    const d = new Date(dateStr);
-    d.setDate(d.getDate() + days);
+    const d = new Date(`${dateStr.slice(0, 10)}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
     return d.toISOString().slice(0, 10);
   } catch {
     return dateStr;
@@ -39,12 +49,86 @@ export interface ValidateRecoResult {
   clonedCount: number;
   targetParcelsCount: number;
   isPast: boolean;
+  warnings?: string[];
+  blockingErrors?: string[];
+}
+
+/**
+ * Détecte si une recommandation appartient à l'historique antérieur (date < aujourd'hui)
+ */
+export function isHistoricalReco(recoDateStr: string): boolean {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  return recoDateStr.slice(0, 10) < todayStr;
+}
+
+/**
+ * Annule et remplace automatiquement les anciennes recommandations pour les mêmes espèces ciblées
+ * dans le cadre du mode historique (date_recommandation < date_du_jour).
+ * Conserve intactes les recommandations des autres espèces non visées.
+ */
+export async function replaceOlderHistoricalRecosForSpecies({
+  targetParcels,
+  recoDate,
+  currentRecoId,
+}: {
+  targetParcels: Parcel[];
+  recoDate: string;
+  currentRecoId: string;
+}): Promise<string[]> {
+  const targetParcelIds = new Set(targetParcels.map((p) => p.id));
+  const replacedRecoIds: string[] = [];
+
+  try {
+    const { data: allRecos, error } = await (supabase as any)
+      .from("recommendations")
+      .select("id, parcel_ids, payload, created_at, status")
+      .neq("id", currentRecoId);
+
+    if (error || !allRecos) return [];
+
+    for (const r of allRecos) {
+      const pPayload = (r.payload || {}) as any;
+      const rDate = pPayload.program?.date || pPayload.date || r.created_at?.slice(0, 10) || "";
+
+      // Seulement les recos antérieures ou égales à aujourd'hui
+      if (rDate && rDate <= recoDate) {
+        const rParcelIds: string[] = Array.isArray(r.parcel_ids) ? r.parcel_ids : [];
+        const hasOverlap = rParcelIds.some((pId) => targetParcelIds.has(pId));
+
+        if (hasOverlap) {
+          replacedRecoIds.push(r.id);
+
+          // 1. Supprimer les achats associés à l'ancienne recommandation
+          deletePurchasesForReco(r.id);
+
+          // 2. Supprimer les enregistrements de modules liés
+          removeModuleRecordsByRecoId(r.id);
+
+          // 3. Passer l'ancienne recommandation à 'rejetee' (ou archivée)
+          try {
+            await (supabase as any)
+              .from("recommendations")
+              .update({
+                status: "rejetee",
+                reviewed_at: new Date().toISOString(),
+                comment: "Remplacée automatiquement par la nouvelle prescription validée",
+              })
+              .eq("id", r.id);
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[replaceOlderHistoricalRecosForSpecies] Warning:", err);
+  }
+
+  return replacedRecoIds;
 }
 
 /**
  * Valide directement une recommandation agronomique (actuelle ou passée),
- * génère automatiquement les bons d'achat pour combler les ruptures de stocks,
- * débite les stocks et génère les programmes correspondants pour chaque parcelle.
+ * génère un BON D'ACHAT PAR INTERVENTION (traçabilité complète et cumul automatique),
+ * débite les stocks et génère les programmes correspondants selon les groupements hydrauliques et horaires solaires.
  */
 export async function validateRecommendationAndPurchases({
   reco,
@@ -67,51 +151,77 @@ export async function validateRecommendationAndPurchases({
     supplierName?: string;
     markAsExecutedIfPast?: boolean;
     scheduledDates?: string[];
+    forceBypassDAR?: boolean;
   };
 }): Promise<ValidateRecoResult> {
   const payload = (reco.payload ?? {}) as any;
   const program = payload.program || {};
   const recoDate = program?.date || reco.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10);
   const targetParcels = getTargetParcelsForReco(reco, parcels);
-
   const todayStr = new Date().toISOString().slice(0, 10);
-  const isPast = options.markAsExecutedIfPast !== false && recoDate < todayStr;
+  const isPast = recoDate < todayStr;
 
-  // 0. Nettoyer les achats précédents associés à cette recommandation pour éviter les doublons
+  // Démarrage officiel à J+1 (ou date prescription si passée)
+  const plannedStartDate = isPast ? recoDate : addDaysDate(recoDate, 1);
+
+  // 1. Contrôles de sécurité réglementaire (DAR)
+  const darCheck = checkDARCompliance(reco, targetParcels, plannedStartDate);
+  if (!darCheck.isCompliant && !options.forceBypassDAR) {
+    throw new Error(
+      `Validation bloquée pour non-respect du DAR :\n${darCheck.blockingErrors.join("\n")}`
+    );
+  }
+
+  // 2. Nettoyer les achats précédents associés à cette recommandation
   deletePurchasesForReco(reco.id);
+  removeModuleRecordsByRecoId(reco.id);
 
-  // 1. Déterminer la liste exacte des dates d'intervention (1 Bon d'Achat par intervention)
+  // 3. MODE SPÉCIAL HISTORIQUE (recoDate < TODAY) : Remplacement automatique par espèce
+  if (isPast) {
+    await replaceOlderHistoricalRecosForSpecies({
+      targetParcels,
+      recoDate,
+      currentRecoId: reco.id,
+    });
+  }
+
+  // 4. Déterminer la liste exacte des dates d'intervention (1 Bon d'Achat par intervention)
   let scheduledDates: string[] = [];
   if (Array.isArray(options.scheduledDates) && options.scheduledDates.length > 0) {
     scheduledDates = options.scheduledDates;
   } else if (Array.isArray(payload.passages) && payload.passages.length > 0) {
     scheduledDates = payload.passages;
-  } else if (reco.kind === "fertilisation" && payload.method === "irrigation") {
+  } else if (reco.kind === "fertilisation" && (payload.method === "irrigation" || program.kind === "irrigation")) {
     // Si semaine du 9/10 Mars 2026 : les 2 passages de référence (Mardi 10 Mars et Dimanche 15 Mars)
     if (recoDate === "2026-03-09" || recoDate === "2026-03-10" || (reco.title || "").includes("2026-03-09")) {
       scheduledDates = ["2026-03-10", "2026-03-15"];
     } else {
       const freq = Math.max(1, safeParseFloat(program.frequency) || safeParseFloat(payload.fertIrrigationFreq) || 1);
       if (freq > 1) {
-        scheduledDates = computeScheduledDates(recoDate, 1, freq, 5);
+        scheduledDates = computeScheduledDates(plannedStartDate, 1, freq, 5);
       } else {
-        scheduledDates = [recoDate];
+        scheduledDates = [plannedStartDate];
       }
     }
   } else if (reco.kind === "pulverisation" || payload.method === "pulverisation" || payload.method === "foliaire") {
-    let foliarDate = recoDate;
+    let foliarDate = isPast ? recoDate : addDaysDate(plannedStartDate, 1); // J+2 par défaut
     const titleLower = (reco.title || "").toLowerCase();
     if (titleLower.includes("passage 2") || titleLower.includes("pulvérisation 2") || titleLower.includes("pulverisation 2")) {
-      foliarDate = addDaysDate(recoDate, 4); // ex: Vendredi
-    } else if (titleLower.includes("passage 1") || titleLower.includes("pulvérisation 1") || titleLower.includes("pulverisation 1")) {
-      foliarDate = addDaysDate(recoDate, 1); // ex: Mardi
+      foliarDate = isPast ? addDaysDate(recoDate, 4) : addDaysDate(plannedStartDate, 4); // J+5
     }
     scheduledDates = [foliarDate];
+  } else if (reco.kind === "phytosanitaire") {
+    let phytoDate = isPast ? addDaysDate(recoDate, 2) : addDaysDate(plannedStartDate, 2); // J+3 par défaut
+    const titleLower = (reco.title || "").toLowerCase();
+    if (titleLower.includes("traitement 2")) {
+      phytoDate = isPast ? addDaysDate(recoDate, 6) : addDaysDate(plannedStartDate, 6); // J+7
+    }
+    scheduledDates = [phytoDate];
   } else {
-    scheduledDates = [recoDate];
+    scheduledDates = [plannedStartDate];
   }
 
-  // 2. Générer un Bon d'Achat (BA) par intervention
+  // 5. Générer UN BON D'ACHAT PAR INTERVENTION DATE
   let createdPurchasesCount = 0;
   const supplierName = options.supplierName || "Achat Validé (Historique Ingénieur)";
 
@@ -119,49 +229,48 @@ export async function validateRecommendationAndPurchases({
     const interventionDate = scheduledDates[passIndex];
     const bonNumber = `BA-${interventionDate}`;
 
-    if (reco.kind === "fertilisation" && payload.method === "irrigation") {
+    if (reco.kind === "fertilisation" && (payload.method === "irrigation" || program.kind === "irrigation")) {
       if (Array.isArray(program.entries)) {
         for (const entry of program.entries) {
           if (Array.isArray(entry.items)) {
             const seenInBac = new Set<string>();
             for (const it of entry.items) {
-              const name = it.name?.trim();
-              if (!name) continue;
-              const norm = name.toLowerCase().replace(/\s+/g, " ");
-              if (seenInBac.has(norm)) continue;
-              seenInBac.add(norm);
+              const productName = (it.name || "").trim();
+              if (!productName || seenInBac.has(productName.toLowerCase())) continue;
+              seenInBac.add(productName.toLowerCase());
 
               const doseHa = safeParseFloat(it.qty);
-              const unitPrice = safeParseFloat(it.price);
-              const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+              const priceUnit = safeParseFloat(it.price);
+              const unit = it.unit || "kg";
 
-              // Somme exacte des besoins de ce passage sur l'ensemble des parcelles traitées
-              let passageQty = 0;
+              // Calcul exact du besoin pour ce passage sur TOUTES les parcelles ciblées
+              let passageTotalQty = 0;
               for (const parcel of targetParcels) {
                 const surface = safeParseFloat(parcel.info?.surface) || 2;
-                passageQty += doseHa * surface;
+                passageTotalQty += doseHa * surface;
               }
-              passageQty = parseFloat(passageQty.toFixed(2));
+              passageTotalQty = parseFloat(passageTotalQty.toFixed(2));
 
-              if (passageQty > 0) {
-                const cleanName = name.replace(/[^a-zA-Z0-9]/g, "_");
-                const purchaseId = `p-ba-${reco.id}-${interventionDate}-${cleanName}`;
-                const totalCost = parseFloat((passageQty * unitPrice).toFixed(2));
+              if (passageTotalQty > 0) {
+                const cleanProdName = productName.replace(/[^a-zA-Z0-9]/g, "_");
+                const purchaseId = `p-ba-${reco.id}-${interventionDate}-${cleanProdName}`;
+                const totalCost = parseFloat((passageTotalQty * priceUnit).toFixed(2));
 
                 addPurchase({
                   id: purchaseId,
-                  recoId: reco.id,
                   orderNumber: bonNumber,
+                  recoId: reco.id,
                   supplierName,
-                  productName: name,
+                  productName,
                   purchaseDate: interventionDate,
-                  quantity: passageQty,
-                  consumed: passageQty, // Règle d'or : J'achète exactement ce qui est validé et consommé pour ce passage
+                  quantity: passageTotalQty,
                   unit,
-                  pricePerUnit: unitPrice,
+                  pricePerUnit: priceUnit,
                   totalCost,
-                  paidAmount: totalCost,
+                  paidAmount: totalCost, // Soldé
+                  consumed: passageTotalQty, // Acheté = Consommé = Validé, Restant = 0
                 } as any);
+
                 createdPurchasesCount++;
               }
             }
@@ -169,70 +278,86 @@ export async function validateRecommendationAndPurchases({
         }
       }
     } else if (reco.kind === "pulverisation" || payload.method === "pulverisation" || payload.method === "foliaire") {
-      // Pulvérisation foliaire : volume cuve pour cette intervention
-      if (Array.isArray(program.items)) {
-        for (const it of program.items) {
-          const name = it.name?.trim();
-          if (!name) continue;
-          const qty = safeParseFloat(it.qty);
-          const unitPrice = safeParseFloat(it.price);
-          const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+      const items = Array.isArray(program.items) ? program.items : (payload.items || []);
+      const seenFoliar = new Set<string>();
 
-          if (qty > 0) {
-            const cleanName = name.replace(/[^a-zA-Z0-9]/g, "_");
-            const purchaseId = `p-ba-${reco.id}-${interventionDate}-${cleanName}`;
-            const totalCost = parseFloat((qty * unitPrice).toFixed(2));
+      for (const it of items) {
+        const productName = (it.name || it.product || "").trim();
+        if (!productName || seenFoliar.has(productName.toLowerCase())) continue;
+        seenFoliar.add(productName.toLowerCase());
 
-            addPurchase({
-              id: purchaseId,
-              recoId: reco.id,
-              orderNumber: bonNumber,
-              supplierName,
-              productName: name,
-              purchaseDate: interventionDate,
-              quantity: qty,
-              consumed: qty,
-              unit,
-              pricePerUnit: unitPrice,
-              totalCost,
-              paidAmount: totalCost,
-            } as any);
-            createdPurchasesCount++;
-          }
+        const doseHa = safeParseFloat(it.qty || it.dosage);
+        const priceUnit = safeParseFloat(it.price);
+        const unit = it.unit || "litres";
+
+        let passageTotalQty = 0;
+        for (const parcel of targetParcels) {
+          const surface = safeParseFloat(parcel.info?.surface) || 2;
+          passageTotalQty += doseHa * surface;
+        }
+        passageTotalQty = parseFloat(passageTotalQty.toFixed(2));
+
+        if (passageTotalQty > 0) {
+          const cleanProdName = productName.replace(/[^a-zA-Z0-9]/g, "_");
+          const purchaseId = `p-ba-${reco.id}-${interventionDate}-${cleanProdName}`;
+          const totalCost = parseFloat((passageTotalQty * priceUnit).toFixed(2));
+
+          addPurchase({
+            id: purchaseId,
+            orderNumber: bonNumber,
+            recoId: reco.id,
+            supplierName,
+            productName,
+            purchaseDate: interventionDate,
+            quantity: passageTotalQty,
+            unit,
+            pricePerUnit: priceUnit,
+            totalCost,
+            paidAmount: totalCost,
+            consumed: passageTotalQty,
+          } as any);
+
+          createdPurchasesCount++;
         }
       }
     } else if (reco.kind === "phytosanitaire") {
       if (Array.isArray(program.products)) {
-        const totalSurface = targetParcels.reduce(
-          (sum, parcel) => sum + (safeParseFloat(parcel?.info?.surface) || 2),
-          0
-        ) || 2;
-
+        const seenPhyto = new Set<string>();
         for (const p of program.products) {
-          const name = (p.product || p.name)?.trim();
-          if (!name) continue;
-          const parsed = parsePhytoProductQuantity(p, totalSurface);
-          const unitPrice = safeParseFloat(p.price);
+          const productName = (p.product || p.name || "").trim();
+          if (!productName || seenPhyto.has(productName.toLowerCase())) continue;
+          seenPhyto.add(productName.toLowerCase());
 
-          if (parsed.quantity > 0) {
-            const cleanName = name.replace(/[^a-zA-Z0-9]/g, "_");
-            const purchaseId = `p-ba-${reco.id}-${interventionDate}-${cleanName}`;
-            const totalCost = parseFloat((parsed.quantity * unitPrice).toFixed(2));
+          const priceUnit = safeParseFloat(p.price);
+          let passageTotalQty = 0;
+
+          for (const parcel of targetParcels) {
+            const surface = safeParseFloat(parcel.info?.surface) || 2;
+            const parsed = parsePhytoProductQuantity(p, surface);
+            passageTotalQty += parsed.quantity;
+          }
+          passageTotalQty = parseFloat(passageTotalQty.toFixed(2));
+
+          if (passageTotalQty > 0) {
+            const cleanProdName = productName.replace(/[^a-zA-Z0-9]/g, "_");
+            const purchaseId = `p-ba-${reco.id}-${interventionDate}-${cleanProdName}`;
+            const totalCost = parseFloat((passageTotalQty * priceUnit).toFixed(2));
 
             addPurchase({
               id: purchaseId,
-              recoId: reco.id,
               orderNumber: bonNumber,
+              recoId: reco.id,
               supplierName,
-              productName: name,
+              productName,
               purchaseDate: interventionDate,
-              quantity: parsed.quantity,
-              consumed: parsed.quantity,
-              unit: parsed.unit,
-              pricePerUnit: unitPrice,
+              quantity: passageTotalQty,
+              unit: "litres",
+              pricePerUnit: priceUnit,
               totalCost,
               paidAmount: totalCost,
+              consumed: passageTotalQty,
             } as any);
+
             createdPurchasesCount++;
           }
         }
@@ -240,21 +365,55 @@ export async function validateRecommendationAndPurchases({
     }
   }
 
-  // 3. Mettre à jour le statut de la recommandation vers "acceptee"
+  // 6. Mettre à jour le statut de la recommandation vers "acceptee"
   await acceptReco(reco.id);
 
-  // 4. Débiter le stock et créer les enregistrements sur chaque parcelle pour chaque passage
-  removeModuleRecordsByRecoId(reco.id);
+  // 7. Débiter le stock et créer les enregistrements sur chaque parcelle pour chaque passage
   let clonedCount = 0;
+  const isMethodIrrigation = payload.method === "irrigation" || program.kind === "irrigation";
 
-  if (program && targetParcels.length > 0) {
+  if (targetParcels.length > 0) {
     for (const dateItem of scheduledDates) {
-      for (const parcel of targetParcels) {
-        const surface = safeParseFloat(parcel.info?.surface) || 2;
-        clonedCount++;
+      if (reco.kind === "fertilisation" && isMethodIrrigation) {
+        // Groupes hydrauliques séquentiels à la station
+        const fertSolar = getSolarTimesForDate(dateItem);
+        let currentStationMinutes = fertSolar.sunriseMinutes;
 
-        if (reco.kind === "fertilisation") {
-          if (payload.method === "irrigation") {
+        const pommiers = targetParcels.filter((p) => p.type === "pommier" || p.id.startsWith("pommier"));
+        const oliS1 = targetParcels.filter((p) => p.id === "p1" || p.id === "p2");
+        const oliS2 = targetParcels.filter((p) => p.id === "p3" || p.id === "p4");
+        const nablaraList = targetParcels.filter((p) => p.id === "nablara");
+        const redixList = targetParcels.filter((p) => p.id === "redix25");
+        const otherParcels = targetParcels.filter(
+          (p) =>
+            !pommiers.includes(p) &&
+            !oliS1.includes(p) &&
+            !oliS2.includes(p) &&
+            !nablaraList.includes(p) &&
+            !redixList.includes(p)
+        );
+
+        const hydraulicGroups: Parcel[][] = [];
+        if (pommiers.length > 0) hydraulicGroups.push(pommiers);
+        if (nablaraList.length > 0) hydraulicGroups.push(nablaraList);
+        if (redixList.length > 0) hydraulicGroups.push(redixList);
+        if (oliS1.length > 0) hydraulicGroups.push(oliS1);
+        if (oliS2.length > 0) hydraulicGroups.push(oliS2);
+        if (otherParcels.length > 0) {
+          otherParcels.forEach((op) => hydraulicGroups.push([op]));
+        }
+
+        for (const group of hydraulicGroups) {
+          const groupDurationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
+          const startHourStr = formatMinutesToHHMM(currentStationMinutes);
+          const endHourMinutes = currentStationMinutes + groupDurationMinutes;
+          const endHourStr = formatMinutesToHHMM(endHourMinutes);
+          const hoursSlot = `${startHourStr} - ${endHourStr}`;
+
+          for (const parcel of group) {
+            const surface = safeParseFloat(parcel.info?.surface) || 2;
+            clonedCount++;
+
             let totalCost = 0;
             if (Array.isArray(program.entries)) {
               for (const entry of program.entries) {
@@ -270,20 +429,20 @@ export async function validateRecommendationAndPurchases({
               }
             }
 
-            const durationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
-            const durationHours = (durationMinutes / 60).toString();
+            const cleanTitle = cleanRecoTitle(reco.title || program.label || "Fertigation au sol");
 
             const unifiedFertigation = {
               ...program,
               method: "irrigation",
-              label: program.label || "Irrigation & Fertilisation",
+              label: cleanTitle,
               hectares: surface,
               total: totalCost,
               reco_id: reco.id,
               date: dateItem,
               mode: "date",
-              duration: durationHours,
-              dateStartHour: "08:00",
+              duration: (groupDurationMinutes / 60).toString(),
+              dateStartHour: startHourStr,
+              hoursSlot,
               wettingTime: program.wettingTime,
               injectionTime: program.injectionTime,
               rinsingTime: program.rinsingTime,
@@ -291,39 +450,61 @@ export async function validateRecommendationAndPurchases({
               status: isPast ? "execute" : "planifie",
               ...(isPast
                 ? {
-                  executedAt: dateItem,
-                  executed_at: dateItem,
-                  executionNote: "Historique validé (mois précédent)",
-                }
+                    executedAt: dateItem,
+                    executed_at: dateItem,
+                    executionNote: "Historique validé (mois précédent)",
+                  }
                 : {}),
             };
 
             addModuleRecord(parcel.id, "fertilisation", unifiedFertigation);
-          } else {
-            // Pulvérisation foliaire : débiter le produit une seule fois par passage (cuve)
-            if (clonedCount === 1 && Array.isArray(program.items)) {
-              for (const it of program.items) {
-                const qty = safeParseFloat(it.qty);
-                debitProductStock(it.name, qty);
-              }
-            }
+          }
 
-            addModuleRecord(parcel.id, "pulverisation", {
-              ...program,
-              reco_id: reco.id,
-              date: dateItem,
-              dateStartHour: "06:30",
-              status: isPast ? "execute" : "planifie",
-              ...(isPast
-                ? {
+          currentStationMinutes = endHourMinutes;
+        }
+      } else if (reco.kind === "fertilisation" && !isMethodIrrigation) {
+        // Pulvérisation Foliaire
+        const foliarSolar = getSolarTimesForDate(dateItem);
+        const foliarStartHour = foliarSolar.sunriseStr;
+
+        for (const parcel of targetParcels) {
+          const surface = safeParseFloat(parcel.info?.surface) || 2;
+          clonedCount++;
+
+          const items = Array.isArray(program.items) ? program.items : (payload.items || []);
+          for (const it of items) {
+            const doseHa = safeParseFloat(it.qty || it.dosage);
+            const doseTotale = parseFloat((doseHa * surface).toFixed(2));
+            debitProductStock(it.name || it.product, doseTotale);
+          }
+
+          const cleanTitle = cleanRecoTitle(reco.title || "Pulvérisation Foliaire");
+
+          addModuleRecord(parcel.id, "pulverisation", {
+            ...program,
+            label: cleanTitle,
+            reco_id: reco.id,
+            date: dateItem,
+            dateStartHour: foliarStartHour,
+            status: isPast ? "execute" : "planifie",
+            ...(isPast
+              ? {
                   executedAt: dateItem,
                   executed_at: dateItem,
                   executionNote: "Historique validé (mois précédent)",
                 }
-                : {}),
-            });
-          }
-        } else if (reco.kind === "phytosanitaire") {
+              : {}),
+          });
+        }
+      } else if (reco.kind === "phytosanitaire") {
+        // Traitement Phytosanitaire (Crépuscule)
+        const phytoSolar = getSolarTimesForDate(dateItem);
+        const phytoStartHour = phytoSolar.sunsetStr;
+
+        for (const parcel of targetParcels) {
+          const surface = safeParseFloat(parcel.info?.surface) || 2;
+          clonedCount++;
+
           if (Array.isArray(program.products)) {
             for (const p of program.products) {
               const parsed = parsePhytoProductQuantity(p, surface);
@@ -331,18 +512,21 @@ export async function validateRecommendationAndPurchases({
             }
           }
 
+          const cleanTitle = cleanRecoTitle(reco.title || "Traitement Phytosanitaire");
+
           addModuleRecord(parcel.id, "phytosanitaire", {
             ...program,
+            label: cleanTitle,
             reco_id: reco.id,
             date: dateItem,
-            dateStartHour: "17:30",
+            dateStartHour: phytoStartHour,
             status: isPast ? "execute" : "planifie",
             ...(isPast
               ? {
-                executedAt: dateItem,
-                executed_at: dateItem,
-                executionNote: "Historique validé (mois précédent)",
-              }
+                  executedAt: dateItem,
+                  executed_at: dateItem,
+                  executionNote: "Historique validé (mois précédent)",
+                }
               : {}),
           });
 
@@ -354,15 +538,12 @@ export async function validateRecommendationAndPurchases({
     }
   }
 
-  if (setStatus) {
-    setStatus("acceptee");
-  }
-
   return {
     createdPurchasesCount,
     clonedCount,
     targetParcelsCount: targetParcels.length,
     isPast,
+    warnings: darCheck.warnings,
   };
 }
 
@@ -408,54 +589,4 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
       .delete()
       .neq("id", "00000000-0000-0000-0000-000000000000");
   } catch { }
-
-  // Purge de la file offline des résidus p-reco-
-  try {
-    const pendingRecoOps = await offlineDB.outbox
-      .filter((e) => String(e.record_id || "").startsWith("p-reco-") || (e.op === "purchase.delete" && String((e.payload as any)?.id || "").startsWith("p-reco-")))
-      .toArray();
-    for (const item of pendingRecoOps) {
-      await offlineDB.outbox.delete(item.client_id);
-    }
-  } catch { }
-
-  // 3. Réinitialisation des statuts dans Supabase vers "envoyee" en une seule requête groupée
-  try {
-    await (supabase as any)
-      .from("recommendations")
-      .update({
-        status: "envoyee",
-        reviewed_at: null,
-        reviewed_by: null,
-        transferred_record_id: null,
-      })
-      .neq("id", "00000000-0000-0000-0000-000000000000");
-  } catch (err) {
-    console.warn("Bulk update to envoyee failed, fallback by id:", err);
-    for (const r of recos) {
-      try {
-        await (supabase as any)
-          .from("recommendations")
-          .update({
-            status: "envoyee",
-            reviewed_at: null,
-            reviewed_by: null,
-            transferred_record_id: null,
-          })
-          .eq("id", r.id);
-      } catch { }
-    }
-  }
-
-  // Dual-clean Supabase module_records si possible
-  try {
-    const { data: u } = await supabase.auth.getUser();
-    if (u?.user) {
-      await (supabase as any)
-        .from("module_records")
-        .delete()
-        .neq("id", "00000000-0000-0000-0000-000000000000");
-    }
-  } catch { }
 }
-
