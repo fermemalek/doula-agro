@@ -111,9 +111,9 @@ export function useRecommendations() {
             payload = { ...payload, program: { ...payload.program, label: "Programme A2" } };
           }
         } else if (r.id === "9c93efd3-9f1a-402d-9bbb-e498ec8ab34d" || (title.includes("2026-03-09") && payload.program?.items?.some((it: any) => (it.name || "").includes("Algreen")))) {
-          title = "NABLARA, REDIX 25 - 2026-03-09 (Passage 2)";
+          title = "NABLARA, REDIX 25 - 2026-03-09 (Pulvérisation)";
           if (payload.program) {
-            payload = { ...payload, program: { ...payload.program, label: "Passage 2" } };
+            payload = { ...payload, program: { ...payload.program, label: "Pulvérisation" } };
           }
         }
 
