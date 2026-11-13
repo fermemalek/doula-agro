@@ -148,6 +148,7 @@ export async function validateRecommendationAndPurchases({
     supplierName?: string;
     markAsExecutedIfPast?: boolean;
     forceBypassDAR?: boolean;
+    scheduledDates?: string[];
   };
 }): Promise<ValidateRecoResult> {
   const payload = (reco.payload ?? {}) as any;

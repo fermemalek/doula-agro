@@ -691,6 +691,15 @@ function ProgrammesPage() {
     let grandTotal = 0;
 
     for (const p of purchases) {
+      if (
+        !p.supplierName ||
+        p.supplierName.startsWith("__SYSTEM_") ||
+        p.supplierName.startsWith("sys-") ||
+        p.id.startsWith("del_reco_") ||
+        (p.quantity <= 0 && p.totalCost <= 0)
+      ) {
+        continue;
+      }
       const normName = p.supplierName.trim().toLowerCase();
       const current = map.get(normName) || { name: p.supplierName.trim(), totalCost: 0, paidAmount: 0, debt: 0, baNumbers: new Set<string>() };
       current.totalCost += p.totalCost;
