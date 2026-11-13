@@ -23,6 +23,7 @@ import {
   Check,
   X,
   Calendar,
+  RefreshCw,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -128,8 +129,8 @@ function EditPurchaseInlineForm({
   const initialPu = purchase.pricePerUnit > 0
     ? purchase.pricePerUnit
     : purchase.quantity > 0
-    ? Math.round((purchase.totalCost / purchase.quantity) * 100) / 100
-    : 0;
+      ? Math.round((purchase.totalCost / purchase.quantity) * 100) / 100
+      : 0;
   const [pricePerUnit, setPricePerUnit] = useState<number | string>(initialPu);
   const [consumed, setConsumed] = useState<number | string>(purchase.consumed ?? 0);
   const [paidAmount, setPaidAmount] = useState<number | string>(purchase.paidAmount ?? 0);
@@ -325,7 +326,7 @@ function formatProductNote(note: string | null | undefined): string | null {
       if (parsed.dosage && String(parsed.dosage).trim()) parts.push(`Dosage : ${String(parsed.dosage).trim()}`);
       if (parts.length > 0) return parts.join(" · ");
       return null;
-    } catch {}
+    } catch { }
   }
   return trimmed;
 }
@@ -351,7 +352,7 @@ function ProgrammesPage() {
   const { update: updateProduct, add: addProduct } = useProductActions();
   const purchases = useSuppliers();
   const suppliers = purchases;
-  const { addPurchase, updatePurchase, deletePurchase, deleteAllPurchases } = useSupplierActions();
+  const { addPurchase, updatePurchase, deletePurchase, deleteAllPurchases, realignPurchases } = useSupplierActions();
 
   if (role !== "admin") {
     if (role === "ingenieur") {
@@ -486,8 +487,8 @@ function ProgrammesPage() {
               addModuleRecord(parcel.id, "irrigation", irrigationPayload);
             } else {
               // Fertilisation par Pulvérisation (Foliaire)
-              // 1. Débiter le stock en FIFO
-              if (Array.isArray(program.items)) {
+              // 1. Débiter le stock en FIFO une seule fois pour la cuve globale
+              if (clonedCount === 1 && Array.isArray(program.items)) {
                 for (const it of program.items) {
                   const qty = safeParseFloat(it.qty);
                   debitProductStock(it.name, qty);
@@ -726,8 +727,8 @@ function ProgrammesPage() {
         <button
           onClick={() => setActiveTab("planning")}
           className={`flex-1 sm:flex-initial px-3.5 py-2 text-center text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 ${effectiveTab === "planning"
-              ? "bg-emerald-600 text-white shadow-xs"
-              : "text-muted-foreground hover:text-foreground"
+            ? "bg-emerald-600 text-white shadow-xs"
+            : "text-muted-foreground hover:text-foreground"
             }`}
         >
           <Calendar className="h-4 w-4" />
@@ -736,8 +737,8 @@ function ProgrammesPage() {
         <button
           onClick={() => setActiveTab("archive")}
           className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "archive"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+            ? "bg-background text-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
             }`}
         >
           Programmes Archivés
@@ -745,8 +746,8 @@ function ProgrammesPage() {
         <button
           onClick={() => setActiveTab("database")}
           className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "database"
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
+            ? "bg-background text-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
             }`}
         >
           Base Produits
@@ -756,8 +757,8 @@ function ProgrammesPage() {
             <button
               onClick={() => setActiveTab("suppliers")}
               className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "suppliers"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
                 }`}
             >
               Dépenses Fournisseurs
@@ -765,8 +766,8 @@ function ProgrammesPage() {
             <button
               onClick={() => setActiveTab("species")}
               className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "species"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
                 }`}
             >
               Coûts par Espèce
@@ -774,8 +775,8 @@ function ProgrammesPage() {
             <button
               onClick={() => setActiveTab("purchase")}
               className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "purchase"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
                 }`}
             >
               Achats
@@ -783,8 +784,8 @@ function ProgrammesPage() {
             <button
               onClick={() => setActiveTab("stats")}
               className={`flex-1 sm:flex-initial px-3 py-2 text-center text-xs font-bold rounded-xl transition-all ${effectiveTab === "stats"
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
                 }`}
             >
               Statistiques & Graphes
@@ -1469,11 +1470,25 @@ function ProgrammesPage() {
           return (
             <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl md:max-w-6xl w-[96vw] rounded-2xl bg-card text-card-foreground">
               <DialogHeader className="border-b pb-2">
-                <DialogTitle className="text-base font-black uppercase tracking-wide flex justify-between items-center">
+                <DialogTitle className="text-base font-black uppercase tracking-wide flex flex-wrap justify-between items-center gap-2">
                   <span>Détails Fournisseur — {selectedSupplier}</span>
-                  <span className="text-xs bg-primary/10 text-primary px-3 py-1 rounded-xl">
-                    Situation Financière
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        realignPurchases();
+                        toast.success("Quantités réalignées : Acheté = Consommé (0 reste)");
+                      }}
+                      className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Réaligner automatiquement les achats pour que Acheté = Consommé"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Réaligner les stocks (Acheté = Consommé)
+                    </button>
+                    <span className="text-xs bg-primary/10 text-primary px-3 py-1 rounded-xl">
+                      Situation Financière
+                    </span>
+                  </div>
                 </DialogTitle>
               </DialogHeader>
 

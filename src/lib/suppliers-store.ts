@@ -53,6 +53,11 @@ function mapToDb(p: SupplierPurchase) {
   };
 }
 
+function safeParseFloat(val: any): number {
+  const n = parseFloat(val);
+  return isNaN(n) ? 0 : n;
+}
+
 function cleanBuggyPurchases(sourceList: SupplierPurchase[]): { clean: SupplierPurchase[]; removed: SupplierPurchase[] } {
   const removed: SupplierPurchase[] = [];
   const clean = sourceList.filter((p) => {
@@ -65,6 +70,54 @@ function cleanBuggyPurchases(sourceList: SupplierPurchase[]): { clean: SupplierP
     return true;
   });
   return { clean, removed };
+}
+
+/**
+ * Réaligne strictement les achats générés par les recommandations :
+ * Règle d'or : J'achète ce que je valide dans la recommandation (Acheté = Consommé = Validé, Restant = 0).
+ */
+export function reconcilePurchases(sourceList: SupplierPurchase[]): { clean: SupplierPurchase[]; changedItems: SupplierPurchase[] } {
+  const changedItems: SupplierPurchase[] = [];
+  const list = sourceList.map((item) => ({ ...item }));
+
+  for (const p of list) {
+    const sNorm = (p.supplierName || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const isRecoPurchase = sNorm.includes("achat valide") || sNorm.includes("historique") || (p.id && p.id.startsWith("p-reco-"));
+    let itemChanged = false;
+
+    // Cas 1 : Produits foliaires où le débit initial a été multiplié par le nombre de parcelles (ex: Algreen ou Calcium-Bore 1.5 L acheté vs 3 L consommé)
+    const norm = (p.productName || "").trim().toLowerCase();
+    if (norm.includes("algreen") || norm.includes("calcium-bore") || norm.includes("calcium bore") || norm.includes("foliaire")) {
+      if (p.consumed === 3 && p.quantity === 1.5) {
+        p.consumed = 1.5;
+        itemChanged = true;
+      }
+    }
+
+    // Cas 2 : Recommandations validées où Acheté != Consommé
+    // Règle d'or : On achète exactement le volume consommé validé par le programme (Restant = 0)
+    if (isRecoPurchase) {
+      if (p.consumed > 0 && p.quantity !== p.consumed) {
+        p.quantity = p.consumed;
+        p.totalCost = parseFloat((p.quantity * (p.pricePerUnit || 0)).toFixed(2));
+        p.paidAmount = p.totalCost;
+        itemChanged = true;
+      }
+    } else {
+      // Pour tout achat général, si consommé dépasse quantity (reste négatif), on réaligne pour assainir le stock
+      if (p.consumed > p.quantity) {
+        p.quantity = p.consumed;
+        p.totalCost = parseFloat((p.quantity * (p.pricePerUnit || 0)).toFixed(2));
+        itemChanged = true;
+      }
+    }
+
+    if (itemChanged) {
+      changedItems.push(p);
+    }
+  }
+
+  return { clean: list, changedItems };
 }
 
 function load() {
@@ -80,17 +133,30 @@ function load() {
     purchases = [];
   }
 
-  // Nettoyage automatique des enregistrements aberrants générés par l'ancien bug de volume
+  // 1. Nettoyage automatique des enregistrements aberrants générés par l'ancien bug de volume
   const { clean, removed } = cleanBuggyPurchases(purchases);
+  purchases = clean;
   if (removed.length > 0) {
-    purchases = clean;
-    if (typeof window !== "undefined") {
-      localStorage.setItem(KEY, JSON.stringify(purchases));
-    }
     for (const b of removed) {
       void (async () => {
         try {
           await supabase.from("supplier_purchases" as any).delete().eq("id" as never, b.id as never);
+        } catch {}
+      })();
+    }
+  }
+
+  // 2. Réalignement strict des achats de recommandations (Acheté = Consommé = Validé, Restant = 0)
+  const { clean: reconciled, changedItems } = reconcilePurchases(purchases);
+  if (changedItems.length > 0 || removed.length > 0) {
+    purchases = reconciled;
+    if (typeof window !== "undefined") {
+      localStorage.setItem(KEY, JSON.stringify(purchases));
+    }
+    for (const item of changedItems) {
+      void (async () => {
+        try {
+          await supabase.from("supplier_purchases" as any).upsert(mapToDb(item) as never, { onConflict: "id" });
         } catch {}
       })();
     }
@@ -156,13 +222,22 @@ async function fetchOnline() {
     if (!error && dbData) {
       const mapped = dbData.map(mapFromDb);
       const { clean, removed } = cleanBuggyPurchases(mapped);
+      const { clean: reconciled, changedItems } = reconcilePurchases(clean);
 
       // Si le stockage local a des achats que le cloud n'a pas encore, on les synchronise vers Supabase
-      const cloudIds = new Set(clean.map((c) => c.id));
+      const cloudIds = new Set(reconciled.map((c) => c.id));
       const localOnly = purchases.filter((p) => !cloudIds.has(p.id) && !p.id.startsWith("sys-del-"));
 
-      purchases = [...clean, ...localOnly];
+      purchases = [...reconciled, ...localOnly];
       persist();
+
+      for (const item of changedItems) {
+        void (async () => {
+          try {
+            await supabase.from("supplier_purchases" as any).upsert(mapToDb(item) as never, { onConflict: "id" });
+          } catch {}
+        })();
+      }
 
       if (localOnly.length > 0) {
         for (const loc of localOnly) {
@@ -448,7 +523,22 @@ export function useSupplierActions() {
     })();
   }, []);
 
-  return { addPurchase, updatePurchase, deletePurchase, deleteAllPurchases };
+  const realignPurchases = useCallback(() => {
+    const { clean, changedItems } = reconcilePurchases(purchases);
+    if (changedItems.length > 0) {
+      purchases = clean;
+      persist();
+      for (const item of changedItems) {
+        void (async () => {
+          try {
+            await supabase.from("supplier_purchases" as any).upsert(mapToDb(item) as never, { onConflict: "id" });
+          } catch {}
+        })();
+      }
+    }
+  }, []);
+
+  return { addPurchase, updatePurchase, deletePurchase, deleteAllPurchases, realignPurchases };
 }
 
 export function resetAllConsumedQuantities() {

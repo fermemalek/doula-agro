@@ -1145,13 +1145,16 @@ export function RecommendationDetailDialog({
                                   currentStart = addMinutesToTime(groupEnd, 5);
                                 }
                               } else {
+                                // Pulvérisation foliaire : débiter le stock une seule fois par passage pour la cuve globale
+                                let debitedForDate = false;
                                 for (const parcel of targetParcels) {
                                   clonedCount++;
-                                  if (Array.isArray(program.items)) {
+                                  if (!debitedForDate && Array.isArray(program.items)) {
                                     for (const it of program.items) {
                                       const qty = safeParseFloat(it.qty);
                                       debitProductStock(it.name, qty);
                                     }
+                                    debitedForDate = true;
                                   }
                                   addModuleRecord(parcel.id, "pulverisation", { ...program, reco_id: reco.id, date: dateItem });
                                 }

@@ -80,7 +80,13 @@ export async function validateRecommendationAndPurchases({
   deletePurchasesForReco(reco.id);
 
   // 1. Détection et création automatique des achats pour les produits en rupture de stock
-  const stockReport = checkRecoStock(reco, suppliers, parcels, 1, targetParcels);
+  const repeatPassages = Math.max(
+    1,
+    safeParseFloat(program.frequency) ||
+    safeParseFloat(payload.fertIrrigationFreq) ||
+    (Array.isArray(payload.passages) && payload.passages.length > 0 ? payload.passages.length : 1)
+  );
+  const stockReport = checkRecoStock(reco, suppliers, parcels, repeatPassages, targetParcels);
   let createdPurchasesCount = 0;
 
   if (stockReport.hasMissingStock && stockReport.missingItems.length > 0) {
@@ -174,6 +180,14 @@ export async function validateRecommendationAndPurchases({
             scheduledFoliarDate = addDaysDate(recoDate, 4); // ex: Vendredi
           } else if (titleLower.includes("passage 1") || titleLower.includes("pulvérisation 1") || titleLower.includes("pulverisation 1") || titleLower.includes("passage")) {
             scheduledFoliarDate = addDaysDate(recoDate, 1); // ex: Mardi
+          }
+
+          // Pulvérisation foliaire : débiter le produit une seule fois pour la cuve de ce passage
+          if (clonedCount === 1 && Array.isArray(program.items)) {
+            for (const it of program.items) {
+              const qty = safeParseFloat(it.qty);
+              debitProductStock(it.name, qty);
+            }
           }
 
           addModuleRecord(parcel.id, "pulverisation", {

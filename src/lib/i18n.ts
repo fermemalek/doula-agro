@@ -381,11 +381,11 @@ export const translations = {
 export function useTranslation() {
   const cfg = useConfig();
   const lang = cfg.lang || "fr";
-  
+
   const t = (key: string, defaultText?: string) => {
     const dict = translations[lang as "fr" | "ar"] || translations.fr;
     return dict[key as keyof typeof dict] || defaultText || key;
   };
-  
+
   return { t, lang };
 }
