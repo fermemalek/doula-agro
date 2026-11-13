@@ -320,10 +320,10 @@ export function RecommendationForm({
               : 90;
   const wettingMin = Math.max(0, totalMin - fertInjectionTime - fertRinsingTime);
 
-  // Sub-Form 2: Fertilisation par Pulvérisation (Multi-passages 1, 2...)
+  // Sub-Form 2: Fertilisation par Pulvérisation (Multi-pulvérisations 1, 2...)
   interface PulvPassageItem {
     id: string;
-    label: string; // Ex: "Passage 1", "Passage 2"
+    label: string; // Ex: "Pulvérisation 1", "Pulvérisation 2"
     date?: string;
     period: "matin" | "soir";
     waterVolume: string; // Ex: 1000 L
@@ -340,7 +340,7 @@ export function RecommendationForm({
   });
 
   const [pulvPassages, setPulvPassages] = useState<PulvPassageItem[]>([
-    createDefaultPulvPassage("pulv_1", "Passage 1"),
+    createDefaultPulvPassage("pulv_1", "Pulvérisation 1"),
   ]);
 
   const [activePulvIndex, setActivePulvIndex] = useState(0);
@@ -1437,7 +1437,7 @@ export function RecommendationForm({
                               const nextIndex = pulvPassages.length + 1;
                               const newPass = createDefaultPulvPassage(
                                 `pulv_${Date.now()}`,
-                                `Passage ${nextIndex}`,
+                                `Pulvérisation ${nextIndex}`,
                                 appDate
                               );
                               setPulvPassages(prev => [...prev, newPass]);
@@ -1445,11 +1445,11 @@ export function RecommendationForm({
                             }}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 rounded-lg font-bold text-xs flex items-center gap-1 shadow-xs transition"
                           >
-                            <Plus className="h-3.5 w-3.5" /> {t("reco.sub.addPulv", "+ Ajouter un passage")} ({pulvPassages.length + 1})
+                            <Plus className="h-3.5 w-3.5" /> {t("reco.sub.addPulv", "+ Ajouter une pulvérisation")} ({pulvPassages.length + 1})
                           </button>
                         </div>
 
-                        {/* Sélecteur de passages Pulvérisation */}
+                        {/* Sélecteur de pulvérisations */}
                         <div className="flex flex-wrap gap-1.5 p-1 bg-background/60 rounded-xl border">
                           {pulvPassages.map((pp, idx) => (
                             <div key={pp.id} className="flex items-center">

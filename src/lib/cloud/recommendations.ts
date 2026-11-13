@@ -53,7 +53,10 @@ export function addLocalDeletedRecoId(id: string) {
 export function cleanRecoTitle(title: string | null | undefined): string {
   if (!title) return "";
   let s = title.replace(/(\([^)]+\))\s*\1+/g, (_, p1) => p1);
-  s = s.replace(/(\((?:Programme|Passage|Traitement)[^)]*\))\s*(\((?:Programme|Passage|Traitement)[^)]*\))/g, (_, _p1, p2) => p2);
+  s = s.replace(/(\((?:Programme|Passage|Traitement|Pulvérisation)[^)]*\))\s*(\((?:Programme|Passage|Traitement|Pulvérisation)[^)]*\))/gi, (_, _p1, p2) => p2);
+  // Remplacer dans toutes les recommandations le mot "Passage" par "Pulvérisation" en conservant la numérotation
+  s = s.replace(/\bPassage\s*(\d+)/gi, "Pulvérisation $1");
+  s = s.replace(/\bPassage\b/gi, "Pulvérisation");
   return s.trim();
 }
 
@@ -104,16 +107,38 @@ export function useRecommendations() {
         let title = cleanRecoTitle(r.title);
         let payload = (r.payload || {}) as Record<string, any>;
 
-        // Correction agronomique des prescriptions du 09 Mars 2026 (distinctes A1/A2 et Passage 1/Passage 2)
+        // Remplacement systématique de Passage par Pulvérisation dans le titre et les sous-programmes
+        title = title.replace(/\bPassage\s*(\d+)/gi, "Pulvérisation $1").replace(/\bPassage\b/gi, "Pulvérisation");
+
+        if (payload.program?.label && typeof payload.program.label === "string") {
+          const newLabel = payload.program.label
+            .replace(/\bPassage\s*(\d+)/gi, "Pulvérisation $1")
+            .replace(/\bPassage\b/gi, "Pulvérisation");
+          payload = { ...payload, program: { ...payload.program, label: newLabel } };
+        }
+
+        if (Array.isArray(payload.passages)) {
+          payload = {
+            ...payload,
+            passages: payload.passages.map((p: any) => ({
+              ...p,
+              label: typeof p.label === "string"
+                ? p.label.replace(/\bPassage\s*(\d+)/gi, "Pulvérisation $1").replace(/\bPassage\b/gi, "Pulvérisation")
+                : p.label,
+            })),
+          };
+        }
+
+        // Correction agronomique des prescriptions du 09 Mars 2026 (distinctes A1/A2 et Pulvérisation 1/Pulvérisation 2)
         if (r.id === "f1134c54-4d72-4ac1-adec-fc351da039dd" || (title.includes("2026-03-09") && payload.program?.entries?.some((e: any) => e.bac === "B"))) {
           title = "NABLARA, REDIX 25 - 2026-03-09 (Programme A2)";
           if (payload.program) {
             payload = { ...payload, program: { ...payload.program, label: "Programme A2" } };
           }
         } else if (r.id === "9c93efd3-9f1a-402d-9bbb-e498ec8ab34d" || (title.includes("2026-03-09") && payload.program?.items?.some((it: any) => (it.name || "").includes("Algreen")))) {
-          title = "NABLARA, REDIX 25 - 2026-03-09 (Pulvérisation)";
+          title = "NABLARA, REDIX 25 - 2026-03-09 (Pulvérisation 2)";
           if (payload.program) {
-            payload = { ...payload, program: { ...payload.program, label: "Pulvérisation" } };
+            payload = { ...payload, program: { ...payload.program, label: "Pulvérisation 2" } };
           }
         }
 
