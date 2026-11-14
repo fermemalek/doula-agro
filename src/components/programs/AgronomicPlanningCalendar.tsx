@@ -27,6 +27,7 @@ import { type Recommendation } from "@/lib/cloud/recommendations";
 import { type Parcel } from "@/data/parcels";
 import { useTranslation } from "@/lib/i18n";
 import { getSolarTimesForDate } from "@/lib/astronomy";
+import { isFoliarProduct, isPhytoProduct, isOneOffReco } from "@/lib/reco-validation";
 
 export interface AgronomicPlanningCalendarProps {
   recos: Recommendation[];
@@ -502,38 +503,9 @@ export function AgronomicPlanningCalendar({
         );
       });
 
-      // B. Recommandations de Pulvérisation Foliaire
-      const foliarRecos = matchingRecos.filter((r) => {
-        const payload = (r.payload || {}) as any;
-        const prog = payload.program || {};
-        const titleLower = (r.title || "").toLowerCase();
-        const isPhyto =
-          r.kind === "phytosanitaire" ||
-          prog.kind === "phytosanitaire" ||
-          payload.method === "phytosanitaire" ||
-          titleLower.includes("phyto");
-        if (isPhyto) return false;
-        return (
-          payload.method === "pulverisation" ||
-          payload.method === "foliaire" ||
-          prog.kind === "pulverisation" ||
-          titleLower.includes("pulv") ||
-          titleLower.includes("foliaire")
-        );
-      });
-
-      // C. Recommandations Phytosanitaires
-      const phytoRecos = matchingRecos.filter((r) => {
-        const payload = (r.payload || {}) as any;
-        const prog = payload.program || {};
-        const titleLower = (r.title || "").toLowerCase();
-        return (
-          r.kind === "phytosanitaire" ||
-          prog.kind === "phytosanitaire" ||
-          payload.method === "phytosanitaire" ||
-          titleLower.includes("phyto")
-        );
-      });
+      // B. Recommandations de Pulvérisation et Protection (Foliaire et/ou Phyto)
+      // Ne filtre pas strictement foliaire vs phyto ici : une même ordonnance ou rubrique peut contenir les deux !
+      const sprayRecos = matchingRecos.filter((r) => !fertRecos.includes(r));
 
       const speciesPeriods: PlannedPeriod[] = [];
 
@@ -562,13 +534,24 @@ export function AgronomicPlanningCalendar({
         // Démarrage officiel glissant à J+1 (date_recommandation + 1 jour)
         const startDate = addDays(dateKey, 1);
         const nextDate = distinctDates[dateIdx + 1];
+
+        // RÈGLE 4 : Reconduction continue vs Ponctuel vs Remplacement strictement isolé par espèce
+        const isOneOff = dateRecos.some((r) => isOneOffReco(r));
         let endDate = "";
         const todayStr = new Date().toISOString().slice(0, 10);
+
         if (nextDate) {
+          // Annule et remplace les occurrences futures à partir de J_nouvelle + 1
+          // (L'ancien programme s'arrête à J_nouvelle pour cette espèce uniquement)
           endDate = addDays(addDays(nextDate, 1), -1);
+        } else if (isOneOff) {
+          // Apports ponctuels (« مرة » / « واحدة ») : 1 seule fois, pas de reconduction les semaines suivantes
+          endDate = addDays(startDate, 6);
         } else {
-          endDate = addDays(startDate, 28);
+          // Reconduction hebdomadaire automatique en continu tant qu'aucune nouvelle recommandation ne vient les remplacer
+          endDate = "2026-06-30";
         }
+
         const isCurrent = startDate <= todayStr && todayStr <= endDate;
 
         const sortedSubRecos = [...dateRecos].sort((a, b) => {
@@ -641,18 +624,25 @@ export function AgronomicPlanningCalendar({
           durationDays,
         };
 
-        const passDates = getPassDatesForPeriod(startDate, endDate);
+        // Génération des dates hebdomadaires récurrentes (tous les 7 jours)
+        const weeklyDates: string[] = [];
+        const currD = new Date(`${startDate}T12:00:00Z`);
+        const maxD = new Date(`${endDate}T12:00:00Z`);
+        while (currD <= maxD) {
+          weeklyDates.push(currD.toISOString().slice(0, 10));
+          if (isOneOff) break;
+          currD.setUTCDate(currD.getUTCDate() + 7);
+        }
+
         let passCount = 0;
 
-        passDates.forEach((dateStr, intervalIndex) => {
+        weeklyDates.forEach((dateStr) => {
           const dObj = new Date(dateStr);
           const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
 
-          const isScheduledThisDay = !isWeeklySingle || intervalIndex % 2 === 0;
-
-          if (isScheduledThisDay) {
-            const subProgIdx = hasMultipleSubProgs ? passCount % sortedSubRecos.length : 0;
-            const currentSubReco = sortedSubRecos[subProgIdx];
+          // RÈGLE 3.1 : Regroupement des programmes de fertigation différents LE MÊME JOUR (Mardi J+1)
+          // Si Prog. A1 et Prog. A2 existent sur la même semaine, ils sont exécutés le même jour séquentiellement !
+          sortedSubRecos.forEach((currentSubReco) => {
             const currentSubProg = (currentSubReco.payload as any)?.program || {};
             const currentSubEntries = currentSubProg.entries || [];
 
@@ -723,7 +713,7 @@ export function AgronomicPlanningCalendar({
             });
 
             passCount++;
-          }
+          });
         });
 
         periodObj.totalPassages = passCount;
@@ -731,9 +721,18 @@ export function AgronomicPlanningCalendar({
       });
 
       // ==========================================
-      // TRAITEMENT 2 : ENGRAIS FOLIAIRES (PULVÉRISATION)
+      // TRAITEMENT 2 & 3 : PULVÉRISATION FOLIAIRE & PHYTOSANITAIRE
       // ==========================================
-      foliarRecos.forEach((r) => {
+      // RÈGLE 1 & 2 :
+      // 1. Si une même ordonnance / rubrique contient à la fois engrais foliaire (Calcium-Bore)
+      //    et produit phytosanitaire (Fongicide / Bellis), NE PAS supprimer l'engrais.
+      //    Générer DEUX événements distincts :
+      //    - Pulvérisation 1 (au lever du soleil, Mercredi J+2) avec uniquement l'engrais foliaire.
+      //    - Traitement 1 (au crépuscule/soir, Jeudi J+3) avec uniquement le produit phytosanitaire.
+      // 2. Regrouper tous les produits compatibles d'une même pulvérisation dans UNE SEULE TÂCHE par parcelle
+      //    (1 carte pour Nablara, 1 carte pour Redix 25 = 2 cartes au total, non 4).
+
+      sprayRecos.forEach((r) => {
         const payload = (r.payload || {}) as any;
         const prog = payload.program || {};
         const titleMatch = (r.title || "").match(/(\d{4}-\d{2}-\d{2})/);
@@ -744,220 +743,225 @@ export function AgronomicPlanningCalendar({
           r.created_at?.slice(0, 10) ||
           "2026-03-09";
 
-        // Étalement agronomique glissant & exclusion mutuelle (au lever du soleil) :
-        // Démarrage J+1 = Fertigation. Pulvérisation 1 -> J+2 (ex: Mercredi 11 Mars)
-        // Pulvérisation 2 -> J+5 (ex: Samedi 14 Mars)
-        let dateStr = addDays(baseDateStr, 2);
-        const titleLower = (r.title || "").toLowerCase();
-        if (
-          titleLower.includes("passage 2") ||
-          titleLower.includes("pulvérisation 2") ||
-          titleLower.includes("pulverisation 2")
-        ) {
-          dateStr = addDays(baseDateStr, 5);
-        }
-        const dObj = new Date(dateStr);
-        const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
+        const rawSprayItems = [
+          ...(Array.isArray(prog.items) ? prog.items : (payload.items || [])),
+          ...(Array.isArray(prog.products) ? prog.products : (payload.products || [])),
+        ];
 
-        const rawItems = prog.items || payload.items || [];
-        const prodsComputed: any[] = [];
+        const foliarItems: any[] = [];
+        const phytoProducts: any[] = [];
 
-        rawItems.forEach((it: any) => {
-          const prodName = (it.name || it.product || "").trim();
-          if (!prodName) return;
-          const doseHa = parseFloat(String(it.qty || it.dosage || "0").replace(",", ".")) || 0;
-          const unit = it.unit || "litres";
-          const totalParcel = doseHa * crop.surfaceHa;
-          prodsComputed.push({
-            name: prodName,
-            doseHa,
-            unit,
-            totalParcel,
-            note: it.note,
-          });
-
-          const normKey = `foliaire:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
-          if (!productConsolidationMap[normKey]) {
-            productConsolidationMap[normKey] = {
-              name: prodName,
-              category: "foliaire",
-              unit,
-              bySpecies: {},
-              totalQty: 0,
-            };
+        rawSprayItems.forEach((it: any) => {
+          const pName = (it.name || it.product || "").trim();
+          if (!pName) return;
+          if (isPhytoProduct(pName)) {
+            phytoProducts.push(it);
+          } else if (isFoliarProduct(pName)) {
+            foliarItems.push(it);
+          } else if (r.kind === "phytosanitaire" || prog.kind === "phytosanitaire") {
+            phytoProducts.push(it);
+          } else {
+            foliarItems.push(it);
           }
-          productConsolidationMap[normKey].bySpecies[crop.id] =
-            (productConsolidationMap[normKey].bySpecies[crop.id] || 0) + totalParcel;
-          productConsolidationMap[normKey].totalQty += totalParcel;
         });
 
-        const periodObj: PlannedPeriod = {
-          speciesId: crop.id,
-          speciesName: crop.name,
-          recoId: r.id,
-          recoTitle: r.title,
-          reco: r,
-          type: "pulverisation",
-          startDate: dateStr,
-          endDate: addDays(dateStr, 7),
-          isCurrent:
-            dateStr <= new Date().toISOString().slice(0, 10) &&
-            new Date().toISOString().slice(0, 10) <= addDays(dateStr, 7),
-          frequency: 1,
-          pureIrrigationFrequency: 0,
-          pureIrrigationTime: "—",
-          irrigationTime: "1h30",
-          durationMinutes: 90,
-          injectionTime: 90,
-          rinsingTime: 0,
-          wettingTime: 0,
-          surfaceHa: crop.surfaceHa,
-          entries: [],
-          products: prodsComputed,
-          totalPassages: 1,
-          durationDays: 7,
-        };
-
-        speciesPeriods.push(periodObj);
-
-        rawEvents.push({
-          date: dateStr,
-          dayOfWeek,
-          dayName: DAY_NAMES_FR[dayOfWeek],
-          speciesId: crop.id,
-          speciesName: crop.name,
-          cropConfig: crop,
-          type: "pulverisation",
-          periodInfo: periodObj,
-          recoTitle: r.title,
-          recoObj: r,
-          irrigationDuration: "1h30 (Pulv.)",
-          durationMinutes: 90,
-          wettingTime: 0,
-          injectionTime: 90,
-          rinsingTime: 0,
-          bacs: [],
-          products: prodsComputed,
-        });
-      });
-
-      // ==========================================
-      // TRAITEMENT 3 : PHYTOSANITAIRE (PROTECTION)
-      // ==========================================
-      phytoRecos.forEach((r) => {
-        const payload = (r.payload || {}) as any;
-        const prog = payload.program || {};
-        const titleMatch = (r.title || "").match(/(\d{4}-\d{2}-\d{2})/);
-        const baseDateStr =
-          prog.date ||
-          payload.date ||
-          titleMatch?.[1] ||
-          r.created_at?.slice(0, 10) ||
-          "2026-03-09";
-
-        // Étalement agronomique non saturant & exclusion mutuelle (soir au crépuscule) :
-        // Traitement 1 -> Jour +4 (ex: Vendredi 13 Mars)
-        // Traitement 2 -> Jour +7 (ex: Lundi 16 Mars)
-        let dateStr = addDays(baseDateStr, 4);
         const titleLower = (r.title || "").toLowerCase();
-        if (titleLower.includes("traitement 2")) {
-          dateStr = addDays(baseDateStr, 7);
-        }
-        const dObj = new Date(dateStr);
-        const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
 
-        const rawProds = prog.products || payload.products || prog.items || [];
-        const prodsComputed: any[] = [];
+        // 1. Événement Pulvérisation Foliaire (Matin au lever du soleil)
+        if (foliarItems.length > 0) {
+          let dateStr = addDays(baseDateStr, 2); // Mercredi J+2
+          if (
+            titleLower.includes("passage 2") ||
+            titleLower.includes("pulvérisation 2") ||
+            titleLower.includes("pulverisation 2")
+          ) {
+            dateStr = addDays(baseDateStr, 5); // Samedi J+5
+          }
+          const dObj = new Date(dateStr);
+          const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
 
-        rawProds.forEach((pItem: any) => {
-          const prodName = (pItem.product || pItem.name || "").trim();
-          if (!prodName) return;
-          const doseMatch = String(pItem.dosage || pItem.qty || "0").match(/([0-9.,]+)/);
-          const doseHa = parseFloat((doseMatch?.[1] || "0").replace(",", ".")) || 0;
-          const unitMatch = String(pItem.dosage || pItem.unit || "").match(/(litres|l|kg|g)/i);
-          const unit = unitMatch
-            ? unitMatch[1].toLowerCase().startsWith("k")
-              ? "kg"
-              : unitMatch[1].toLowerCase().startsWith("g")
-              ? "g"
-              : "litres"
-            : pItem.unit || "litres";
-          const totalParcel = doseHa * crop.surfaceHa;
+          const prodsComputed: any[] = [];
+          foliarItems.forEach((it: any) => {
+            const prodName = (it.name || it.product || "").trim();
+            if (!prodName) return;
+            const doseHa = parseFloat(String(it.qty || it.dosage || "0").replace(",", ".")) || 0;
+            const unit = it.unit || "litres";
+            const totalParcel = doseHa * crop.surfaceHa;
+            prodsComputed.push({
+              name: prodName,
+              doseHa,
+              unit,
+              totalParcel,
+              note: it.note,
+            });
 
-          prodsComputed.push({
-            name: prodName,
-            doseHa,
-            unit,
-            totalParcel,
-            cible: pItem.cible,
-            dar: pItem.dar,
+            const normKey = `foliaire:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+            if (!productConsolidationMap[normKey]) {
+              productConsolidationMap[normKey] = {
+                name: prodName,
+                category: "foliaire",
+                unit,
+                bySpecies: {},
+                totalQty: 0,
+              };
+            }
+            productConsolidationMap[normKey].bySpecies[crop.id] =
+              (productConsolidationMap[normKey].bySpecies[crop.id] || 0) + totalParcel;
+            productConsolidationMap[normKey].totalQty += totalParcel;
           });
 
-          const normKey = `phyto:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
-          if (!productConsolidationMap[normKey]) {
-            productConsolidationMap[normKey] = {
+          const periodObj: PlannedPeriod = {
+            speciesId: crop.id,
+            speciesName: crop.name,
+            recoId: r.id,
+            recoTitle: r.title,
+            reco: r,
+            type: "pulverisation",
+            startDate: dateStr,
+            endDate: addDays(dateStr, 7),
+            isCurrent:
+              dateStr <= new Date().toISOString().slice(0, 10) &&
+              new Date().toISOString().slice(0, 10) <= addDays(dateStr, 7),
+            frequency: 1,
+            pureIrrigationFrequency: 0,
+            pureIrrigationTime: "—",
+            irrigationTime: "1h30",
+            durationMinutes: 90,
+            injectionTime: 90,
+            rinsingTime: 0,
+            wettingTime: 0,
+            surfaceHa: crop.surfaceHa,
+            entries: [],
+            products: prodsComputed,
+            totalPassages: 1,
+            durationDays: 7,
+          };
+
+          speciesPeriods.push(periodObj);
+
+          // 1 SEULE CARTE par parcelle regroupant tous les produits foliaires compatibles
+          rawEvents.push({
+            date: dateStr,
+            dayOfWeek,
+            dayName: DAY_NAMES_FR[dayOfWeek],
+            speciesId: crop.id,
+            speciesName: crop.name,
+            cropConfig: crop,
+            type: "pulverisation",
+            periodInfo: periodObj,
+            recoTitle: r.title,
+            recoObj: r,
+            irrigationDuration: "1h30 (Pulv.)",
+            durationMinutes: 90,
+            wettingTime: 0,
+            injectionTime: 90,
+            rinsingTime: 0,
+            bacs: [],
+            products: prodsComputed,
+          });
+        }
+
+        // 2. Événement Traitement Phytosanitaire (Soir au crépuscule/coucher du soleil)
+        if (phytoProducts.length > 0) {
+          let dateStr = addDays(baseDateStr, 3); // Jeudi J+3 (crépuscule)
+          if (titleLower.includes("traitement 2")) {
+            dateStr = addDays(baseDateStr, 6); // Dimanche J+6
+          }
+          const dObj = new Date(dateStr);
+          const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
+
+          const prodsComputed: any[] = [];
+          phytoProducts.forEach((pItem: any) => {
+            const prodName = (pItem.product || pItem.name || "").trim();
+            if (!prodName) return;
+            const doseMatch = String(pItem.dosage || pItem.qty || "0").match(/([0-9.,]+)/);
+            const doseHa = parseFloat((doseMatch?.[1] || "0").replace(",", ".")) || 0;
+            const unitMatch = String(pItem.dosage || pItem.unit || "").match(/(litres|l|kg|g)/i);
+            const unit = unitMatch
+              ? unitMatch[1].toLowerCase().startsWith("k")
+                ? "kg"
+                : unitMatch[1].toLowerCase().startsWith("g")
+                ? "g"
+                : "litres"
+              : pItem.unit || "litres";
+            const totalParcel = doseHa * crop.surfaceHa;
+
+            prodsComputed.push({
               name: prodName,
-              category: "phytosanitaire",
+              doseHa,
               unit,
-              bySpecies: {},
-              totalQty: 0,
+              totalParcel,
               cible: pItem.cible,
               dar: pItem.dar,
-            };
-          }
-          productConsolidationMap[normKey].bySpecies[crop.id] =
-            (productConsolidationMap[normKey].bySpecies[crop.id] || 0) + totalParcel;
-          productConsolidationMap[normKey].totalQty += totalParcel;
-        });
+            });
 
-        const periodObj: PlannedPeriod = {
-          speciesId: crop.id,
-          speciesName: crop.name,
-          recoId: r.id,
-          recoTitle: r.title,
-          reco: r,
-          type: "phyto",
-          startDate: dateStr,
-          endDate: addDays(dateStr, 7),
-          isCurrent:
-            dateStr <= new Date().toISOString().slice(0, 10) &&
-            new Date().toISOString().slice(0, 10) <= addDays(dateStr, 7),
-          frequency: 1,
-          pureIrrigationFrequency: 0,
-          pureIrrigationTime: "—",
-          irrigationTime: "1h30 (Phyto)",
-          durationMinutes: 90,
-          injectionTime: 90,
-          rinsingTime: 0,
-          wettingTime: 0,
-          surfaceHa: crop.surfaceHa,
-          entries: [],
-          products: prodsComputed,
-          totalPassages: 1,
-          durationDays: 7,
-        };
+            const normKey = `phyto:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+            if (!productConsolidationMap[normKey]) {
+              productConsolidationMap[normKey] = {
+                name: prodName,
+                category: "phytosanitaire",
+                unit,
+                bySpecies: {},
+                totalQty: 0,
+                cible: pItem.cible,
+                dar: pItem.dar,
+              };
+            }
+            productConsolidationMap[normKey].bySpecies[crop.id] =
+              (productConsolidationMap[normKey].bySpecies[crop.id] || 0) + totalParcel;
+            productConsolidationMap[normKey].totalQty += totalParcel;
+          });
 
-        speciesPeriods.push(periodObj);
+          const periodObj: PlannedPeriod = {
+            speciesId: crop.id,
+            speciesName: crop.name,
+            recoId: r.id,
+            recoTitle: r.title,
+            reco: r,
+            type: "phyto",
+            startDate: dateStr,
+            endDate: addDays(dateStr, 7),
+            isCurrent:
+              dateStr <= new Date().toISOString().slice(0, 10) &&
+              new Date().toISOString().slice(0, 10) <= addDays(dateStr, 7),
+            frequency: 1,
+            pureIrrigationFrequency: 0,
+            pureIrrigationTime: "—",
+            irrigationTime: "1h30 (Phyto)",
+            durationMinutes: 90,
+            injectionTime: 90,
+            rinsingTime: 0,
+            wettingTime: 0,
+            surfaceHa: crop.surfaceHa,
+            entries: [],
+            products: prodsComputed,
+            totalPassages: 1,
+            durationDays: 7,
+          };
 
-        rawEvents.push({
-          date: dateStr,
-          dayOfWeek,
-          dayName: DAY_NAMES_FR[dayOfWeek],
-          speciesId: crop.id,
-          speciesName: crop.name,
-          cropConfig: crop,
-          type: "phyto",
-          periodInfo: periodObj,
-          recoTitle: r.title,
-          recoObj: r,
-          irrigationDuration: "1h30 (Phyto)",
-          durationMinutes: 90,
-          wettingTime: 0,
-          injectionTime: 90,
-          rinsingTime: 0,
-          bacs: [],
-          products: prodsComputed,
-        });
+          speciesPeriods.push(periodObj);
+
+          // 1 SEULE CARTE par parcelle regroupant tous les produits phytosanitaires
+          rawEvents.push({
+            date: dateStr,
+            dayOfWeek,
+            dayName: DAY_NAMES_FR[dayOfWeek],
+            speciesId: crop.id,
+            speciesName: crop.name,
+            cropConfig: crop,
+            type: "phyto",
+            periodInfo: periodObj,
+            recoTitle: r.title,
+            recoObj: r,
+            irrigationDuration: "1h30 (Phyto)",
+            durationMinutes: 90,
+            wettingTime: 0,
+            injectionTime: 90,
+            rinsingTime: 0,
+            bacs: [],
+            products: prodsComputed,
+          });
+        }
       });
 
       periodsBySpeciesMap[crop.id] = speciesPeriods;
