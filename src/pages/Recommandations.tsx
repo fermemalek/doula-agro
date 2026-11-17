@@ -16,6 +16,7 @@ import {
   CalendarDays,
   Search,
   RotateCcw,
+  RefreshCw,
   Filter,
 } from "lucide-react";
 import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
@@ -612,8 +613,8 @@ function RecommandationsPageContent() {
             type="button"
             onClick={() => setSelectedPrescription("all")}
             className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${selectedPrescription === "all"
-                ? "bg-foreground text-background shadow-xs font-black"
-                : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+              ? "bg-foreground text-background shadow-xs font-black"
+              : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
           >
             <span>Toutes</span>
@@ -627,8 +628,8 @@ function RecommandationsPageContent() {
             type="button"
             onClick={() => setSelectedPrescription("fert_irrigation")}
             className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${selectedPrescription === "fert_irrigation"
-                ? PRESCRIPTION_CONFIG.fert_irrigation.activePill
-                : PRESCRIPTION_CONFIG.fert_irrigation.inactivePill
+              ? PRESCRIPTION_CONFIG.fert_irrigation.activePill
+              : PRESCRIPTION_CONFIG.fert_irrigation.inactivePill
               }`}
           >
             <Droplet className="h-3.5 w-3.5" />
@@ -643,8 +644,8 @@ function RecommandationsPageContent() {
             type="button"
             onClick={() => setSelectedPrescription("fert_foliaire")}
             className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${selectedPrescription === "fert_foliaire"
-                ? PRESCRIPTION_CONFIG.fert_foliaire.activePill
-                : PRESCRIPTION_CONFIG.fert_foliaire.inactivePill
+              ? PRESCRIPTION_CONFIG.fert_foliaire.activePill
+              : PRESCRIPTION_CONFIG.fert_foliaire.inactivePill
               }`}
           >
             <SprayCan className="h-3.5 w-3.5" />
@@ -659,8 +660,8 @@ function RecommandationsPageContent() {
             type="button"
             onClick={() => setSelectedPrescription("phytosanitaire")}
             className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${selectedPrescription === "phytosanitaire"
-                ? PRESCRIPTION_CONFIG.phytosanitaire.activePill
-                : PRESCRIPTION_CONFIG.phytosanitaire.inactivePill
+              ? PRESCRIPTION_CONFIG.phytosanitaire.activePill
+              : PRESCRIPTION_CONFIG.phytosanitaire.inactivePill
               }`}
           >
             <FlaskConical className="h-3.5 w-3.5" />
@@ -774,21 +775,19 @@ function RecommandationsPageContent() {
       {/* ========================================================= */}
       {pendingInFiltered.length > 0 && (displayRole === "ingenieur" || displayRole === "admin") && (
         <div
-          className={`mb-3 flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border p-3 transition-all ${
-            selectedRecoIds.size > 0
+          className={`mb-3 flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border p-3 transition-all ${selectedRecoIds.size > 0
               ? "bg-primary/10 border-primary/40 shadow-sm"
               : "bg-muted/30 border-dashed"
-          }`}
+            }`}
         >
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={handleSelectAllPending}
-              className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition active:scale-95 cursor-pointer ${
-                allPendingSelected
+              className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition active:scale-95 cursor-pointer ${allPendingSelected
                   ? "bg-primary text-primary-foreground border-primary shadow-xs font-black"
                   : "bg-background hover:bg-muted text-foreground border-input"
-              }`}
+                }`}
             >
               <CheckSquare className="h-4 w-4" />
               <span>
@@ -978,9 +977,8 @@ function RecommandationsPageContent() {
                     setDetail(r);
                   }
                 }}
-                className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3.5 shadow-xs transition active:scale-[0.99] hover:shadow-md ${config.cardTone} ${
-                  selectedRecoIds.has(r.id) ? "ring-2 ring-primary border-primary bg-primary/10" : ""
-                }`}
+                className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3.5 shadow-xs transition active:scale-[0.99] hover:shadow-md ${config.cardTone} ${selectedRecoIds.has(r.id) ? "ring-2 ring-primary border-primary bg-primary/10" : ""
+                  }`}
               >
                 {/* Case à cocher pour sélection multiple */}
                 {(displayRole === "ingenieur" || displayRole === "admin") && (
@@ -990,11 +988,10 @@ function RecommandationsPageContent() {
                     title={selectedRecoIds.has(r.id) ? "Désélectionner" : "Cocher pour valider en groupe"}
                   >
                     <div
-                      className={`h-5 w-5 rounded-lg border-2 flex items-center justify-center transition-all ${
-                        selectedRecoIds.has(r.id)
+                      className={`h-5 w-5 rounded-lg border-2 flex items-center justify-center transition-all ${selectedRecoIds.has(r.id)
                           ? "bg-primary border-primary text-primary-foreground shadow-xs"
                           : "border-muted-foreground/40 hover:border-primary bg-background"
-                      }`}
+                        }`}
                     >
                       {selectedRecoIds.has(r.id) && <CheckSquare className="h-3.5 w-3.5" />}
                     </div>
