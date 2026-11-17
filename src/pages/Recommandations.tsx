@@ -538,31 +538,6 @@ function RecommandationsPageContent() {
               {list.length > 0 && (
                 <>
                   <button
-                    onClick={async () => {
-                      toast.info("Régénération et synchronisation des achats en cours...");
-                      try {
-                        const count = await syncPurchasesForAcceptedRecos({
-                          recos,
-                          parcels,
-                          suppliers,
-                          addPurchase,
-                          acceptReco: async (id) => accept.mutateAsync(id),
-                          addModuleRecord,
-                          setParcelStatus,
-                        });
-                        toast.success(`${count} achat(s) régénéré(s) et synchronisé(s) pour toutes les recommandations validées.`);
-                      } catch (e: any) {
-                        toast.error(e?.message || "Erreur lors de la synchronisation des achats");
-                      }
-                    }}
-                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 px-3 text-sm font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 active:scale-95 transition-all"
-                    title="Régénérer les Bons d'Achat manquants pour toutes les recommandations validées"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Régénérer achats validés
-                  </button>
-
-                  <button
                     onClick={handleResetHistory}
                     disabled={resettingHistory}
                     className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 px-3 text-sm font-bold text-amber-700 dark:text-amber-300 border border-amber-500/30 active:scale-95 transition-all"
