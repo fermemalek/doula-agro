@@ -2191,9 +2191,9 @@ export function AgronomicPlanningCalendar({
           <div className="rounded-xl border bg-card p-3 text-xs text-muted-foreground flex items-center gap-2">
             <Info className="h-4 w-4 text-primary shrink-0" />
             <span>
-              Chaque recommandation reste active jusqu'à la veille de l'entrée en vigueur de la suivante.
-              Par exemple, la recommandation du 09 Mars s'applique sur 3 passages (9, 12, 15 mars), puis
-              s'arrête net le 16 mars au soir pour céder la place à la nouvelle recommandation du 17 Mars.
+              Chaque recommandation reste active par espèce jusqu'à la veille de l'entrée en vigueur de la suivante pour cette même espèce.
+              Par exemple, la recommandation Nectarines du 09 Mars se reconduit chaque semaine en continu ;
+              l'ordonnance du 17 Mars (Fert. Irrigation) s'applique exclusivement aux Oliviers (P1 à P4) avec une étanchéité totale par espèce.
             </span>
           </div>
 
