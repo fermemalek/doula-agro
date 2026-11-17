@@ -30,7 +30,7 @@ import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useParcels, useParcelActions } from "@/lib/parcel-store";
 import { checkRecoStock, getTargetParcelsForReco } from "@/lib/stock-alerts";
-import { validateRecommendationAndPurchases, resetAllAppliedRecoHistory } from "@/lib/reco-validation";
+import { validateRecommendationAndPurchases, resetAllAppliedRecoHistory, syncPurchasesForAcceptedRecos } from "@/lib/reco-validation";
 
 type PrescriptionType = "all" | "fert_irrigation" | "fert_foliaire" | "phytosanitaire";
 
@@ -442,9 +442,9 @@ function RecommandationsPageContent() {
   };
 
   const handleBatchValidate = async () => {
-    const toValidate = list.filter((r) => selectedRecoIds.has(r.id) && (r.status === "envoyee" || r.status === "rejetee"));
+    const toValidate = list.filter((r) => selectedRecoIds.has(r.id));
     if (toValidate.length === 0) {
-      return toast.info("Aucune recommandation en attente sélectionnée.");
+      return toast.info("Aucune recommandation sélectionnée.");
     }
 
     const count = toValidate.length;
@@ -536,6 +536,31 @@ function RecommandationsPageContent() {
               )}
               {list.length > 0 && (
                 <>
+                  <button
+                    onClick={async () => {
+                      toast.info("Régénération et synchronisation des achats en cours...");
+                      try {
+                        const count = await syncPurchasesForAcceptedRecos({
+                          recos,
+                          parcels,
+                          suppliers,
+                          addPurchase,
+                          acceptReco: async (id) => accept.mutateAsync(id),
+                          addModuleRecord,
+                          setParcelStatus,
+                        });
+                        toast.success(`${count} achat(s) régénéré(s) et synchronisé(s) pour toutes les recommandations validées.`);
+                      } catch (e: any) {
+                        toast.error(e?.message || "Erreur lors de la synchronisation des achats");
+                      }
+                    }}
+                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 px-3 text-sm font-bold text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 active:scale-95 transition-all"
+                    title="Régénérer les Bons d'Achat manquants pour toutes les recommandations validées"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Régénérer achats validés
+                  </button>
+
                   <button
                     onClick={handleResetHistory}
                     disabled={resettingHistory}
@@ -958,7 +983,7 @@ function RecommandationsPageContent() {
                 }`}
               >
                 {/* Case à cocher pour sélection multiple */}
-                {(displayRole === "ingenieur" || displayRole === "admin") && isPending && (
+                {(displayRole === "ingenieur" || displayRole === "admin") && (
                   <div
                     onClick={(e) => toggleSelectReco(r.id, e)}
                     className="pt-1.5 shrink-0 flex items-center justify-center cursor-pointer"

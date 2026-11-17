@@ -62,7 +62,7 @@ import { RecommendationDetailDialog } from "@/components/RecommendationDetailDia
 import { StatsModule } from "@/components/stats/StatsModule";
 import { getMatiereActive } from "@/data/phytosanitaires";
 import { AgronomicPlanningCalendar } from "@/components/programs/AgronomicPlanningCalendar";
-import { validateRecommendationAndPurchases } from "@/lib/reco-validation";
+import { validateRecommendationAndPurchases, syncPurchasesForAcceptedRecos } from "@/lib/reco-validation";
 
 interface IrrRec {
   id: string;
@@ -1617,12 +1617,25 @@ function ProgrammesPage() {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
                         realignPurchases();
-                        toast.success("Quantités réalignées : Acheté = Consommé (0 reste)");
+                        const restored = await syncPurchasesForAcceptedRecos({
+                          recos,
+                          parcels,
+                          suppliers,
+                          addPurchase,
+                          acceptReco: async (id) => accept.mutateAsync(id),
+                          addModuleRecord,
+                          setParcelStatus: setStatus,
+                        });
+                        if (restored > 0) {
+                          toast.success(`Stocks et achats réalignés : ${restored} achat(s) restauré(s) pour les recommandations validées.`);
+                        } else {
+                          toast.success("Quantités réalignées : Acheté = Consommé (0 reste)");
+                        }
                       }}
                       className="text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-                      title="Réaligner automatiquement les achats pour que Acheté = Consommé"
+                      title="Réaligner automatiquement les achats pour que Acheté = Consommé et restaurer les achats manquants"
                     >
                       <RefreshCw className="h-3.5 w-3.5" />
                       Réaligner les stocks (Acheté = Consommé)

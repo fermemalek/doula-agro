@@ -192,77 +192,13 @@ export async function replaceOlderHistoricalRecosForSpecies({
   currentRecoId: string;
   allParcels?: Parcel[];
 }): Promise<string[]> {
-  const targetParcelIds = new Set(targetParcels.map((p) => p.id));
-  const replacedRecoIds: string[] = [];
-
-  try {
-    const { data: allRecos, error } = await (supabase as any)
-      .from("recommendations")
-      .select("id, parcel_ids, payload, created_at, status")
-      .neq("id", currentRecoId);
-
-    if (error || !allRecos) return [];
-
-    for (const r of allRecos) {
-      const pPayload = (r.payload || {}) as any;
-      const rDate = pPayload.program?.date || pPayload.date || r.created_at?.slice(0, 10) || "";
-
-      // Seulement les recos antérieures ou égales à aujourd'hui
-      if (rDate && rDate <= recoDate) {
-        // Récupérer les parcelles ciblées par cette ancienne recommandation
-        const rParcels = getTargetParcelsForReco(r, allParcels.length > 0 ? allParcels : targetParcels);
-        const rParcelIds = rParcels.map((p) => p.id);
-        const hasOverlap = rParcelIds.some((pId) => targetParcelIds.has(pId));
-
-        if (hasOverlap) {
-          // RÈGLE 4: Remplacement strictement isolé par espèce
-          const allParcelsCovered = rParcelIds.every((pId) => targetParcelIds.has(pId));
-
-          if (allParcelsCovered) {
-            replacedRecoIds.push(r.id);
-            // 1. Supprimer les achats associés à l'ancienne recommandation
-            deletePurchasesForReco(r.id);
-            // 2. Supprimer les enregistrements de modules liés
-            removeModuleRecordsByRecoId(r.id);
-            // 3. Mettre à jour le statut en "rejetee"
-            await (supabase as any)
-              .from("recommendations")
-              .update({
-                status: "rejetee",
-                comment: `Remplacée automatiquement par la recommandation historique validée (${recoDate})`,
-              })
-              .eq("id", r.id);
-          } else {
-            // Isolation stricte : Ne retirer que les enregistrements des parcelles ciblées
-            for (const pId of targetParcelIds) {
-              if (rParcelIds.includes(pId)) {
-                try {
-                  const raw = localStorage.getItem("doula-modules");
-                  if (raw) {
-                    const data = JSON.parse(raw);
-                    if (data[pId]) {
-                      for (const mod of Object.keys(data[pId])) {
-                        if (Array.isArray(data[pId][mod])) {
-                          data[pId][mod] = data[pId][mod].filter(
-                            (item: any) => item.reco_id !== r.id && item.payload?.reco_id !== r.id
-                          );
-                        }
-                      }
-                      localStorage.setItem("doula-modules", JSON.stringify(data));
-                    }
-                  }
-                } catch {}
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.warn("Erreur lors du remplacement historique par espèce:", err);
-  }
-
-  return replacedRecoIds;
+  // RÈGLE MÉTIER FERME MALEK :
+  // 1. Chaque recommandation génère son propre Bon d'Achat qui doit être conservé dans la comptabilité (aucun écrasement).
+  // 2. Les ordonnances d'une même date (ex: Prog. A1, Prog. A2, Pulv 1, Pulv 2, Phyto 1) sont complémentaires et ne se remplacent JAMAIS entre elles.
+  // 3. Les achats passés et les travaux déjà exécutés font partie intégrante de l'historique financier et agronomique.
+  // 4. La transition des occurrences futures dans le temps est prise en charge dynamiquement par le calendrier agronomique (AgronomicPlanningCalendar),
+  //    sans jamais supprimer de pièces comptables ni altérer les ordonnances complémentaires du même jour.
+  return [];
 }
 
 /**
@@ -348,10 +284,13 @@ export async function validateRecommendationAndPurchases({
       // 1. Fertigation entries (Bacs)
       const entries = Array.isArray(program.entries) ? program.entries : [];
       for (const entry of entries) {
-        for (const it of entry.items || []) {
-          const pName = (it.name || "").trim();
+        const rawItems = Array.isArray(entry.items) && entry.items.length > 0
+          ? entry.items
+          : (entry.name ? [entry] : []);
+        for (const it of rawItems) {
+          const pName = (it.name || it.product || "").trim();
           if (!pName) continue;
-          const doseHa = safeParseFloat(it.qty);
+          const doseHa = safeParseFloat(it.qty || it.dosage || it.dose_per_ha);
           const qtyTotale = parseFloat((doseHa * surface).toFixed(2));
           const price = safeParseFloat(it.price) || 0;
           const unit = it.unit || "kg";
@@ -364,11 +303,13 @@ export async function validateRecommendationAndPurchases({
       }
 
       // 2. Pulvérisation foliaire items
-      const items = Array.isArray(program.items) ? program.items : (payload.items || []);
+      const items = Array.isArray(program.items) && program.items.length > 0
+        ? program.items
+        : (Array.isArray(payload.items) ? payload.items : []);
       for (const it of items) {
         const pName = (it.name || it.product || "").trim();
         if (!pName) continue;
-        const doseHa = safeParseFloat(it.qty || it.dosage);
+        const doseHa = safeParseFloat(it.qty || it.dosage || it.dose_per_ha);
         const qtyTotale = parseFloat((doseHa * surface).toFixed(2));
         const price = safeParseFloat(it.price) || 0;
         const unit = it.unit || "litres";
@@ -380,7 +321,9 @@ export async function validateRecommendationAndPurchases({
       }
 
       // 3. Phytosanitaire products
-      const prods = Array.isArray(program.products) ? program.products : (payload.products || []);
+      const prods = Array.isArray(program.products) && program.products.length > 0
+        ? program.products
+        : (Array.isArray(payload.products) ? payload.products : []);
       for (const p of prods) {
         const pName = (p.product || p.name || "").trim();
         if (!pName) continue;
@@ -792,4 +735,48 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
         .neq("id", "00000000-0000-0000-0000-000000000000");
     }
   } catch {}
+}
+
+/**
+ * Synchronise et restaure les achats et tâches pour toutes les recommandations actuellement validées (status === "acceptee")
+ * Garantit que chaque ordonnance possède son Bon d'Achat sans omission.
+ */
+export async function syncPurchasesForAcceptedRecos({
+  recos,
+  parcels,
+  suppliers,
+  addPurchase,
+  acceptReco,
+  addModuleRecord,
+  setParcelStatus,
+}: {
+  recos: Recommendation[];
+  parcels: Parcel[];
+  suppliers: SupplierPurchase[];
+  addPurchase: (p: Omit<SupplierPurchase, "id" | "consumed">) => void;
+  acceptReco: (id: string) => Promise<unknown>;
+  addModuleRecord: (parcelId: string, kind: any, data: any) => void;
+  setParcelStatus?: (parcelId: string, status: any) => void;
+}): Promise<number> {
+  const accepted = recos.filter((r) => r.status === "acceptee");
+  let totalCreated = 0;
+
+  for (const r of accepted) {
+    const res = await validateRecommendationAndPurchases({
+      reco: r,
+      parcels,
+      suppliers,
+      addPurchase,
+      acceptReco,
+      addModuleRecord,
+      setParcelStatus,
+      options: {
+        supplierName: "Achat Validé (Historique Ingénieur)",
+        markAsExecutedIfPast: false,
+      },
+    });
+    totalCreated += res.createdPurchasesCount;
+  }
+
+  return totalCreated;
 }
