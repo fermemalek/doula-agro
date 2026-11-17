@@ -1189,7 +1189,13 @@ export function RecommendationForm({
                           <button
                             type="button"
                             onClick={() => {
-                              const nextIndex = fertPrograms.length + 1;
+                              const existingNums = fertPrograms.map(fp => {
+                                const m = (fp.label || "").match(/\d+/);
+                                return m ? parseInt(m[0], 10) : null;
+                              }).filter((n): n is number => n !== null);
+                              let nextIndex = 1;
+                              while (existingNums.includes(nextIndex)) nextIndex++;
+
                               const newProg = createDefaultFertProgram(
                                 `fert_${Date.now()}`,
                                 `Programme A${nextIndex}`,
@@ -1448,7 +1454,13 @@ export function RecommendationForm({
                           <button
                             type="button"
                             onClick={() => {
-                              const nextIndex = pulvPassages.length + 1;
+                              const existingNums = pulvPassages.map(pp => {
+                                const m = (pp.label || "").match(/\d+/);
+                                return m ? parseInt(m[0], 10) : null;
+                              }).filter((n): n is number => n !== null);
+                              let nextIndex = 1;
+                              while (existingNums.includes(nextIndex)) nextIndex++;
+
                               const newPass = createDefaultPulvPassage(
                                 `pulv_${Date.now()}`,
                                 `Pulvérisation ${nextIndex}`,
@@ -1652,7 +1664,13 @@ export function RecommendationForm({
                             <button
                               type="button"
                               onClick={() => {
-                                const nextIndex = phyPassages.length + 1;
+                                const existingNums = phyPassages.map(ph => {
+                                  const m = (ph.label || "").match(/\d+/);
+                                  return m ? parseInt(m[0], 10) : null;
+                                }).filter((n): n is number => n !== null);
+                                let nextIndex = 1;
+                                while (existingNums.includes(nextIndex)) nextIndex++;
+
                                 const defaultLbl = isAr ? `معاملة ${nextIndex}` : `Traitement ${nextIndex}`;
                                 const newPass = createDefaultPhytoPassage(
                                   `phy_${Date.now()}`,

@@ -164,41 +164,87 @@ export function useRecommendations() {
           };
         }
 
-        // Correction agronomique des prescriptions du 09 Mars 2026 (distinctes A1/A2 et Pulvérisation 1/Pulvérisation 2)
-        if (title.includes("2026-03-09")) {
-          const isIrrig = r.kind === "fertilisation" && (payload.method === "irrigation" || payload.program?.kind === "irrigation" || title.toLowerCase().includes("irrigation"));
-          const isFoliar = r.kind === "fertilisation" && !isIrrig;
-          const isNablara = title.toUpperCase().includes("NABLARA") || title.toUpperCase().includes("REDIX");
+        // Normalisation et distinction robuste des sous-programmes (A1/A2, Pulvérisation 1/2, Traitement 1/2)
+        // Évite toute collision de nommage accidentelle (ex: chiffre 2 présent dans l'année 2026 ou le cultivar Redix 25)
+        const isIrrig = r.kind === "fertilisation" && (payload.method === "irrigation" || payload.program?.kind === "irrigation" || title.toLowerCase().includes("irrigation"));
+        const isFoliar = r.kind === "fertilisation" && !isIrrig;
+        const isPhyto = r.kind === "phytosanitaire";
 
-          if (isNablara && isIrrig) {
-            const isA2 =
-              r.id === "f1134c54-4d72-4ac1-adec-fc351da039dd" ||
-              title.includes("A2") ||
-              payload.program?.label?.includes("A2") ||
-              payload.program?.entries?.some((e: any) => e.bac === "B" || (e.name && e.name.includes("B")));
-            if (isA2) {
-              title = "NABLARA, REDIX 25 - 2026-03-09 (Programme A2)";
-              if (payload.program) payload = { ...payload, program: { ...payload.program, label: "Programme A2" } };
-            } else {
-              title = "NABLARA, REDIX 25 - 2026-03-09 (Programme A1)";
-              if (payload.program) payload = { ...payload, program: { ...payload.program, label: "Programme A1" } };
+        const hasParentheses = /\([^)]+\)/.test(title);
+        const hasSubProgLabel = Boolean(payload.program?.label);
+
+        if (hasParentheses || hasSubProgLabel) {
+          const baseTitle = title
+            .replace(/\s*\((?:Programme\s*A\d+|Pulv[ée]risation\s*\d+|Traitement\s*\d+|Passage\s*\d+)[^)]*\)/gi, "")
+            .trim();
+
+          if (isFoliar) {
+            const items = payload.program?.items || [];
+            const itemText = items.map((i: any) => `${i.name || ""} ${i.product || ""}`).join(" ").toLowerCase();
+
+            let pulvNum = 1;
+            if (
+              /\b(?:Pulv[ée]risation|Passage|رشة)\s*2\b/i.test(title) ||
+              /\b(?:Pulv[ée]risation|Passage|رشة)\s*2\b/i.test(payload.program?.label || "") ||
+              ((itemText.includes("algreen") || itemText.includes("طحالب") || itemText.includes("oligo") || itemText.includes("عناصر")) &&
+               !(itemText.includes("calcium") || itemText.includes("bore") || itemText.includes("كالسيوم") || itemText.includes("بور")))
+            ) {
+              pulvNum = 2;
+            } else if (
+              /\b(?:Pulv[ée]risation|Passage|رشة)\s*(\d+)\b/i.test(title) ||
+              /\b(?:Pulv[ée]risation|Passage|رشة)\s*(\d+)\b/i.test(payload.program?.label || "")
+            ) {
+              const match = (title + " " + (payload.program?.label || "")).match(/\b(?:Pulv[ée]risation|Passage|رشة)\s*(\d+)\b/i);
+              if (match) pulvNum = parseInt(match[1], 10) || 1;
             }
-          } else if (isNablara && isFoliar) {
-            const isP2 =
-              r.id === "9c93efd3-9f1a-402d-9bbb-e498ec8ab34d" ||
-              title.includes("2") ||
-              payload.program?.label?.includes("2") ||
-              payload.program?.items?.some((it: any) => (it.name || "").toLowerCase().includes("algreen"));
-            if (isP2) {
-              title = "NABLARA, REDIX 25 - 2026-03-09 (Pulvérisation 2)";
-              if (payload.program) payload = { ...payload, program: { ...payload.program, label: "Pulvérisation 2" } };
-            } else {
-              title = "NABLARA, REDIX 25 - 2026-03-09 (Pulvérisation 1)";
-              if (payload.program) payload = { ...payload, program: { ...payload.program, label: "Pulvérisation 1" } };
+
+            // Règle agronomique absolue : Calcium-Bore est impérativement la Pulvérisation 1
+            if (itemText.includes("calcium") || itemText.includes("bore") || itemText.includes("كالسيوم") || itemText.includes("بور")) {
+              pulvNum = 1;
             }
-          } else if (isNablara && r.kind === "phytosanitaire") {
-            title = "NABLARA, REDIX 25 - 2026-03-09 (Traitement 1)";
-            if (payload.program) payload = { ...payload, program: { ...payload.program, label: "Traitement 1" } };
+
+            const tag = `Pulvérisation ${pulvNum}`;
+            title = `${baseTitle} (${tag})`;
+            if (payload.program) {
+              payload = { ...payload, program: { ...payload.program, label: tag } };
+            }
+          } else if (isIrrig) {
+            const entries = payload.program?.entries || [];
+            const entryText = entries.map((e: any) => `${e.name || ""} ${e.product || ""} ${e.bac || ""}`).join(" ").toLowerCase();
+
+            let progTag = "Programme A1";
+            const hasBacB = entries.some((e: any) => e.bac === "B") ||
+              entryText.includes("potassium") || entryText.includes("magnésium") || entryText.includes("magnesium") || entryText.includes("urée") || entryText.includes("uree") || entryText.includes("phosphorique");
+            const hasBacA = entries.some((e: any) => e.bac === "A") ||
+              entryText.includes("nitrate") || entryText.includes("chaux") || entryText.includes("calcium") || entryText.includes("nitrique");
+
+            if (hasBacB && !hasBacA) {
+              progTag = "Programme A2";
+            } else if (hasBacA) {
+              progTag = "Programme A1";
+            } else if (/\b(?:Prog(?:ramme)?\.?\s*A2|A2)\b/i.test(title) || /\b(?:Prog(?:ramme)?\.?\s*A2|A2)\b/i.test(payload.program?.label || "")) {
+              progTag = "Programme A2";
+            }
+
+            title = `${baseTitle} (${progTag})`;
+            if (payload.program) {
+              payload = { ...payload, program: { ...payload.program, label: progTag } };
+            }
+          } else if (isPhyto) {
+            const matchSpecific = title.match(/\(([^)]+)\)$/);
+            if (matchSpecific && !/(?:Traitement|Phyto|معاملة)\s*\d+/i.test(matchSpecific[1])) {
+              // Conserver le libellé de produit spécifique intact ex: (Soufre mouillable)
+            } else {
+              let traitNum = 1;
+              if (/\b(?:Traitement|Phyto|معاملة)\s*2\b/i.test(title) || /\b(?:Traitement|Phyto|معاملة)\s*2\b/i.test(payload.program?.label || "")) {
+                traitNum = 2;
+              }
+              const tag = `Traitement ${traitNum}`;
+              title = `${baseTitle} (${tag})`;
+              if (payload.program) {
+                payload = { ...payload, program: { ...payload.program, label: tag } };
+              }
+            }
           }
         }
 
