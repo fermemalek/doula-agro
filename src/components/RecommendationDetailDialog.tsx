@@ -15,7 +15,7 @@ import { useModuleActions, useAllModuleRecords } from "@/lib/modules-store";
 import { debitProductStock, useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useTranslation } from "@/lib/i18n";
 import { checkRecoStock, computeScheduledDates, computePureIrrigationDates, getTargetParcelsForReco, parsePhytoProductQuantity, safeParseFloat, type RecoProductStockItem } from "@/lib/stock-alerts";
-import { validateRecommendationAndPurchases } from "@/lib/reco-validation";
+import { validateRecommendationAndPurchases, isHistoricalReco } from "@/lib/reco-validation";
 import { checkTankMixCompatibility } from "@/data/phytosanitaires";
 
 const KIND_LABEL: Record<Recommendation["kind"], string> = {
@@ -1082,7 +1082,7 @@ export function RecommendationDetailDialog({
                           setParcelStatus: setStatus,
                           options: {
                             supplierName: "Achat Validé (Historique Ingénieur)",
-                            markAsExecutedIfPast: true,
+                            markAsExecutedIfPast: isHistoricalReco((reco.payload as any)?.program?.date || (reco.payload as any)?.date || reco.created_at || ""),
                             scheduledDates,
                           },
                         });

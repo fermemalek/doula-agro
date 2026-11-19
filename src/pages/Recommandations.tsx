@@ -18,6 +18,7 @@ import {
   RotateCcw,
   RefreshCw,
   Filter,
+  Lock,
 } from "lucide-react";
 import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
 import { useRole } from "@/lib/role";
@@ -939,6 +940,8 @@ function RecommandationsPageContent() {
             const stockReport = isPending ? checkRecoStock(r, suppliers, parcels) : { hasMissingStock: false };
             const targetParcels = getTargetParcelsForReco(r, parcels);
             const rDate = getRecoDate(r);
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const isPast = rDate < todayStr;
 
             return (
               <li
@@ -1022,44 +1025,59 @@ function RecommandationsPageContent() {
                   <div className="flex items-center gap-1">
                     {isPending && (displayRole === "ingenieur" || displayRole === "admin") && (
                       <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            if (
-                              !window.confirm(
-                                `Valider et EXÉCUTER la recommandation "${r.title}" (statut Exécuté avec achats exacts 100% payés) ?`
+                        {/* 1. Bouton vert Valider & Exécuter : Actif UNIQUEMENT sur ordonnance passée (date < Aujourd'hui) */}
+                        {isPast ? (
+                          <button
+                            type="button"
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (
+                                !window.confirm(
+                                  `Valider et EXÉCUTER la recommandation "${r.title}" (statut Exécuté avec achats exacts 100% payés) ?`
+                                )
                               )
-                            )
-                              return;
-                            try {
-                              const res = await validateRecommendationAndPurchases({
-                                reco: r,
-                                parcels,
-                                suppliers,
-                                addPurchase,
-                                acceptReco: async (id) => accept.mutateAsync(id),
-                                addModuleRecord,
-                                setParcelStatus,
-                                options: {
-                                  supplierName: "Achat Validé (Historique Ingénieur)",
-                                  markAsExecutedIfPast: true,
-                                },
-                              });
-                              toast.success(
-                                `Recommandation validée & exécutée ! (${res.clonedCount} tâches créées${res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats alignés` : ""}).`
-                              );
-                            } catch (err: any) {
-                              toast.error(err?.message || "Erreur lors de la validation");
-                            }
-                          }}
-                          className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition"
-                          title="Valider la recommandation et marquer exécutée sur le terrain"
-                        >
-                          <CheckCircle2 className="h-3 w-3" />
-                          <span>Valider & Exécuter</span>
-                        </button>
+                                return;
+                              try {
+                                const res = await validateRecommendationAndPurchases({
+                                  reco: r,
+                                  parcels,
+                                  suppliers,
+                                  addPurchase,
+                                  acceptReco: async (id) => accept.mutateAsync(id),
+                                  addModuleRecord,
+                                  setParcelStatus,
+                                  options: {
+                                    supplierName: "Achat Validé (Historique Ingénieur)",
+                                    markAsExecutedIfPast: true,
+                                  },
+                                });
+                                toast.success(
+                                  `Recommandation validée & exécutée ! (${res.clonedCount} tâches créées${res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats alignés` : ""}).`
+                                );
+                              } catch (err: any) {
+                                toast.error(err?.message || "Erreur lors de la validation");
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition cursor-pointer"
+                            title="Valider la recommandation et solder l'exécution historique (date passée)"
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            <span>Valider & Exécuter</span>
+                          </button>
+                        ) : (
+                          /* Ordonnance future (date >= Aujourd'hui) : Désactivé avec cadenas pour empêcher l'exécution prématurée */
+                          <button
+                            type="button"
+                            disabled
+                            className="inline-flex items-center gap-1 rounded-lg bg-muted text-muted-foreground/50 border border-border/40 px-2 py-1 text-[10px] font-semibold cursor-not-allowed opacity-50 select-none"
+                            title="Action désactivée : Traitement futur (date >= Aujourd'hui). Seule la planification est permise avant l'intervention sur le terrain."
+                          >
+                            <Lock className="h-3 w-3" />
+                            <span>Valider & Exécuter</span>
+                          </button>
+                        )}
 
+                        {/* 2. Bouton bleu Planifier : Toujours actif (passée pour calendrier, future pour planifier) */}
                         <button
                           type="button"
                           onClick={async (e) => {
@@ -1091,7 +1109,7 @@ function RecommandationsPageContent() {
                               toast.error(err?.message || "Erreur lors de la planification");
                             }
                           }}
-                          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition"
+                          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition cursor-pointer"
                           title="Planifier sans marquer comme exécuté"
                         >
                           <Calendar className="h-3 w-3" />
