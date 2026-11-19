@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#241a12"/>
+      <stop offset="100%" stop-color="#0d0805"/>
+    </linearGradient>
+    <radialGradient id="ripeOlive" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#701a75"/>
+      <stop offset="60%" stop-color="#4a044e"/>
+      <stop offset="100%" stop-color="#1e0220"/>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" rx="20" fill="url(#bg)"/>
+
+  <!-- Olive noire/violette atteinte de savonnage (Anthracnose) -->
+  <g transform="translate(130, 40)">
+    <ellipse cx="70" cy="85" rx="55" ry="75" fill="url(#ripeOlive)"/>
+
+    <!-- Tache circulaire déprimée couleur chocolat -->
+    <ellipse cx="85" cy="90" rx="36" ry="32" fill="#78350f" stroke="#451a03" stroke-width="2"/>
+    <ellipse cx="85" cy="90" rx="25" ry="22" fill="#451a03"/>
+
+    <!-- Suintement gélatineux orangé-saumon riche en conidies (aspect de savon liquide) -->
+    <ellipse cx="85" cy="90" rx="14" ry="12" fill="#fb923c" opacity="0.9"/>
+    <circle cx="85" cy="90" r="6" fill="#fed7aa"/>
+    <!-- Coulée de gelée orange vers le bas du fruit -->
+    <path d="M 85 96 Q 88 125 82 145 Q 80 155 84 158" stroke="#fb923c" stroke-width="4.5" fill="none" stroke-linecap="round" opacity="0.9"/>
+  </g>
+
+  <!-- Légende clinique -->
+  <rect x="20" y="235" width="360" height="48" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#334155"/>
+  <text x="35" y="256" fill="#f8fafc" font-size="14" font-family="system-ui, sans-serif" font-weight="bold">Anthracnose de l'olivier (صابون الزيتون)</text>
+  <text x="35" y="273" fill="#fdba74" font-size="11" font-family="system-ui, sans-serif" font-style="italic">Colletotrichum spp. • Pourriture déprimée avec suintement gélatineux orange</text>
+</svg>

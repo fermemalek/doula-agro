@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#241414"/>
+      <stop offset="100%" stop-color="#0f0707"/>
+    </linearGradient>
+    <linearGradient id="burned" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#451a03"/>
+      <stop offset="60%" stop-color="#1c1917"/>
+      <stop offset="100%" stop-color="#0c0a09"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="300" rx="20" fill="url(#bg)"/>
+
+  <!-- Rameau avec la crosse caractéristique en canne d'évêque (Shepherd's crook) -->
+  <g transform="translate(140, 30)">
+    <!-- Rameau principal noircissant -->
+    <path d="M 60 210 Q 55 120 60 70 Q 62 10 95 10 Q 125 10 120 40 Q 115 65 95 65" 
+          stroke="#292524" stroke-width="12" fill="none" stroke-linecap="round"/>
+    <path d="M 60 210 Q 55 120 60 70 Q 62 10 95 10 Q 125 10 120 40 Q 115 65 95 65" 
+          stroke="#44403c" stroke-width="8" fill="none" stroke-linecap="round"/>
+
+    <!-- Feuilles flétries et noircies (Aspect de brûlure au feu) -->
+    <!-- Feuille 1 (terminale pendante) -->
+    <path d="M 95 65 C 115 75, 110 110, 85 125 C 80 100, 75 80, 95 65 Z" fill="url(#burned)"/>
+    <!-- Feuille 2 -->
+    <path d="M 60 110 C 20 105, 10 145, 25 170 C 45 150, 50 130, 60 110 Z" fill="url(#burned)"/>
+    <!-- Feuille 3 -->
+    <path d="M 60 80 C 100 70, 120 95, 105 130 C 85 115, 75 95, 60 80 Z" fill="url(#burned)"/>
+    
+    <!-- Bouquet floral desséché noir attaché au rameau -->
+    <circle cx="58" cy="95" r="9" fill="#1c1917"/>
+    <circle cx="50" cy="85" r="7" fill="#292524"/>
+    <circle cx="68" cy="88" r="7" fill="#18181b"/>
+    <circle cx="62" cy="104" r="8" fill="#09090b"/>
+
+    <!-- Gouttelettes d'exsudat bactérien (bacterial ooze) -->
+    <circle cx="64" cy="55" r="4.5" fill="#fef08a" opacity="0.95"/>
+    <path d="M 64 55 Q 64 63 62 65" stroke="#fef08a" stroke-width="2" fill="none"/>
+    <circle cx="60" cy="145" r="3.5" fill="#fef08a" opacity="0.9"/>
+  </g>
+
+  <!-- Légende clinique -->
+  <rect x="20" y="235" width="360" height="48" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#334155"/>
+  <text x="35" y="256" fill="#f8fafc" font-size="14" font-family="system-ui, sans-serif" font-weight="bold">Feu bactérien (اللفحة البكتيرية)</text>
+  <text x="35" y="273" fill="#fca5a5" font-size="11" font-family="system-ui, sans-serif" font-style="italic">Erwinia amylovora • Crosse en canne d'évêque &amp; dessèchement brûlé</text>
+</svg>

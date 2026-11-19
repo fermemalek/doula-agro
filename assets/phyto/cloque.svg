@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#24161c"/>
+      <stop offset="100%" stop-color="#0e0a0d"/>
+    </linearGradient>
+    <linearGradient id="curlLeaf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f43f5e"/>
+      <stop offset="35%" stop-color="#e11d48"/>
+      <stop offset="70%" stop-color="#be123c"/>
+      <stop offset="100%" stop-color="#4c0519"/>
+    </linearGradient>
+    <radialGradient id="swelling" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#fda4af"/>
+      <stop offset="60%" stop-color="#e11d48"/>
+      <stop offset="100%" stop-color="#881337"/>
+    </radialGradient>
+  </defs>
+  <rect width="400" height="300" rx="20" fill="url(#bg)"/>
+
+  <!-- Tige de pêcher -->
+  <path d="M 60 250 Q 120 180 180 130" stroke="#78350f" stroke-width="8" fill="none" stroke-linecap="round"/>
+
+  <!-- Grande feuille boursouflée et cloquée typique de la cloque du pêcher -->
+  <g transform="translate(130, 30)">
+    <!-- Forme tourmentée, épaissie et ondulée -->
+    <path d="M 30 140 
+             C 10 110, -15 80, 5 45 
+             C 25 10, 75 -5, 120 10 
+             C 170 25, 200 70, 195 110 
+             C 190 145, 140 185, 90 180 
+             C 50 175, 40 160, 30 140 Z" 
+          fill="url(#curlLeaf)"/>
+
+    <!-- Nervures boursouflées -->
+    <path d="M 30 140 Q 100 95 195 110" stroke="#ffe4e6" stroke-width="3" fill="none" opacity="0.6"/>
+    <path d="M 70 120 Q 80 60 120 10" stroke="#fecdd3" stroke-width="2" fill="none" opacity="0.5"/>
+    <path d="M 120 105 Q 150 140 170 160" stroke="#fecdd3" stroke-width="2" fill="none" opacity="0.5"/>
+
+    <!-- Cloques charnues en relief (swelling lobes) -->
+    <ellipse cx="65" cy="65" rx="32" ry="24" fill="url(#swelling)" opacity="0.95"/>
+    <ellipse cx="130" cy="55" rx="38" ry="26" fill="url(#swelling)" opacity="0.95"/>
+    <ellipse cx="145" cy="115" rx="30" ry="22" fill="url(#swelling)" opacity="0.95"/>
+    <ellipse cx="85" cy="135" rx="28" ry="20" fill="url(#swelling)" opacity="0.9"/>
+  </g>
+
+  <!-- Légende clinique -->
+  <rect x="20" y="235" width="360" height="48" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#334155"/>
+  <text x="35" y="256" fill="#f8fafc" font-size="14" font-family="system-ui, sans-serif" font-weight="bold">Cloque du pêcher (تجعّد أوراق الخوخ)</text>
+  <text x="35" y="273" fill="#fda4af" font-size="11" font-family="system-ui, sans-serif" font-style="italic">Taphrina deformans • Boursouflures rouges charnues &amp; déformation</text>
+</svg>

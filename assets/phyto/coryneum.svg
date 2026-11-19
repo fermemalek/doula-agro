@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#192419"/>
+      <stop offset="100%" stop-color="#0a100a"/>
+    </linearGradient>
+    <linearGradient id="peachLeaf" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#84cc16"/>
+      <stop offset="100%" stop-color="#3f6212"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="300" rx="20" fill="url(#bg)"/>
+
+  <!-- Feuille atteinte de coryneum (Criblure - Aspect de coups de fusil de chasse) -->
+  <g transform="translate(60, 30)">
+    <path d="M 20 160 C 60 20, 200 20, 260 60 C 240 140, 140 200, 20 160 Z" fill="url(#peachLeaf)"/>
+    <path d="M 20 160 Q 140 100 260 60" stroke="#bef264" stroke-width="2.5" fill="none" opacity="0.6"/>
+
+    <!-- Trous circulaires nets (criblure) avec bordure rouge-brun -->
+    <!-- Trou 1 (centre tombé) -->
+    <circle cx="90" cy="115" r="12" fill="#192419" stroke="#991b1b" stroke-width="3"/>
+    <!-- Trou 2 -->
+    <circle cx="150" cy="85" r="15" fill="#192419" stroke="#991b1b" stroke-width="3.5"/>
+    <!-- Trou 3 -->
+    <circle cx="195" cy="70" r="10" fill="#192419" stroke="#991b1b" stroke-width="2.5"/>
+    <!-- Trou 4 -->
+    <circle cx="120" cy="135" r="9" fill="#192419" stroke="#991b1b" stroke-width="2.5"/>
+    
+    <!-- Taches circulaires avant détachement du centre (stade nécrotique) -->
+    <circle cx="130" cy="95" r="11" fill="#78350f" stroke="#dc2626" stroke-width="2"/>
+    <circle cx="170" cy="110" r="8" fill="#451a03" stroke="#b91c1c" stroke-width="2"/>
+    <circle cx="65" cy="130" r="7" fill="#78350f" stroke="#b91c1c" stroke-width="1.5"/>
+  </g>
+
+  <!-- Légende clinique -->
+  <rect x="20" y="235" width="360" height="48" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#334155"/>
+  <text x="35" y="256" fill="#f8fafc" font-size="14" font-family="system-ui, sans-serif" font-weight="bold">Coryneum / Criblure (التَبَقّع الثقبي)</text>
+  <text x="35" y="273" fill="#fca5a5" font-size="11" font-family="system-ui, sans-serif" font-style="italic">Wilsonomyces carpophilus • Taches perforées en coups de fusil sur feuilles</text>
+</svg>

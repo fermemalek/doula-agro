@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#14281d"/>
+      <stop offset="100%" stop-color="#0a150e"/>
+    </linearGradient>
+    <radialGradient id="apple" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#a3e635"/>
+      <stop offset="50%" stop-color="#65a30d"/>
+      <stop offset="85%" stop-color="#4d7c0f"/>
+      <stop offset="100%" stop-color="#365314"/>
+    </radialGradient>
+    <radialGradient id="scab" cx="40%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#262626"/>
+      <stop offset="50%" stop-color="#171717"/>
+      <stop offset="100%" stop-color="#3f3f46"/>
+    </radialGradient>
+    <linearGradient id="leafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#84cc16"/>
+      <stop offset="100%" stop-color="#3f6212"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="300" rx="20" fill="url(#bg)"/>
+  
+  <!-- Feuille atteinte de tavelure en arrière plan -->
+  <g transform="translate(40, 50) rotate(-25)">
+    <path d="M 0 100 C 30 20, 120 10, 160 0 C 120 60, 80 120, 0 100 Z" fill="url(#leafGrad)"/>
+    <path d="M 0 100 Q 80 40 160 0" stroke="#a3e635" stroke-width="2" fill="none" opacity="0.6"/>
+    <!-- Taches olivâtres veloutées sur feuille -->
+    <ellipse cx="60" cy="55" rx="14" ry="10" fill="#2d371e" opacity="0.9"/>
+    <ellipse cx="100" cy="30" rx="18" ry="12" fill="#27321a" opacity="0.95"/>
+    <ellipse cx="125" cy="18" rx="8" ry="6" fill="#1e2513" opacity="0.9"/>
+  </g>
+
+  <!-- Pomme principale avec gale et croûtes de tavelure -->
+  <g transform="translate(190, 60)">
+    <!-- Pédoncule -->
+    <path d="M 50 15 Q 40 -15 65 -25" stroke="#78350f" stroke-width="6" fill="none" stroke-linecap="round"/>
+    <!-- Corps de la pomme -->
+    <path d="M 50 15 C 80 5, 125 30, 125 75 C 125 125, 90 155, 50 155 C 10 155, -25 125, -25 75 C -25 30, 20 5, 50 15 Z" fill="url(#apple)"/>
+    
+    <!-- Croûtes noires liégeuses (Gale de tavelure) -->
+    <!-- Grande lésion liégeuse avec fissures -->
+    <ellipse cx="40" cy="65" rx="26" ry="22" fill="url(#scab)"/>
+    <path d="M 25 65 L 55 68 M 40 48 L 42 82 M 30 55 L 50 78" stroke="#a1a1aa" stroke-width="1.8" fill="none"/>
+    
+    <ellipse cx="80" cy="95" rx="18" ry="15" fill="url(#scab)"/>
+    <path d="M 70 95 L 90 98 M 80 83 L 80 107" stroke="#71717a" stroke-width="1.5" fill="none"/>
+
+    <ellipse cx="0" cy="85" rx="14" ry="10" fill="url(#scab)"/>
+    <ellipse cx="65" cy="40" rx="10" ry="8" fill="url(#scab)"/>
+    <ellipse cx="25" cy="115" rx="12" ry="9" fill="url(#scab)"/>
+  </g>
+
+  <!-- Légende clinique -->
+  <rect x="20" y="235" width="360" height="48" rx="12" fill="#0f172a" fill-opacity="0.85" stroke="#334155"/>
+  <text x="35" y="256" fill="#f8fafc" font-size="14" font-family="system-ui, sans-serif" font-weight="bold">Tavelure du pommier (جرب التفاح)</text>
+  <text x="35" y="273" fill="#94a3b8" font-size="11" font-family="system-ui, sans-serif" font-style="italic">Venturia inaequalis • Taches olivâtres veloutées &amp; crevasses liégeuses</text>
+</svg>
