@@ -140,8 +140,8 @@ export function IngenieurHome() {
         <RotateCcw className={`h-4 w-4 text-amber-700 ${resetting ? "animate-spin" : ""}`} />
         <span>
           {currentLang === "ar"
-            ? "🔄 إعادة تعيين جميع التوصيات إلى «قيد الانتظار» (68 قيد الانتظار · 0 مقبولة)"
-            : "🔄 Remettre toutes les recommandations en attente (68 en attente · 0 acceptée)"}
+            ? `🔄 إعادة تعيين جميع التوصيات إلى «قيد الانتظار» (${pendingCount} قيد الانتظار · ${executedCount} مقبولة)`
+            : `🔄 Remettre toutes les recommandations en attente (${pendingCount} en attente · ${executedCount} acceptée)`}
         </span>
       </button>
 

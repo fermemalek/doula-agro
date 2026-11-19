@@ -55,6 +55,128 @@ export function isHistoricalReco(recoDateStr: string): boolean {
 }
 
 /**
+ * Détecte si un nom de produit correspond à un engrais foliaire / biostimulant
+ */
+export function isFoliarProduct(name: string): boolean {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  if (
+    lower.includes("calcium") ||
+    lower.includes("bore") ||
+    lower.includes("boron") ||
+    lower.includes("zinc") ||
+    lower.includes("algue") ||
+    lower.includes("algreen") ||
+    lower.includes("oligo") ||
+    lower.includes("biostimulant") ||
+    lower.includes("fer") ||
+    lower.includes("magnésium foliaire") ||
+    lower.includes("potasse foliaire") ||
+    lower.includes("azote foliaire") ||
+    lower.includes("بورون") ||
+    lower.includes("كالسيوم") ||
+    lower.includes("طحالب") ||
+    lower.includes("عناصر صغري") ||
+    lower.includes("زنك") ||
+    lower.includes("حديد")
+  ) {
+    if (lower.includes("deltacal") || lower.includes("calypso")) return false;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Détecte si un nom de produit correspond à un produit phytosanitaire (fongicide, insecticide, acaricide, etc.)
+ */
+export function isPhytoProduct(name: string): boolean {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  if (
+    lower.includes("fongicide") ||
+    lower.includes("insecticide") ||
+    lower.includes("acaricide") ||
+    lower.includes("bellis") ||
+    lower.includes("signum") ||
+    lower.includes("decis") ||
+    lower.includes("deltacal") ||
+    lower.includes("sivento") ||
+    lower.includes("calypso") ||
+    lower.includes("sherpa") ||
+    lower.includes("verlan") ||
+    lower.includes("erlan") ||
+    lower.includes("acetaplan") ||
+    lower.includes("aceplan") ||
+    lower.includes("mospilan") ||
+    lower.includes("amistar") ||
+    lower.includes("azostar") ||
+    lower.includes("zorro") ||
+    lower.includes("fosetyl") ||
+    lower.includes("aliette") ||
+    lower.includes("luna") ||
+    lower.includes("criptan") ||
+    lower.includes("phytocap") ||
+    lower.includes("dicis") ||
+    lower.includes("difénoconazole") ||
+    lower.includes("score") ||
+    lower.includes("captan") ||
+    lower.includes("extrachim") ||
+    lower.includes("rustilan") ||
+    lower.includes("tachigazol") ||
+    lower.includes("folicur") ||
+    lower.includes("topas") ||
+    lower.includes("soufre") ||
+    lower.includes("cuivre") ||
+    lower.includes("مبيد") ||
+    lower.includes("فطري") ||
+    lower.includes("حشري") ||
+    lower.includes("عناكب") ||
+    lower.includes("كبريت") ||
+    lower.includes("نحاس")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Détecte si un apport est ponctuel (« مرة » / « واحدة ») ou périodique (« مرة في الاسبوع »)
+ */
+export function isOneOffReco(r: Recommendation): boolean {
+  if (!r) return false;
+  const payload = (r.payload || {}) as any;
+  const prog = payload.program || {};
+  const freqStr = String(prog.frequency || payload.frequency || "").toLowerCase();
+  const titleLower = (r.title || "").toLowerCase();
+  const commentLower = (r.comment || "").toLowerCase();
+
+  if (
+    freqStr.includes("مرة واحدة") ||
+    freqStr === "once" ||
+    freqStr === "unique" ||
+    freqStr === "ponctuel" ||
+    (freqStr.startsWith("مرة") &&
+      !freqStr.includes("اسبوع") &&
+      !freqStr.includes("أسبوع") &&
+      !freqStr.includes("شهر"))
+  ) {
+    return true;
+  }
+  if (
+    titleLower.includes("ponctuel") ||
+    titleLower.includes("مرة واحدة") ||
+    commentLower.includes("مرة واحدة") ||
+    (commentLower.includes("مرة") &&
+      !commentLower.includes("اسبوع") &&
+      !commentLower.includes("أسبوع") &&
+      !commentLower.includes("مرات"))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Annule et remplace automatiquement les anciennes recommandations pour les mêmes espèces ciblées
  * dans le cadre du mode historique (date_recommandation < date_du_jour).
  * Conserve intactes les recommandations des autres espèces non visées.
@@ -596,13 +718,6 @@ export async function validateRecommendationAndPurchases({
             : {}),
         });
       }
-                executedAt: scheduledFoliarDate,
-                executed_at: scheduledFoliarDate,
-                executionNote: "Exécution historique validée",
-              }
-            : {}),
-        });
-      }
     } else if (reco.kind === "phytosanitaire") {
       // ========================================================
       // C. TRAITEMENT PHYTOSANITAIRE (Soir / Crépuscule)
@@ -756,4 +871,48 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
         .neq("id", "00000000-0000-0000-0000-000000000000");
     }
   } catch {}
+}
+
+/**
+ * Synchronise et restaure les achats et tâches pour toutes les recommandations actuellement validées (status === "acceptee")
+ * Garantit que chaque ordonnance possède son Bon d'Achat sans omission.
+ */
+export async function syncPurchasesForAcceptedRecos({
+  recos,
+  parcels,
+  suppliers,
+  addPurchase,
+  acceptReco,
+  addModuleRecord,
+  setParcelStatus,
+}: {
+  recos: Recommendation[];
+  parcels: Parcel[];
+  suppliers: SupplierPurchase[];
+  addPurchase: (p: Omit<SupplierPurchase, "id" | "consumed">) => void;
+  acceptReco: (id: string) => Promise<unknown>;
+  addModuleRecord: (parcelId: string, kind: any, data: any) => void;
+  setParcelStatus?: (parcelId: string, status: any) => void;
+}): Promise<number> {
+  const accepted = recos.filter((r) => r.status === "acceptee");
+  let totalCreated = 0;
+
+  for (const r of accepted) {
+    const res = await validateRecommendationAndPurchases({
+      reco: r,
+      parcels,
+      suppliers,
+      addPurchase,
+      acceptReco,
+      addModuleRecord,
+      setParcelStatus,
+      options: {
+        supplierName: "Achat Validé (Historique Ingénieur)",
+        markAsExecutedIfPast: false,
+      },
+    });
+    totalCreated += res.createdPurchasesCount;
+  }
+
+  return totalCreated;
 }
