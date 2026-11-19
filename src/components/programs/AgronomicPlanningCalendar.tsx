@@ -163,6 +163,7 @@ export interface ScheduledDayEvent {
   startHourMinutes: number;
   endHourMinutes: number;
   hours: string; // ex: "05h00 - 06h30"
+  slotLabel?: string; // ex: "Créneau 1 (Bac B)", "Créneau 2 (Bac A)"
   irrigationDuration: string; // ex: "1h30"
   durationMinutes: number;
   wettingTime: number;
@@ -636,13 +637,20 @@ export function AgronomicPlanningCalendar({
 
         let passCount = 0;
 
-        weeklyDates.forEach((dateStr) => {
+        weeklyDates.forEach((dateStr, intervalIndex) => {
           const dObj = new Date(dateStr);
           const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
 
-          // RÈGLE 3.1 : Regroupement des programmes de fertigation différents LE MÊME JOUR (Mardi J+1)
-          // Si Prog. A1 et Prog. A2 existent sur la même semaine, ils sont exécutés le même jour séquentiellement !
-          sortedSubRecos.forEach((currentSubReco) => {
+          const isScheduledThisDay = !isWeeklySingle || intervalIndex % 2 === 0;
+
+          if (isScheduledThisDay) {
+            // RÈGLE 1 : Interdiction stricte qu'une même parcelle reçoive Prog A1 et Prog A2 le même jour
+            // Alternance Nablara (Prog A1 / Bac B le jour 1) et Redix 25 (Prog A2 / Bac A le jour 1)
+            const speciesOffset = crop.id === "redix25" ? 1 : 0;
+            const subProgIdx = hasMultipleSubProgs
+              ? (passCount + speciesOffset) % sortedSubRecos.length
+              : 0;
+            const currentSubReco = sortedSubRecos[subProgIdx];
             const currentSubProg = (currentSubReco.payload as any)?.program || {};
             const currentSubEntries = currentSubProg.entries || [];
 
@@ -713,7 +721,7 @@ export function AgronomicPlanningCalendar({
             });
 
             passCount++;
-          });
+          }
         });
 
         periodObj.totalPassages = passCount;
@@ -731,8 +739,27 @@ export function AgronomicPlanningCalendar({
       //    - Traitement 1 (au crépuscule/soir, Jeudi J+3) avec uniquement le produit phytosanitaire.
       // 2. Regrouper tous les produits compatibles d'une même pulvérisation dans UNE SEULE TÂCHE par parcelle
       //    (1 carte pour Nablara, 1 carte pour Redix 25 = 2 cartes au total, non 4).
+      // 3. RÈGLE 2 : Espacement minimum de 3 jours calendaires entre Pulvérisation 1 et Pulvérisation 2
+      //    (Mercredi J+2 -> Samedi J+5, écart = 3 jours calendaires garanti).
 
-      sprayRecos.forEach((r) => {
+      // Trier les sprayRecos pour que Pulvérisation 1 / Passage 1 soit en premier
+      const sortedSprayRecos = [...sprayRecos].sort((a, b) => {
+        const tA = (a.title || "").toLowerCase();
+        const tB = (b.title || "").toLowerCase();
+        const is2A =
+          tA.includes("passage 2") ||
+          tA.includes("pulvérisation 2") ||
+          tA.includes("pulverisation 2");
+        const is2B =
+          tB.includes("passage 2") ||
+          tB.includes("pulvérisation 2") ||
+          tB.includes("pulverisation 2");
+        if (is2A && !is2B) return 1;
+        if (!is2A && is2B) return -1;
+        return tA.localeCompare(tB);
+      });
+
+      sortedSprayRecos.forEach((r, sprayIdx) => {
         const payload = (r.payload || {}) as any;
         const prog = payload.program || {};
         const titleMatch = (r.title || "").match(/(\d{4}-\d{2}-\d{2})/);
@@ -768,15 +795,17 @@ export function AgronomicPlanningCalendar({
         const titleLower = (r.title || "").toLowerCase();
 
         // 1. Événement Pulvérisation Foliaire (Matin au lever du soleil)
+        // RÈGLE 2 : Espacement minimum de 3 jours calendaires entre Pulvérisation 1 et Pulvérisation 2
+        // Démarrage J+1 = Fertigation. Pulvérisation 1 -> J+2 (ex: Mercredi 11 Mars)
+        // Pulvérisation 2 -> J+5 (ex: Samedi 14 Mars) -> écart garanti = 3 jours calendaires (14 - 11 = 3j)
         if (foliarItems.length > 0) {
-          let dateStr = addDays(baseDateStr, 2); // Mercredi J+2
-          if (
+          const isPulv2 =
             titleLower.includes("passage 2") ||
             titleLower.includes("pulvérisation 2") ||
-            titleLower.includes("pulverisation 2")
-          ) {
-            dateStr = addDays(baseDateStr, 5); // Samedi J+5
-          }
+            titleLower.includes("pulverisation 2") ||
+            sprayIdx >= 1;
+
+          let dateStr = isPulv2 ? addDays(baseDateStr, 5) : addDays(baseDateStr, 2);
           const dObj = new Date(dateStr);
           const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
 
@@ -981,25 +1010,92 @@ export function AgronomicPlanningCalendar({
       const solar = getSolarTimesForDate(dateKey);
 
       // A. Fertigation séquentielle station (démarrage dynamique au LEVER DU SOLEIL à Benhar)
+      // RÈGLE 1 : Alternance Bac B -> Bac A -> Bac B -> Bacs C+D -> Oliviers (durée = 1h30 par passage)
       const fertEvents = dayList.filter((e) => e.type === "fertigation" || e.type === "pure_irrigation");
       const foliarEvents = dayList.filter((e) => e.type === "pulverisation");
       const phytoEvents = dayList.filter((e) => e.type === "phyto");
 
-      // Ordre des groupes hydrauliques stricts : Pommiers (P7+P8 simultanés), Nablara (seule), Redix 25 (séquentiel), Oliviers
-      const priorityOrder = ["pommiers", "nablara", "redix25", "oliviers"];
-      fertEvents.sort(
-        (a, b) => priorityOrder.indexOf(a.speciesId) - priorityOrder.indexOf(b.speciesId)
+      const classifyFertEvent = (ev: (typeof rawEvents)[0]) => {
+        const titleLower = (ev.recoTitle || "").toLowerCase();
+        const speciesId = ev.speciesId || "";
+        const bacLetters = (ev.bacs || []).map((b: any) => (b.bac || "").toUpperCase().trim());
+
+        const isBacsCD =
+          speciesId === "pommiers" ||
+          titleLower.includes("pommier") ||
+          bacLetters.includes("C") ||
+          bacLetters.includes("D") ||
+          titleLower.includes("bac c") ||
+          titleLower.includes("bac d");
+
+        if (isBacsCD) return "bacs_cd";
+
+        if (speciesId === "oliviers" || titleLower.includes("olivier")) {
+          return "oliviers";
+        }
+
+        const isBacA =
+          titleLower.includes("programme a2") ||
+          titleLower.includes("prog. a2") ||
+          titleLower.includes("(a2)") ||
+          (bacLetters.includes("A") && !bacLetters.includes("B") && !bacLetters.includes("C") && !bacLetters.includes("D"));
+
+        if (isBacA) return "bac_a";
+
+        return "bac_b"; // Default (Programme A1, Bac B)
+      };
+
+      const orderedFertEvents: Array<{ ev: (typeof fertEvents)[0]; slotLabel: string }> = [];
+      const bacBEvents = fertEvents.filter((e) => classifyFertEvent(e) === "bac_b");
+      const bacAEvents = fertEvents.filter((e) => classifyFertEvent(e) === "bac_a");
+      const bacsCDEvents = fertEvents.filter((e) => classifyFertEvent(e) === "bacs_cd");
+      const olivierEvents = fertEvents.filter((e) => classifyFertEvent(e) === "oliviers");
+      const otherEvents = fertEvents.filter(
+        (e) => !["bac_b", "bac_a", "bacs_cd", "oliviers"].includes(classifyFertEvent(e))
       );
+
+      // 1. Créneau 1 (Lever du soleil) : Bac B (Prog. A1)
+      if (bacBEvents.length > 0) {
+        orderedFertEvents.push({ ev: bacBEvents.shift()!, slotLabel: "Créneau 1 (Bac B - Prog. A1)" });
+      }
+      // 2. Créneau 2 (+1h30) : Bac A (Prog. A2, Nitrate de Calcium) — laissant Bac B libre pendant 1h30
+      if (bacAEvents.length > 0) {
+        orderedFertEvents.push({ ev: bacAEvents.shift()!, slotLabel: "Créneau 2 (Bac A - Prog. A2)" });
+      }
+      // 3. Créneau 3 (+3h00) : Bac B (Prog. A1)
+      if (bacBEvents.length > 0) {
+        orderedFertEvents.push({ ev: bacBEvents.shift()!, slotLabel: "Créneau 3 (Bac B - Prog. A1)" });
+      }
+      // Reste éventuel Bac B puis Bac A
+      while (bacBEvents.length > 0) {
+        orderedFertEvents.push({ ev: bacBEvents.shift()!, slotLabel: "Créneau Additionnel (Bac B)" });
+      }
+      while (bacAEvents.length > 0) {
+        orderedFertEvents.push({ ev: bacAEvents.shift()!, slotLabel: "Créneau Additionnel (Bac A)" });
+      }
+      // 4. Bacs C+D (Pommiers P7+P8 simultanés)
+      bacsCDEvents.forEach((ev) => {
+        orderedFertEvents.push({ ev, slotLabel: "Créneau Pommiers (Bacs C+D)" });
+      });
+      // 5. Oliviers
+      olivierEvents.forEach((ev, idx) => {
+        orderedFertEvents.push({ ev, slotLabel: `Créneau Oliviers (${idx === 0 ? "Secteur 1" : "Secteur 2"})` });
+      });
+      // Autres
+      otherEvents.forEach((ev) => {
+        orderedFertEvents.push({ ev, slotLabel: "Créneau Station" });
+      });
 
       let currentStationTime = solar.sunriseMinutes;
 
-      fertEvents.forEach((ev) => {
+      orderedFertEvents.forEach(({ ev, slotLabel }) => {
         const startMin = currentStationTime;
         const endMin = startMin + ev.durationMinutes;
         currentStationTime = endMin;
 
         finalEvents.push({
           ...ev,
+          slotLabel,
           startHourMinutes: startMin,
           endHourMinutes: endMin,
           hours: `${formatMinutesToHourString(startMin)} - ${formatMinutesToHourString(endMin)}`,
@@ -1981,7 +2077,7 @@ export function AgronomicPlanningCalendar({
                             <div className="flex justify-between items-center font-bold">
                               <span className="text-muted-foreground flex items-center gap-1">
                                 <Clock className="h-3 w-3 text-primary" />
-                                <span>Créneau pompe :</span>
+                                <span>{event.slotLabel || "Créneau pompe"} :</span>
                               </span>
                               <span className="text-foreground font-black font-mono text-[11px]">
                                 {event.hours} ({event.irrigationDuration})

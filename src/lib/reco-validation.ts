@@ -55,128 +55,6 @@ export function isHistoricalReco(recoDateStr: string): boolean {
 }
 
 /**
- * Détecte si un nom de produit correspond à un engrais foliaire / biostimulant
- */
-export function isFoliarProduct(name: string): boolean {
-  if (!name) return false;
-  const lower = name.toLowerCase();
-  if (
-    lower.includes("calcium") ||
-    lower.includes("bore") ||
-    lower.includes("boron") ||
-    lower.includes("zinc") ||
-    lower.includes("algue") ||
-    lower.includes("algreen") ||
-    lower.includes("oligo") ||
-    lower.includes("biostimulant") ||
-    lower.includes("fer") ||
-    lower.includes("magnésium foliaire") ||
-    lower.includes("potasse foliaire") ||
-    lower.includes("azote foliaire") ||
-    lower.includes("بورون") ||
-    lower.includes("كالسيوم") ||
-    lower.includes("طحالب") ||
-    lower.includes("عناصر صغري") ||
-    lower.includes("زنك") ||
-    lower.includes("حديد")
-  ) {
-    if (lower.includes("deltacal") || lower.includes("calypso")) return false;
-    return true;
-  }
-  return false;
-}
-
-/**
- * Détecte si un nom de produit correspond à un produit phytosanitaire (fongicide, insecticide, acaricide, etc.)
- */
-export function isPhytoProduct(name: string): boolean {
-  if (!name) return false;
-  const lower = name.toLowerCase();
-  if (
-    lower.includes("fongicide") ||
-    lower.includes("insecticide") ||
-    lower.includes("acaricide") ||
-    lower.includes("bellis") ||
-    lower.includes("signum") ||
-    lower.includes("decis") ||
-    lower.includes("deltacal") ||
-    lower.includes("sivento") ||
-    lower.includes("calypso") ||
-    lower.includes("sherpa") ||
-    lower.includes("verlan") ||
-    lower.includes("erlan") ||
-    lower.includes("acetaplan") ||
-    lower.includes("aceplan") ||
-    lower.includes("mospilan") ||
-    lower.includes("amistar") ||
-    lower.includes("azostar") ||
-    lower.includes("zorro") ||
-    lower.includes("fosetyl") ||
-    lower.includes("aliette") ||
-    lower.includes("luna") ||
-    lower.includes("criptan") ||
-    lower.includes("phytocap") ||
-    lower.includes("dicis") ||
-    lower.includes("difénoconazole") ||
-    lower.includes("score") ||
-    lower.includes("captan") ||
-    lower.includes("extrachim") ||
-    lower.includes("rustilan") ||
-    lower.includes("tachigazol") ||
-    lower.includes("folicur") ||
-    lower.includes("topas") ||
-    lower.includes("soufre") ||
-    lower.includes("cuivre") ||
-    lower.includes("مبيد") ||
-    lower.includes("فطري") ||
-    lower.includes("حشري") ||
-    lower.includes("عناكب") ||
-    lower.includes("كبريت") ||
-    lower.includes("نحاس")
-  ) {
-    return true;
-  }
-  return false;
-}
-
-/**
- * Détecte si un apport est ponctuel (« مرة » / « واحدة ») ou périodique (« مرة في الاسبوع »)
- */
-export function isOneOffReco(r: Recommendation): boolean {
-  if (!r) return false;
-  const payload = (r.payload || {}) as any;
-  const prog = payload.program || {};
-  const freqStr = String(prog.frequency || payload.frequency || "").toLowerCase();
-  const titleLower = (r.title || "").toLowerCase();
-  const commentLower = (r.comment || "").toLowerCase();
-
-  if (
-    freqStr.includes("مرة واحدة") ||
-    freqStr === "once" ||
-    freqStr === "unique" ||
-    freqStr === "ponctuel" ||
-    (freqStr.startsWith("مرة") &&
-      !freqStr.includes("اسبوع") &&
-      !freqStr.includes("أسبوع") &&
-      !freqStr.includes("شهر"))
-  ) {
-    return true;
-  }
-  if (
-    titleLower.includes("ponctuel") ||
-    titleLower.includes("مرة واحدة") ||
-    commentLower.includes("مرة واحدة") ||
-    (commentLower.includes("مرة") &&
-      !commentLower.includes("اسبوع") &&
-      !commentLower.includes("أسبوع") &&
-      !commentLower.includes("مرات"))
-  ) {
-    return true;
-  }
-  return false;
-}
-
-/**
  * Annule et remplace automatiquement les anciennes recommandations pour les mêmes espèces ciblées
  * dans le cadre du mode historique (date_recommandation < date_du_jour).
  * Conserve intactes les recommandations des autres espèces non visées.
@@ -185,20 +63,57 @@ export async function replaceOlderHistoricalRecosForSpecies({
   targetParcels,
   recoDate,
   currentRecoId,
-  allParcels = [],
 }: {
   targetParcels: Parcel[];
   recoDate: string;
   currentRecoId: string;
-  allParcels?: Parcel[];
 }): Promise<string[]> {
-  // RÈGLE MÉTIER FERME MALEK :
-  // 1. Chaque recommandation génère son propre Bon d'Achat qui doit être conservé dans la comptabilité (aucun écrasement).
-  // 2. Les ordonnances d'une même date (ex: Prog. A1, Prog. A2, Pulv 1, Pulv 2, Phyto 1) sont complémentaires et ne se remplacent JAMAIS entre elles.
-  // 3. Les achats passés et les travaux déjà exécutés font partie intégrante de l'historique financier et agronomique.
-  // 4. La transition des occurrences futures dans le temps est prise en charge dynamiquement par le calendrier agronomique (AgronomicPlanningCalendar),
-  //    sans jamais supprimer de pièces comptables ni altérer les ordonnances complémentaires du même jour.
-  return [];
+  const targetParcelIds = new Set(targetParcels.map((p) => p.id));
+  const replacedRecoIds: string[] = [];
+
+  try {
+    const { data: allRecos, error } = await (supabase as any)
+      .from("recommendations")
+      .select("id, parcel_ids, payload, created_at, status")
+      .neq("id", currentRecoId);
+
+    if (error || !allRecos) return [];
+
+    for (const r of allRecos) {
+      const pPayload = (r.payload || {}) as any;
+      const rDate = pPayload.program?.date || pPayload.date || r.created_at?.slice(0, 10) || "";
+
+      // Seulement les recos antérieures ou égales à aujourd'hui
+      if (rDate && rDate <= recoDate) {
+        const rParcelIds: string[] = Array.isArray(r.parcel_ids) ? r.parcel_ids : [];
+        const hasOverlap = rParcelIds.some((pId) => targetParcelIds.has(pId));
+
+        if (hasOverlap) {
+          // Vérifier si cette reco ne concerne QUE ces espèces/parcelles ou partagées
+          replacedRecoIds.push(r.id);
+
+          // 1. Supprimer les achats associés à l'ancienne recommandation
+          deletePurchasesForReco(r.id);
+
+          // 2. Supprimer les enregistrements de modules liés
+          removeModuleRecordsByRecoId(r.id);
+
+          // 3. Mettre à jour le statut en "rejetee" (remplacée par version historique plus récente)
+          await (supabase as any)
+            .from("recommendations")
+            .update({
+              status: "rejetee",
+              comment: `Remplacée automatiquement par la recommandation historique validée (${recoDate})`,
+            })
+            .eq("id", r.id);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Erreur lors du remplacement historique par espèce:", err);
+  }
+
+  return replacedRecoIds;
 }
 
 /**
@@ -281,59 +196,54 @@ export async function validateRecommendationAndPurchases({
     for (const parcel of targetParcels) {
       const surface = safeParseFloat(parcel.info?.surface) || 1;
 
-      // 1. Fertigation entries (Bacs)
-      const entries = Array.isArray(program.entries) ? program.entries : [];
-      for (const entry of entries) {
-        const rawItems = Array.isArray(entry.items) && entry.items.length > 0
-          ? entry.items
-          : (entry.name ? [entry] : []);
-        for (const it of rawItems) {
-          const pName = (it.name || it.product || "").trim();
+      if (reco.kind === "fertilisation") {
+        if (payload.method === "irrigation" || program.kind === "irrigation") {
+          const entries = Array.isArray(program.entries) ? program.entries : [];
+          for (const entry of entries) {
+            for (const it of entry.items || []) {
+              const pName = (it.name || "").trim();
+              if (!pName) continue;
+              const doseHa = safeParseFloat(it.qty);
+              const qtyTotale = parseFloat((doseHa * surface).toFixed(2));
+              const price = safeParseFloat(it.price) || 0;
+              const unit = it.unit || "kg";
+
+              if (!prescribedItemsMap[pName]) {
+                prescribedItemsMap[pName] = { name: pName, quantity: 0, unit, price };
+              }
+              prescribedItemsMap[pName].quantity += qtyTotale;
+            }
+          }
+        } else {
+          // Pulvérisation foliaire
+          const items = Array.isArray(program.items) ? program.items : (payload.items || []);
+          for (const it of items) {
+            const pName = (it.name || it.product || "").trim();
+            if (!pName) continue;
+            const doseHa = safeParseFloat(it.qty || it.dosage);
+            const qtyTotale = parseFloat((doseHa * surface).toFixed(2));
+            const price = safeParseFloat(it.price) || 0;
+            const unit = it.unit || "litres";
+
+            if (!prescribedItemsMap[pName]) {
+              prescribedItemsMap[pName] = { name: pName, quantity: 0, unit, price };
+            }
+            prescribedItemsMap[pName].quantity += qtyTotale;
+          }
+        }
+      } else if (reco.kind === "phytosanitaire") {
+        const prods = Array.isArray(program.products) ? program.products : [];
+        for (const p of prods) {
+          const pName = (p.product || p.name || "").trim();
           if (!pName) continue;
-          const doseHa = safeParseFloat(it.qty || it.dosage || it.dose_per_ha);
-          const qtyTotale = parseFloat((doseHa * surface).toFixed(2));
-          const price = safeParseFloat(it.price) || 0;
-          const unit = it.unit || "kg";
+          const parsed = parsePhytoProductQuantity(p, surface);
+          const price = safeParseFloat(p.price) || 0;
 
           if (!prescribedItemsMap[pName]) {
-            prescribedItemsMap[pName] = { name: pName, quantity: 0, unit, price };
+            prescribedItemsMap[pName] = { name: pName, quantity: 0, unit: parsed.unit, price };
           }
-          prescribedItemsMap[pName].quantity += qtyTotale;
+          prescribedItemsMap[pName].quantity += parsed.quantity;
         }
-      }
-
-      // 2. Pulvérisation foliaire items
-      const items = Array.isArray(program.items) && program.items.length > 0
-        ? program.items
-        : (Array.isArray(payload.items) ? payload.items : []);
-      for (const it of items) {
-        const pName = (it.name || it.product || "").trim();
-        if (!pName) continue;
-        const doseHa = safeParseFloat(it.qty || it.dosage || it.dose_per_ha);
-        const qtyTotale = parseFloat((doseHa * surface).toFixed(2));
-        const price = safeParseFloat(it.price) || 0;
-        const unit = it.unit || "litres";
-
-        if (!prescribedItemsMap[pName]) {
-          prescribedItemsMap[pName] = { name: pName, quantity: 0, unit, price };
-        }
-        prescribedItemsMap[pName].quantity += qtyTotale;
-      }
-
-      // 3. Phytosanitaire products
-      const prods = Array.isArray(program.products) && program.products.length > 0
-        ? program.products
-        : (Array.isArray(payload.products) ? payload.products : []);
-      for (const p of prods) {
-        const pName = (p.product || p.name || "").trim();
-        if (!pName) continue;
-        const parsed = parsePhytoProductQuantity(p, surface);
-        const price = safeParseFloat(p.price) || 0;
-
-        if (!prescribedItemsMap[pName]) {
-          prescribedItemsMap[pName] = { name: pName, quantity: 0, unit: parsed.unit, price };
-        }
-        prescribedItemsMap[pName].quantity += parsed.quantity;
       }
     }
 
@@ -399,21 +309,47 @@ export async function validateRecommendationAndPurchases({
       // A. FERTIGATION AU SOL (Station & Groupes Hydrauliques)
       // ========================================================
       // Démarrage le jour J+1 au LEVER DU SOLEIL (Benhar)
+      // RÈGLE 1 : Alternance des créneaux de fertigation dans une même journée (Bac B -> Bac A -> Bac B -> Bacs C+D)
+      // 1. Créneau 1 (Lever du soleil, T0) : Parcelle 1 avec programme utilisant le Bac B (Prog. A1, préparé avant démarrage).
+      // 2. Créneau 2 (+1h30, T0 + 90 min) : Parcelle 2 avec programme utilisant le Bac A (Prog. A2, Nitrate de Calcium) — laissant le Bac B libre pendant 1h30 pour préparer le mélange de la parcelle suivante.
+      // 3. Créneau 3 (+3h00, T0 + 180 min) : Parcelle suivante avec programme utilisant le Bac B (Prog. A1).
+      // 4. Suivi des programmes Bacs C+D (ex. Pommiers P7+P8 simultanés à T0 + 270 min).
+      // 5. Suivi des Oliviers Secteur 1 (P1+P2 simultanés), puis Secteur 2 (P3+P4 simultanés).
       const fertSolar = getSolarTimesForDate(plannedStartDate);
-      let currentStationMinutes = fertSolar.sunriseMinutes;
+
+      // Classification du Bac pour la recommandation en cours de validation :
+      const recoTitleLower = (reco.title || program.label || "").toLowerCase();
+      const entries = Array.isArray(program.entries) ? program.entries : [];
+      const bacLetters = entries.map((e: any) => (e.bac || "").toUpperCase().trim());
+
+      const isBacA =
+        recoTitleLower.includes("programme a2") ||
+        recoTitleLower.includes("prog. a2") ||
+        recoTitleLower.includes("(a2)") ||
+        (bacLetters.includes("A") && !bacLetters.includes("B") && !bacLetters.includes("C") && !bacLetters.includes("D")) ||
+        (entries.flatMap((e: any) => e.items || []).every((it: any) => (it.name || "").toLowerCase().includes("calcium")) && !bacLetters.includes("B"));
+
+      const isBacsCD =
+        recoTitleLower.includes("pommier") ||
+        targetParcels.some((p) => p.type === "pommier" || p.id.startsWith("pommier")) ||
+        bacLetters.includes("C") ||
+        bacLetters.includes("D") ||
+        recoTitleLower.includes("bac c") ||
+        recoTitleLower.includes("bac d");
+
+      const isBacB = !isBacA && !isBacsCD;
 
       // Groupes hydrauliques stricts :
-      // 1. Pommiers (pommier1 + pommier2) simultanément
-      // 2. Oliviers Secteur 1 (p1 + p2) simultanément
-      // 3. Oliviers Secteur 2 (p3 + p4) simultanément (interdiction stricte avec S1)
-      // 4. Nectarine Nablara (nablara) seule
-      // 5. Nectarine Redix 25 (redix25) seule (séquentiel après Nablara)
-
-      const pommiers = targetParcels.filter((p) => p.type === "pommier" || p.id.startsWith("pommier"));
+      // 1. Nectarine Nablara (p5 / nablara) seule
+      // 2. Nectarine Redix 25 (p6 / redix25) seule
+      // 3. Pommiers (pommier1 + pommier2) simultanément
+      // 4. Oliviers Secteur 1 (p1 + p2) simultanément
+      // 5. Oliviers Secteur 2 (p3 + p4) simultanément (interdiction stricte avec S1)
+      const pommiers = targetParcels.filter((p) => p.type === "pommier" || p.id.startsWith("pommier") || p.id === "p7" || p.id === "p8");
       const oliS1 = targetParcels.filter((p) => p.id === "p1" || p.id === "p2");
       const oliS2 = targetParcels.filter((p) => p.id === "p3" || p.id === "p4");
-      const nablaraList = targetParcels.filter((p) => p.id === "nablara");
-      const redixList = targetParcels.filter((p) => p.id === "redix25");
+      const nablaraList = targetParcels.filter((p) => p.id === "nablara" || p.id === "p5");
+      const redixList = targetParcels.filter((p) => p.id === "redix25" || p.id === "p6");
       const otherParcels = targetParcels.filter(
         (p) =>
           !pommiers.includes(p) &&
@@ -423,24 +359,126 @@ export async function validateRecommendationAndPurchases({
           !redixList.includes(p)
       );
 
-      const hydraulicGroups: Parcel[][] = [];
-      if (pommiers.length > 0) hydraulicGroups.push(pommiers);
-      if (nablaraList.length > 0) hydraulicGroups.push(nablaraList);
-      if (redixList.length > 0) hydraulicGroups.push(redixList);
-      if (oliS1.length > 0) hydraulicGroups.push(oliS1);
-      if (oliS2.length > 0) hydraulicGroups.push(oliS2);
-      if (otherParcels.length > 0) {
-        otherParcels.forEach((op) => hydraulicGroups.push([op]));
+      // Structure des affectations : [groupe de parcelles, date, startMinuteOffsetFromSunrise, labelCréneau]
+      interface GroupScheduleItem {
+        group: Parcel[];
+        date: string;
+        startMinute: number;
+        slotLabel: string;
       }
 
-      for (const group of hydraulicGroups) {
+      const scheduledGroups: GroupScheduleItem[] = [];
+
+      // A1. NECTARINE NABLARA (Parcelle 1)
+      if (nablaraList.length > 0) {
+        if (isBacB) {
+          // Créneau 1 (Lever du soleil, T0) : Bac B (Prog. A1)
+          scheduledGroups.push({
+            group: nablaraList,
+            date: plannedStartDate,
+            startMinute: fertSolar.sunriseMinutes,
+            slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
+          });
+        } else if (isBacA) {
+          // Interdiction stricte A1 et A2 le même jour sur la même parcelle :
+          // Nablara reçoit Prog. A2 le passage suivant (J+3, ex: Jeudi si A1 était Mardi)
+          const dateNablaraA2 = addDaysDate(plannedStartDate, 2);
+          const solarNablaraA2 = getSolarTimesForDate(dateNablaraA2);
+          scheduledGroups.push({
+            group: nablaraList,
+            date: dateNablaraA2,
+            startMinute: solarNablaraA2.sunriseMinutes + 90,
+            slotLabel: "Créneau 2 (+1h30 - Bac A)",
+          });
+        } else {
+          scheduledGroups.push({
+            group: nablaraList,
+            date: plannedStartDate,
+            startMinute: fertSolar.sunriseMinutes,
+            slotLabel: "Créneau 1 (Lever du soleil)",
+          });
+        }
+      }
+
+      // A2. NECTARINE REDIX 25 (Parcelle 2)
+      if (redixList.length > 0) {
+        if (isBacA) {
+          // Créneau 2 (+1h30, T0 + 90 min) : Bac A (Prog. A2, Nitrate de Calcium) — libère Bac B pendant 1h30
+          scheduledGroups.push({
+            group: redixList,
+            date: plannedStartDate,
+            startMinute: fertSolar.sunriseMinutes + 90,
+            slotLabel: "Créneau 2 (+1h30 - Bac A)",
+          });
+        } else if (isBacB) {
+          // Créneau 3 (+3h00, T0 + 180 min) : Bac B (Prog. A1, solution préparée pendant Créneau 2)
+          scheduledGroups.push({
+            group: redixList,
+            date: plannedStartDate,
+            startMinute: fertSolar.sunriseMinutes + 180,
+            slotLabel: "Créneau 3 (+3h00 - Bac B)",
+          });
+        } else {
+          scheduledGroups.push({
+            group: redixList,
+            date: plannedStartDate,
+            startMinute: fertSolar.sunriseMinutes + 90,
+            slotLabel: "Créneau 2 (+1h30)",
+          });
+        }
+      }
+
+      // A3. POMMIERS (P7 + P8 simultanément — Bacs C+D)
+      if (pommiers.length > 0) {
+        // Créneau 4 (+4h30, T0 + 270 min) : Suivi des programmes Bacs C+D
+        scheduledGroups.push({
+          group: pommiers,
+          date: plannedStartDate,
+          startMinute: fertSolar.sunriseMinutes + 270,
+          slotLabel: "Créneau 4 (+4h30 - Bacs C+D)",
+        });
+      }
+
+      // A4. OLIVIERS SECTEUR 1 (P1 + P2 simultanément)
+      if (oliS1.length > 0) {
+        scheduledGroups.push({
+          group: oliS1,
+          date: plannedStartDate,
+          startMinute: fertSolar.sunriseMinutes + 360,
+          slotLabel: "Créneau 5 (Oliviers Secteur 1)",
+        });
+      }
+
+      // A5. OLIVIERS SECTEUR 2 (P3 + P4 simultanément)
+      if (oliS2.length > 0) {
+        scheduledGroups.push({
+          group: oliS2,
+          date: plannedStartDate,
+          startMinute: fertSolar.sunriseMinutes + 450,
+          slotLabel: "Créneau 6 (Oliviers Secteur 2)",
+        });
+      }
+
+      // A6. AUTRES PARCELLES ÉVENTUELLES
+      let extraOffset = 540;
+      for (const op of otherParcels) {
+        scheduledGroups.push({
+          group: [op],
+          date: plannedStartDate,
+          startMinute: fertSolar.sunriseMinutes + extraOffset,
+          slotLabel: "Créneau Station Additionnel",
+        });
+        extraOffset += 90;
+      }
+
+      for (const item of scheduledGroups) {
         const groupDurationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
-        const startHourStr = formatMinutesToHHMM(currentStationMinutes);
-        const endHourMinutes = currentStationMinutes + groupDurationMinutes;
+        const startHourStr = formatMinutesToHHMM(item.startMinute);
+        const endHourMinutes = item.startMinute + groupDurationMinutes;
         const endHourStr = formatMinutesToHHMM(endHourMinutes);
         const hoursSlot = `${startHourStr} - ${endHourStr}`;
 
-        for (const parcel of group) {
+        for (const parcel of item.group) {
           const surface = safeParseFloat(parcel.info?.surface) || 1;
           clonedCount++;
 
@@ -469,7 +507,7 @@ export async function validateRecommendationAndPurchases({
             hectares: surface,
             total: totalCost,
             reco_id: reco.id,
-            date: plannedStartDate,
+            date: item.date,
             mode: "date",
             duration: (groupDurationMinutes / 60).toString(),
             dateStartHour: startHourStr,
@@ -478,12 +516,13 @@ export async function validateRecommendationAndPurchases({
             injectionTime: program.injectionTime,
             rinsingTime: program.rinsingTime,
             irrigationTime: program.irrigationTime,
+            slotLabel: item.slotLabel,
             // Statut selon option : "execute" si demandé, ou "planifie" par défaut
             status: options.markAsExecutedIfPast ? "execute" : "planifie",
             ...(options.markAsExecutedIfPast
               ? {
-                  executedAt: plannedStartDate,
-                  executed_at: plannedStartDate,
+                  executedAt: item.date,
+                  executed_at: item.date,
                   executionNote: "Exécution historique validée",
                 }
               : {}),
@@ -491,145 +530,127 @@ export async function validateRecommendationAndPurchases({
 
           addModuleRecord(parcel.id, "fertilisation", unifiedFertigation);
         }
-
-        // Le groupe suivant commence à la fin de celui-ci (séquentiel à la station)
-        currentStationMinutes = endHourMinutes;
       }
-    } else {
+    } else if (reco.kind === "fertilisation" && !isMethodIrrigation) {
       // ========================================================
-      // B & C. PULVÉRISATION FOLIAIRE ET/OU TRAITEMENT PHYTOSANITAIRE
+      // B. PULVÉRISATION FOLIAIRE (Parcelle par parcelle)
       // ========================================================
-      // RÈGLE 1 & 2 :
-      // - Si une rubrique de pulvérisation (« رشة ١ ») contient à la fois engrais foliaire
-      //   (ex. Calcium-Bore) et produit phytosanitaire (ex. Fongicide / Bellis),
-      //   NE PAS supprimer l'engrais foliaire.
-      // - Générer deux tâches distinctes :
-      //   * Pulvérisation 1 (au lever du soleil, Mercredi J+2) contenant uniquement l'engrais foliaire.
-      //   * Traitement 1 (au crépuscule/soir, Jeudi J+3) contenant uniquement le produit phytosanitaire.
-      // - Regrouper tous les produits compatibles d'une même pulvérisation dans UNE SEULE TÂCHE par parcelle.
-
-      const rawSprayItems = [
-        ...(Array.isArray(program.items) ? program.items : (payload.items || [])),
-        ...(Array.isArray(program.products) ? program.products : (payload.products || [])),
-      ];
-
-      const foliarItems: any[] = [];
-      const phytoProducts: any[] = [];
-
-      for (const it of rawSprayItems) {
-        const pName = (it.name || it.product || "").trim();
-        if (!pName) continue;
-        if (isPhytoProduct(pName)) {
-          phytoProducts.push(it);
-        } else if (isFoliarProduct(pName)) {
-          foliarItems.push(it);
-        } else if (reco.kind === "phytosanitaire" || program.kind === "phytosanitaire") {
-          phytoProducts.push(it);
-        } else {
-          foliarItems.push(it);
-        }
-      }
-
+      // Planifié au LEVER DU SOLEIL (Benhar)
+      // RÈGLE 2 : Espacement minimum de 3 jours calendaires entre Pulvérisation 1 et Pulvérisation 2
+      // Pulvérisation 1 -> J+2 (ex: Mercredi si reco était Lundi)
+      // Pulvérisation 2 -> J+5 (ex: Samedi, écart minimum = 3 jours calendaires garanti)
       const titleLower = (reco.title || "").toLowerCase();
+      let scheduledFoliarDate = addDaysDate(plannedStartDate, 1); // J+2 par défaut
 
-      // B. Exécution Pulvérisation Foliaire (Matin au lever du soleil)
-      if (foliarItems.length > 0) {
-        let scheduledFoliarDate = addDaysDate(plannedStartDate, 1); // J+2 par défaut (ex: Mercredi)
-        if (
-          titleLower.includes("pulvérisation 2") ||
-          titleLower.includes("pulverisation 2") ||
-          titleLower.includes("passage 2")
-        ) {
-          scheduledFoliarDate = addDaysDate(plannedStartDate, 4); // J+5
-        }
+      const isPulv2 =
+        titleLower.includes("pulvérisation 2") ||
+        titleLower.includes("pulverisation 2") ||
+        titleLower.includes("passage 2");
 
-        const foliarSolar = getSolarTimesForDate(scheduledFoliarDate);
-        const foliarStartHour = foliarSolar.sunriseStr;
+      if (isPulv2) {
+        scheduledFoliarDate = addDaysDate(plannedStartDate, 4); // J+5 (écart minimum de 3 jours calendaires garanti : 5 - 2 = 3j)
+      }
 
-        for (const parcel of targetParcels) {
-          const surface = safeParseFloat(parcel.info?.surface) || 1;
-          clonedCount++;
-
-          // Débit stock foliaire
-          for (const it of foliarItems) {
-            const doseHa = safeParseFloat(it.qty || it.dosage);
-            const doseTotale = parseFloat((doseHa * surface).toFixed(2));
-            debitProductStock(it.name || it.product, doseTotale);
-          }
-
-          const foliarTitle = cleanRecoTitle(
-            reco.title?.includes("Pulvérisation") || reco.title?.includes("Foliaire")
-              ? reco.title
-              : `Pulvérisation Foliaire - ${reco.title || "Passage 1"}`
-          );
-
-          // Regroupement de TOUS les produits foliaires compatibles dans une seule tâche par parcelle
-          addModuleRecord(parcel.id, "pulverisation", {
-            ...program,
-            label: foliarTitle,
-            reco_id: reco.id,
-            items: foliarItems,
-            date: scheduledFoliarDate,
-            dateStartHour: foliarStartHour,
-            status: options.markAsExecutedIfPast ? "execute" : "planifie",
-            ...(options.markAsExecutedIfPast
-              ? {
-                  executedAt: scheduledFoliarDate,
-                  executed_at: scheduledFoliarDate,
-                  executionNote: "Exécution historique validée",
-                }
-              : {}),
-          });
+      // Respect strict des dates personnalisées fournies avec garantie de l'écart de 3 jours calendaires
+      if (options.scheduledDates && options.scheduledDates.length > 0) {
+        if (isPulv2 && options.scheduledDates.length >= 2) {
+          const d1 = options.scheduledDates[0];
+          const d2 = options.scheduledDates[1];
+          const minD2 = addDaysDate(d1, 3);
+          scheduledFoliarDate = d2 < minD2 ? minD2 : d2;
+        } else if (!isPulv2) {
+          scheduledFoliarDate = options.scheduledDates[0];
         }
       }
 
-      // C. Exécution Traitement Phytosanitaire (Soir au crépuscule/coucher du soleil)
-      if (phytoProducts.length > 0) {
-        let scheduledPhytoDate = addDaysDate(plannedStartDate, 2); // J+3 par défaut (ex: Jeudi)
-        if (titleLower.includes("traitement 2")) {
-          scheduledPhytoDate = addDaysDate(plannedStartDate, 5); // J+6
+      const foliarSolar = getSolarTimesForDate(scheduledFoliarDate);
+      const foliarStartHour = foliarSolar.sunriseStr;
+
+      for (const parcel of targetParcels) {
+        const surface = safeParseFloat(parcel.info?.surface) || 1;
+        clonedCount++;
+
+        // Débit des produits foliaires
+        const items = Array.isArray(program.items) ? program.items : (payload.items || []);
+        for (const it of items) {
+          const doseHa = safeParseFloat(it.qty || it.dosage);
+          const doseTotale = parseFloat((doseHa * surface).toFixed(2));
+          debitProductStock(it.name || it.product, doseTotale);
         }
 
-        const phytoSolar = getSolarTimesForDate(scheduledPhytoDate);
-        const phytoStartHour = phytoSolar.sunsetStr;
+        const cleanTitle = cleanRecoTitle(reco.title || "Pulvérisation Foliaire");
 
-        for (const parcel of targetParcels) {
-          const surface = safeParseFloat(parcel.info?.surface) || 1;
-          clonedCount++;
+        addModuleRecord(parcel.id, "pulverisation", {
+          ...program,
+          label: cleanTitle,
+          reco_id: reco.id,
+          date: scheduledFoliarDate,
+          dateStartHour: foliarStartHour,
+          status: options.markAsExecutedIfPast ? "execute" : "planifie",
+          ...(options.markAsExecutedIfPast
+            ? {
+                executedAt: scheduledFoliarDate,
+                executed_at: scheduledFoliarDate,
+                executionNote: "Exécution historique validée",
+              }
+            : {}),
+        });
+      }
+                executedAt: scheduledFoliarDate,
+                executed_at: scheduledFoliarDate,
+                executionNote: "Exécution historique validée",
+              }
+            : {}),
+        });
+      }
+    } else if (reco.kind === "phytosanitaire") {
+      // ========================================================
+      // C. TRAITEMENT PHYTOSANITAIRE (Soir / Crépuscule)
+      // ========================================================
+      // Planifié au COUCHER DU SOLEIL (Benhar)
+      // Étalement glissant : Traitement 1 à J+3, Traitement 2 à J+7
+      // Exclusion stricte : Ne jamais planifier foliaire et phyto le même jour
+      const titleLower = (reco.title || "").toLowerCase();
+      let scheduledPhytoDate = addDaysDate(plannedStartDate, 2); // J+3 par défaut
 
-          // Débit stock phyto
-          for (const p of phytoProducts) {
+      if (titleLower.includes("traitement 2")) {
+        scheduledPhytoDate = addDaysDate(plannedStartDate, 6); // J+7
+      }
+
+      const phytoSolar = getSolarTimesForDate(scheduledPhytoDate);
+      const phytoStartHour = phytoSolar.sunsetStr;
+
+      for (const parcel of targetParcels) {
+        const surface = safeParseFloat(parcel.info?.surface) || 1;
+        clonedCount++;
+
+        if (Array.isArray(program.products)) {
+          for (const p of program.products) {
             const parsed = parsePhytoProductQuantity(p, surface);
-            debitProductStock(p.product || p.name, parsed.quantity);
+            debitProductStock(p.product, parsed.quantity);
           }
+        }
 
-          const phytoTitle = cleanRecoTitle(
-            reco.title?.includes("Traitement") || reco.title?.includes("Phyto")
-              ? reco.title
-              : `Traitement Phytosanitaire - ${reco.title || "Passage 1"}`
-          );
+        const cleanTitle = cleanRecoTitle(reco.title || "Traitement Phytosanitaire");
 
-          // Regroupement de TOUS les produits phyto dans une seule tâche par parcelle
-          addModuleRecord(parcel.id, "phytosanitaire", {
-            ...program,
-            label: phytoTitle,
-            reco_id: reco.id,
-            products: phytoProducts,
-            date: scheduledPhytoDate,
-            dateStartHour: phytoStartHour,
-            status: options.markAsExecutedIfPast ? "execute" : "planifie",
-            ...(options.markAsExecutedIfPast
-              ? {
-                  executedAt: scheduledPhytoDate,
-                  executed_at: scheduledPhytoDate,
-                  executionNote: "Exécution historique validée",
-                }
-              : {}),
-          });
+        addModuleRecord(parcel.id, "phytosanitaire", {
+          ...program,
+          label: cleanTitle,
+          reco_id: reco.id,
+          date: scheduledPhytoDate,
+          dateStartHour: phytoStartHour,
+          status: options.markAsExecutedIfPast ? "execute" : "planifie",
+          ...(options.markAsExecutedIfPast
+            ? {
+                executedAt: scheduledPhytoDate,
+                executed_at: scheduledPhytoDate,
+                executionNote: "Exécution historique validée",
+              }
+            : {}),
+        });
 
-          if (setParcelStatus && !isPast) {
-            setParcelStatus(parcel.id, "alerte");
-          }
+        if (setParcelStatus && !isPast) {
+          setParcelStatus(parcel.id, "alerte");
         }
       }
     }
@@ -735,48 +756,4 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
         .neq("id", "00000000-0000-0000-0000-000000000000");
     }
   } catch {}
-}
-
-/**
- * Synchronise et restaure les achats et tâches pour toutes les recommandations actuellement validées (status === "acceptee")
- * Garantit que chaque ordonnance possède son Bon d'Achat sans omission.
- */
-export async function syncPurchasesForAcceptedRecos({
-  recos,
-  parcels,
-  suppliers,
-  addPurchase,
-  acceptReco,
-  addModuleRecord,
-  setParcelStatus,
-}: {
-  recos: Recommendation[];
-  parcels: Parcel[];
-  suppliers: SupplierPurchase[];
-  addPurchase: (p: Omit<SupplierPurchase, "id" | "consumed">) => void;
-  acceptReco: (id: string) => Promise<unknown>;
-  addModuleRecord: (parcelId: string, kind: any, data: any) => void;
-  setParcelStatus?: (parcelId: string, status: any) => void;
-}): Promise<number> {
-  const accepted = recos.filter((r) => r.status === "acceptee");
-  let totalCreated = 0;
-
-  for (const r of accepted) {
-    const res = await validateRecommendationAndPurchases({
-      reco: r,
-      parcels,
-      suppliers,
-      addPurchase,
-      acceptReco,
-      addModuleRecord,
-      setParcelStatus,
-      options: {
-        supplierName: "Achat Validé (Historique Ingénieur)",
-        markAsExecutedIfPast: false,
-      },
-    });
-    totalCreated += res.createdPurchasesCount;
-  }
-
-  return totalCreated;
 }
