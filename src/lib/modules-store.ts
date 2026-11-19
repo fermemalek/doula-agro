@@ -297,6 +297,15 @@ export function useAllModuleRecords<T = any>(mod: ModuleName): Array<T & { parce
   }, [tick, mod]);
 }
 
+export function getAllModuleRecordsSnapshot<T = any>(mod: ModuleName): Array<T & { parcelId: string }> {
+  const all: Array<T & { parcelId: string }> = [];
+  for (const pid of Object.keys(data)) {
+    const arr = data[pid]?.[mod] ?? [];
+    for (const r of arr) all.push({ ...r, parcelId: pid });
+  }
+  return all;
+}
+
 export function removeModuleRecordsByRecoId(recoId: string) {
   let changed = false;
   const deletedIds: string[] = [];

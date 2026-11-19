@@ -2,7 +2,7 @@ import type { Recommendation } from "@/lib/cloud/recommendations";
 import type { Parcel } from "@/data/parcels";
 import { type SupplierPurchase, debitProductStock, deletePurchasesForReco } from "@/lib/suppliers-store";
 import { checkRecoStock, getTargetParcelsForReco, safeParseFloat, parsePhytoProductQuantity, matchProductName } from "@/lib/stock-alerts";
-import { removeModuleRecordsByRecoId } from "@/lib/modules-store";
+import { removeModuleRecordsByRecoId, getAllModuleRecordsSnapshot } from "@/lib/modules-store";
 import { supabase } from "@/integrations/supabase/client";
 import { offlineDB } from "@/lib/offline/db";
 import { getSolarTimesForDate, formatMinutesToHHMM } from "@/lib/astronomy";
@@ -52,6 +52,170 @@ export interface ValidateRecoResult {
 export function isHistoricalReco(recoDateStr: string): boolean {
   const todayStr = new Date().toISOString().slice(0, 10);
   return recoDateStr.slice(0, 10) < todayStr;
+}
+
+/**
+ * Calcule le nombre de jours calendaires entre deux dates YYYY-MM-DD (d2 - d1)
+ */
+export function diffDaysDate(d1: string, d2: string): number {
+  const t1 = new Date(`${d1.slice(0, 10)}T12:00:00Z`).getTime();
+  const t2 = new Date(`${d2.slice(0, 10)}T12:00:00Z`).getTime();
+  if (isNaN(t1) || isNaN(t2)) return 0;
+  return Math.round((t2 - t1) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Inspecte directement les bacs cochés d'un programme (A, B, C, D) sans dépendre du nom A1/A2
+ */
+export function getUsedBacsFromProgram(program: any): {
+  usesBacB: boolean;
+  usesBacA: boolean;
+  usesBacC: boolean;
+  usesBacD: boolean;
+  usesBacsCD: boolean;
+  letters: string[];
+} {
+  const detected = new Set<string>();
+  const entries = Array.isArray(program?.entries) ? program.entries : [];
+  entries.forEach((e: any) => {
+    const raw = String(e.bac || "").toUpperCase().replace(/[^ABCD]/g, "").trim();
+    if (raw && (!e.items || e.items.length > 0)) {
+      raw.split("").forEach((l) => detected.add(l));
+    }
+  });
+  const tanks = Array.isArray(program?.tanks) ? program.tanks : Array.isArray(program?.bacs) ? program.bacs : [];
+  tanks.forEach((t: any) => {
+    const raw = String(typeof t === "string" ? t : t?.bac || "").toUpperCase().replace(/[^ABCD]/g, "").trim();
+    if (raw) raw.split("").forEach((l) => detected.add(l));
+  });
+  return {
+    usesBacB: detected.has("B"),
+    usesBacA: detected.has("A"),
+    usesBacC: detected.has("C"),
+    usesBacD: detected.has("D"),
+    usesBacsCD: detected.has("C") || detected.has("D"),
+    letters: Array.from(detected),
+  };
+}
+
+/**
+ * Détecte si un nom de produit correspond à un engrais foliaire / biostimulant
+ */
+export function isFoliarProduct(name: string): boolean {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  if (
+    lower.includes("calcium") ||
+    lower.includes("bore") ||
+    lower.includes("boron") ||
+    lower.includes("zinc") ||
+    lower.includes("algue") ||
+    lower.includes("algreen") ||
+    lower.includes("oligo") ||
+    lower.includes("biostimulant") ||
+    lower.includes("fer") ||
+    lower.includes("magnésium foliaire") ||
+    lower.includes("potasse foliaire") ||
+    lower.includes("azote foliaire") ||
+    lower.includes("بورون") ||
+    lower.includes("كالسيوم") ||
+    lower.includes("طحالب") ||
+    lower.includes("عناصر صغري") ||
+    lower.includes("زنك") ||
+    lower.includes("حديد")
+  ) {
+    if (lower.includes("deltacal") || lower.includes("calypso")) return false;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Détecte si un nom de produit correspond à un produit phytosanitaire (fongicide, insecticide, acaricide, etc.)
+ */
+export function isPhytoProduct(name: string): boolean {
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  if (
+    lower.includes("fongicide") ||
+    lower.includes("insecticide") ||
+    lower.includes("acaricide") ||
+    lower.includes("bellis") ||
+    lower.includes("signum") ||
+    lower.includes("karate") ||
+    lower.includes("decis") ||
+    lower.includes("coragen") ||
+    lower.includes("vertimec") ||
+    lower.includes("abamectine") ||
+    lower.includes("mospilan") ||
+    lower.includes("amistar") ||
+    lower.includes("azostar") ||
+    lower.includes("zorro") ||
+    lower.includes("fosetyl") ||
+    lower.includes("aliette") ||
+    lower.includes("luna") ||
+    lower.includes("criptan") ||
+    lower.includes("phytocap") ||
+    lower.includes("dicis") ||
+    lower.includes("difénoconazole") ||
+    lower.includes("score") ||
+    lower.includes("captan") ||
+    lower.includes("extrachim") ||
+    lower.includes("rustilan") ||
+    lower.includes("tachigazol") ||
+    lower.includes("folicur") ||
+    lower.includes("topas") ||
+    lower.includes("soufre") ||
+    lower.includes("cuivre") ||
+    lower.includes("مبيد") ||
+    lower.includes("فطري") ||
+    lower.includes("حشري") ||
+    lower.includes("عناكب") ||
+    lower.includes("كبريت") ||
+    lower.includes("نحاس")
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Détecte si un apport est strictement ponctuel (« مرة واحدة » / « ponctuel » / « once » / « unique »).
+ * RÈGLE 1 : « 1 fois par semaine » (مرة في الاسبوع / مرة) est un cycle hebdomadaire strict de 7 jours (NOT one-off).
+ */
+export function isOneOffReco(r: Recommendation): boolean {
+  if (!r) return false;
+  const payload = (r.payload || {}) as any;
+  const prog = payload.program || {};
+  const freqStr = String(prog.frequency || payload.frequency || "").toLowerCase().trim();
+  const titleLower = (r.title || "").toLowerCase();
+  const commentLower = (r.comment || "").toLowerCase();
+
+  // Si mention explicite de semaine / hebdomadaire => jamais ponctuel
+  if (
+    freqStr.includes("اسبوع") ||
+    freqStr.includes("أسبوع") ||
+    freqStr.includes("semaine") ||
+    freqStr.includes("hebdo") ||
+    commentLower.includes("اسبوع") ||
+    commentLower.includes("أسبوع")
+  ) {
+    return false;
+  }
+
+  // Strictement ponctuel uniquement si explicitement "مرة واحدة" / "once" / "unique" / "ponctuel"
+  if (
+    freqStr.includes("مرة واحدة") ||
+    freqStr === "once" ||
+    freqStr === "unique" ||
+    freqStr === "ponctuel" ||
+    titleLower.includes("ponctuel") ||
+    titleLower.includes("مرة واحدة") ||
+    commentLower.includes("مرة واحدة")
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -309,35 +473,11 @@ export async function validateRecommendationAndPurchases({
       // A. FERTIGATION AU SOL (Station & Groupes Hydrauliques)
       // ========================================================
       // Démarrage le jour J+1 au LEVER DU SOLEIL (Benhar)
-      // RÈGLE 1 : Un seul programme de fertigation par parcelle et par jour
-      // RÈGLE 2 : Ordonnancement physique des Bacs (Alternance Bac B -> sans Bac B -> avec Bac B)
-      // 1. Créneau 1 (Lever du soleil, T0) : Tâche utilisant le Bac B (préparée avant démarrage).
-      // 2. Créneau 2 (+ temps fertilisation T0 + duration) : Tâche d'une autre parcelle utilisant Bac A ou C (sans Bac B),
-      //    laissant le Bac B libre pendant le temps de fertilisation pour préparer et dissoudre le mélange suivant.
-      // 3. Créneau 3 (+ cumul fertilisation) : Tâche suivante utilisant le Bac B fraîchement préparé.
-      // 4. Suivi des programmes Bacs C+D (Pommiers P7+P8 simultanés) puis Oliviers (S1 puis S2).
-      const fertSolar = getSolarTimesForDate(plannedStartDate);
-
-      // Inspection directe des Bacs cochés (indépendamment du nom de chaîne A1 ou A2)
-      const entries = Array.isArray(program.entries) ? program.entries : [];
-      const detectedBacs = new Set<string>();
-      entries.forEach((e: any) => {
-        const raw = String(e.bac || "").toUpperCase().replace(/[^ABCD]/g, "").trim();
-        if (raw && (!e.items || e.items.length > 0)) {
-          raw.split("").forEach((l) => detectedBacs.add(l));
-        }
-      });
-      if (Array.isArray((program as any).tanks)) {
-        (program as any).tanks.forEach((t: any) => {
-          const raw = String(t).toUpperCase().replace(/[^ABCD]/g, "").trim();
-          if (raw) raw.split("").forEach((l) => detectedBacs.add(l));
-        });
-      }
-
-      const usesBacB = detectedBacs.has("B");
-      const usesBacA = detectedBacs.has("A");
-      const usesBacsCD = detectedBacs.has("C") || detectedBacs.has("D");
-      const isPureIrrigation = detectedBacs.size === 0;
+      // RÈGLE 1 : Cycle hebdomadaire strict de 7 jours (J1 -> J8 -> J15...)
+      // RÈGLE 2 : Décalage équilibré de 3 à 4 jours entre 2 programmes sur une même parcelle (J1 -> J4 (+3j) -> J8 (+4j))
+      // RÈGLE 3 : Ordonnancement physique des Bacs (Alternance Bac B -> Bac A/C sans Bac B -> Bac B)
+      const bacsInfo = getUsedBacsFromProgram(program);
+      const usesBacB = bacsInfo.usesBacB;
 
       // Groupes hydrauliques stricts :
       // 1. Nectarine Nablara (p5 / nablara) seule
@@ -360,6 +500,26 @@ export async function validateRecommendationAndPurchases({
       );
 
       const groupDurationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
+      const existingFertRecords = getAllModuleRecordsSnapshot("fertilisation");
+
+      // Garantit qu'une même parcelle ne reçoit jamais 2 fertigations le même jour ni à 1–2 jours d'intervalle
+      // (décalage strict de +3 jours -> J1 -> J4 -> J8)
+      const resolveFertDateForGroup = (group: Parcel[], preferredDate: string): string => {
+        const groupIds = new Set(group.map((p) => p.id));
+        const parcelDates = existingFertRecords
+          .filter((r: any) => groupIds.has(r.parcelId) && r.reco_id !== reco.id && typeof r.date === "string")
+          .map((r: any) => String(r.date).slice(0, 10));
+
+        let candidate = preferredDate;
+        let safety = 0;
+        while (safety < 14) {
+          const hasTooClose = parcelDates.some((d) => Math.abs(diffDaysDate(d, candidate)) < 3);
+          if (!hasTooClose) break;
+          candidate = addDaysDate(candidate, 3);
+          safety++;
+        }
+        return candidate;
+      };
 
       // Structure des affectations : [groupe de parcelles, date, startMinuteOffsetFromSunrise, labelCréneau]
       interface GroupScheduleItem {
@@ -371,121 +531,117 @@ export async function validateRecommendationAndPurchases({
 
       const scheduledGroups: GroupScheduleItem[] = [];
 
-      // Ordonnancement physique selon les 2 règles :
-      // 1. Interdiction stricte de 2 fertigations pour une même parcelle le même jour (J+1 et J+4/J+3)
-      // 2. Alternance Bac B (matin au lever) puis sans Bac B (+1h30 fertilisation pour libérer Bac B)
+      // Règle 2 & 3 : Alternance Nectarines Jour 1 (J+1) / Jour 4 (J+1 + 3 jours)
       const day2Date = addDaysDate(plannedStartDate, 3);
-      const solarDay2 = getSolarTimesForDate(day2Date);
 
       if (nablaraList.length > 0 && redixList.length > 0) {
-        // Cas des deux parcelles de Nectarine dans la même recommandation
         if (usesBacB) {
-          // Ce programme utilise le Bac B :
-          // - Nablara passe le Jour 1 en Créneau 1 (Lever du soleil, Bac B)
-          // - Redix 25 passe le Jour 2 en Créneau 1 (Lever du soleil, Bac B)
+          // Bac B : Nablara le Jour 1 (Créneau 1, Lever du soleil), Redix 25 le Jour 4 (+3j, Créneau 1)
+          const dNab = resolveFertDateForGroup(nablaraList, plannedStartDate);
+          const dRed = resolveFertDateForGroup(redixList, day2Date);
           scheduledGroups.push({
             group: nablaraList,
-            date: plannedStartDate,
-            startMinute: fertSolar.sunriseMinutes,
+            date: dNab,
+            startMinute: getSolarTimesForDate(dNab).sunriseMinutes,
             slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
           });
           scheduledGroups.push({
             group: redixList,
-            date: day2Date,
-            startMinute: solarDay2.sunriseMinutes,
+            date: dRed,
+            startMinute: getSolarTimesForDate(dRed).sunriseMinutes,
             slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
           });
         } else {
-          // Ce programme n'utilise PAS le Bac B (ex: Bac A, Nitrate de Calcium) :
-          // - Redix 25 passe le Jour 1 en Créneau 2 (+ temps fertilisation Nablara, sans Bac B, libérant le Bac B)
-          // - Nablara passe le Jour 2 en Créneau 2 (+ temps fertilisation Redix 25, sans Bac B)
+          // Sans Bac B (Bac A / C) : Redix 25 le Jour 1 (Créneau 2, +1h30), Nablara le Jour 4 (+3j, Créneau 2)
+          const dRed = resolveFertDateForGroup(redixList, plannedStartDate);
+          const dNab = resolveFertDateForGroup(nablaraList, day2Date);
+          const bacTag = bacsInfo.usesBacsCD ? "Bacs C+D" : bacsInfo.usesBacA ? "Bac A" : "Sans Bac B";
           scheduledGroups.push({
             group: redixList,
-            date: plannedStartDate,
-            startMinute: fertSolar.sunriseMinutes + groupDurationMinutes,
-            slotLabel: "Créneau 2 (+ temps fertilisation - Bac A)",
+            date: dRed,
+            startMinute: getSolarTimesForDate(dRed).sunriseMinutes + groupDurationMinutes,
+            slotLabel: `Créneau 2 (+1h30 - ${bacTag})`,
           });
           scheduledGroups.push({
             group: nablaraList,
-            date: day2Date,
-            startMinute: solarDay2.sunriseMinutes + groupDurationMinutes,
-            slotLabel: "Créneau 2 (+ temps fertilisation - Bac A)",
+            date: dNab,
+            startMinute: getSolarTimesForDate(dNab).sunriseMinutes + groupDurationMinutes,
+            slotLabel: `Créneau 2 (+1h30 - ${bacTag})`,
           });
         }
       } else if (nablaraList.length > 0) {
-        // Nablara seule
-        if (usesBacB) {
-          scheduledGroups.push({
-            group: nablaraList,
-            date: plannedStartDate,
-            startMinute: fertSolar.sunriseMinutes,
-            slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
-          });
-        } else {
-          scheduledGroups.push({
-            group: nablaraList,
-            date: plannedStartDate,
-            startMinute: fertSolar.sunriseMinutes + groupDurationMinutes,
-            slotLabel: "Créneau 2 (+ temps fertilisation - Sans Bac B)",
-          });
-        }
+        const dNab = resolveFertDateForGroup(nablaraList, plannedStartDate);
+        const solarNab = getSolarTimesForDate(dNab);
+        scheduledGroups.push({
+          group: nablaraList,
+          date: dNab,
+          startMinute: usesBacB ? solarNab.sunriseMinutes : solarNab.sunriseMinutes + groupDurationMinutes,
+          slotLabel: usesBacB
+            ? "Créneau 1 (Lever du soleil - Bac B)"
+            : "Créneau 2 (+1h30 - Sans Bac B)",
+        });
       } else if (redixList.length > 0) {
-        // Redix 25 seule
-        if (usesBacB) {
-          scheduledGroups.push({
-            group: redixList,
-            date: plannedStartDate,
-            startMinute: fertSolar.sunriseMinutes,
-            slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
-          });
-        } else {
-          scheduledGroups.push({
-            group: redixList,
-            date: plannedStartDate,
-            startMinute: fertSolar.sunriseMinutes + groupDurationMinutes,
-            slotLabel: "Créneau 2 (+ temps fertilisation - Sans Bac B)",
-          });
-        }
+        const dRed = resolveFertDateForGroup(redixList, plannedStartDate);
+        const solarRed = getSolarTimesForDate(dRed);
+        scheduledGroups.push({
+          group: redixList,
+          date: dRed,
+          startMinute: usesBacB ? solarRed.sunriseMinutes : solarRed.sunriseMinutes + groupDurationMinutes,
+          slotLabel: usesBacB
+            ? "Créneau 1 (Lever du soleil - Bac B)"
+            : "Créneau 2 (+1h30 - Sans Bac B)",
+        });
       }
 
       // POMMIERS (P7 + P8 simultanément — Bacs C+D)
       if (pommiers.length > 0) {
-        const offsetForPommiers = (nablaraList.length > 0 ? groupDurationMinutes : 0) + (redixList.length > 0 && !usesBacB ? groupDurationMinutes : 0);
+        const dPom = resolveFertDateForGroup(pommiers, plannedStartDate);
+        const solarPom = getSolarTimesForDate(dPom);
         scheduledGroups.push({
           group: pommiers,
-          date: plannedStartDate,
-          startMinute: fertSolar.sunriseMinutes + Math.max(groupDurationMinutes * 2, offsetForPommiers),
-          slotLabel: "Créneau Pommiers (Bacs C+D)",
+          date: dPom,
+          startMinute: solarPom.sunriseMinutes + (usesBacB ? groupDurationMinutes * 2 : groupDurationMinutes),
+          slotLabel: usesBacB ? "Créneau 3 (+3h00 - Bac B)" : "Créneau 2 (+1h30 - Bacs C+D)",
         });
       }
 
       // OLIVIERS SECTEUR 1 (P1 + P2 simultanément)
       if (oliS1.length > 0) {
+        const dOli1 = resolveFertDateForGroup(oliS1, plannedStartDate);
+        const solarOli1 = getSolarTimesForDate(dOli1);
         scheduledGroups.push({
           group: oliS1,
-          date: plannedStartDate,
-          startMinute: fertSolar.sunriseMinutes + groupDurationMinutes * 3,
-          slotLabel: "Créneau Oliviers (Secteur 1)",
+          date: dOli1,
+          startMinute: solarOli1.sunriseMinutes + (usesBacB ? 0 : groupDurationMinutes),
+          slotLabel: usesBacB
+            ? "Créneau 1 (Oliviers S1 - Bac B)"
+            : "Créneau 2 (Oliviers S1 - Sans Bac B)",
         });
       }
 
-      // OLIVIERS SECTEUR 2 (P3 + P4 simultanément)
+      // OLIVIERS SECTEUR 2 (P3 + P4 simultanément — séquentiel après S1)
       if (oliS2.length > 0) {
+        const dOli2 = resolveFertDateForGroup(oliS2, plannedStartDate);
+        const solarOli2 = getSolarTimesForDate(dOli2);
         scheduledGroups.push({
           group: oliS2,
-          date: plannedStartDate,
-          startMinute: fertSolar.sunriseMinutes + groupDurationMinutes * 4,
-          slotLabel: "Créneau Oliviers (Secteur 2)",
+          date: dOli2,
+          startMinute: solarOli2.sunriseMinutes + groupDurationMinutes * 2,
+          slotLabel: usesBacB
+            ? "Créneau 3 (Oliviers S2 - Bac B)"
+            : "Créneau 3 (Oliviers S2 - Sans Bac B)",
         });
       }
 
       // AUTRES PARCELLES ÉVENTUELLES
-      let extraIdx = 5;
+      let extraIdx = 3;
       for (const op of otherParcels) {
+        const dOp = resolveFertDateForGroup([op], plannedStartDate);
+        const solarOp = getSolarTimesForDate(dOp);
         scheduledGroups.push({
           group: [op],
-          date: plannedStartDate,
-          startMinute: fertSolar.sunriseMinutes + groupDurationMinutes * extraIdx,
+          date: dOp,
+          startMinute: solarOp.sunriseMinutes + groupDurationMinutes * extraIdx,
           slotLabel: `Créneau Station Additionnel (${extraIdx + 1})`,
         });
         extraIdx++;
@@ -581,6 +737,21 @@ export async function validateRecommendationAndPurchases({
         } else if (!isPulv2) {
           scheduledFoliarDate = options.scheduledDates[0];
         }
+      }
+
+      // Sécurité Règle 4 : Vérifier les pulvérisations foliaires existantes pour garantir >= 3 jours d'écart
+      const existingPulvRecords = getAllModuleRecordsSnapshot("pulverisation");
+      const targetIdsSet = new Set(targetParcels.map((p) => p.id));
+      const existingPulvDates = existingPulvRecords
+        .filter((r: any) => targetIdsSet.has(r.parcelId) && r.reco_id !== reco.id && typeof r.date === "string")
+        .map((r: any) => String(r.date).slice(0, 10));
+
+      let pulvSafety = 0;
+      while (pulvSafety < 14) {
+        const hasTooClosePulv = existingPulvDates.some((d) => Math.abs(diffDaysDate(d, scheduledFoliarDate)) < 3);
+        if (!hasTooClosePulv) break;
+        scheduledFoliarDate = addDaysDate(scheduledFoliarDate, 3);
+        pulvSafety++;
       }
 
       const foliarSolar = getSolarTimesForDate(scheduledFoliarDate);
@@ -769,4 +940,48 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
         .neq("id", "00000000-0000-0000-0000-000000000000");
     }
   } catch { }
+}
+
+/**
+ * Synchronise et restaure les achats et tâches pour toutes les recommandations actuellement validées (status === "acceptee")
+ * Garantit que chaque ordonnance possède son Bon d'Achat sans omission.
+ */
+export async function syncPurchasesForAcceptedRecos({
+  recos,
+  parcels,
+  suppliers,
+  addPurchase,
+  acceptReco,
+  addModuleRecord,
+  setParcelStatus,
+}: {
+  recos: Recommendation[];
+  parcels: Parcel[];
+  suppliers: SupplierPurchase[];
+  addPurchase: (p: Omit<SupplierPurchase, "id" | "consumed">) => void;
+  acceptReco: (id: string) => Promise<unknown>;
+  addModuleRecord: (parcelId: string, kind: any, data: any) => void;
+  setParcelStatus?: (parcelId: string, status: any) => void;
+}): Promise<number> {
+  const accepted = recos.filter((r) => r.status === "acceptee");
+  let totalCreated = 0;
+
+  for (const r of accepted) {
+    const res = await validateRecommendationAndPurchases({
+      reco: r,
+      parcels,
+      suppliers,
+      addPurchase,
+      acceptReco,
+      addModuleRecord,
+      setParcelStatus,
+      options: {
+        supplierName: "Achat Validé (Historique Ingénieur)",
+        markAsExecutedIfPast: false,
+      },
+    });
+    totalCreated += res.createdPurchasesCount;
+  }
+
+  return totalCreated;
 }

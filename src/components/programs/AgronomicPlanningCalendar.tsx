@@ -27,7 +27,13 @@ import { type Recommendation } from "@/lib/cloud/recommendations";
 import { type Parcel } from "@/data/parcels";
 import { useTranslation } from "@/lib/i18n";
 import { getSolarTimesForDate } from "@/lib/astronomy";
-import { isFoliarProduct, isPhytoProduct, isOneOffReco } from "@/lib/reco-validation";
+import {
+  isFoliarProduct,
+  isPhytoProduct,
+  isOneOffReco,
+  getUsedBacsFromProgram,
+  diffDaysDate,
+} from "@/lib/reco-validation";
 
 export interface AgronomicPlanningCalendarProps {
   recos: Recommendation[];
@@ -555,7 +561,13 @@ export function AgronomicPlanningCalendar({
 
         const isCurrent = startDate <= todayStr && todayStr <= endDate;
 
+        // RÈGLE 3 : Tri physique des sous-programmes selon les bacs cochés (Bac B en premier, sans Bac B en second)
+        // sans dépendre du nom de chaîne "A1" ou "A2".
         const sortedSubRecos = [...dateRecos].sort((a, b) => {
+          const bA = getUsedBacsFromProgram((a.payload as any)?.program || {});
+          const bB = getUsedBacsFromProgram((b.payload as any)?.program || {});
+          if (bA.usesBacB && !bB.usesBacB) return -1;
+          if (!bA.usesBacB && bB.usesBacB) return 1;
           const lA = (a.payload as any)?.program?.label || a.title || "";
           const lB = (b.payload as any)?.program?.label || b.title || "";
           return lA.localeCompare(lB);
@@ -574,7 +586,7 @@ export function AgronomicPlanningCalendar({
 
         const hasMultipleSubProgs = sortedSubRecos.length >= 2;
         const rawFreq = parseFloat(primaryProg.frequency) || 1;
-        const isWeeklySingle = crop.id === "pommiers" || (!hasMultipleSubProgs && rawFreq <= 1);
+        const isWeeklySingle = !hasMultipleSubProgs && rawFreq <= 1;
 
         const startTimestamp = new Date(startDate).getTime();
         const endTimestamp = new Date(endDate).getTime();
@@ -625,102 +637,113 @@ export function AgronomicPlanningCalendar({
           durationDays,
         };
 
-        // Génération des dates hebdomadaires récurrentes (tous les 7 jours)
-        const weeklyDates: string[] = [];
+        // RÈGLE 1 : Cycle hebdomadaire strict de 7 jours (Reconduction à +7 jours exacts : J1, J8, J15...)
+        const weeklyCycleStarts: string[] = [];
         const currD = new Date(`${startDate}T12:00:00Z`);
         const maxD = new Date(`${endDate}T12:00:00Z`);
         while (currD <= maxD) {
-          weeklyDates.push(currD.toISOString().slice(0, 10));
+          weeklyCycleStarts.push(currD.toISOString().slice(0, 10));
           if (isOneOff) break;
           currD.setUTCDate(currD.getUTCDate() + 7);
         }
 
         let passCount = 0;
 
-        weeklyDates.forEach((dateStr, intervalIndex) => {
-          const dObj = new Date(dateStr);
-          const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
+        const pushFertigationEvent = (dateStr: string, subReco: Recommendation) => {
+          const dObj = new Date(`${dateStr}T12:00:00Z`);
+          const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getUTCDay();
+          const currentSubProg = (subReco.payload as any)?.program || {};
+          const currentSubEntries = currentSubProg.entries || [];
 
-          const isScheduledThisDay = !isWeeklySingle || intervalIndex % 2 === 0;
-
-          if (isScheduledThisDay) {
-            // RÈGLE 1 : Interdiction stricte qu'une même parcelle reçoive Prog A1 et Prog A2 le même jour
-            // Alternance Nablara (Prog A1 / Bac B le jour 1) et Redix 25 (Prog A2 / Bac A le jour 1)
-            const speciesOffset = crop.id === "redix25" ? 1 : 0;
-            const subProgIdx = hasMultipleSubProgs
-              ? (passCount + speciesOffset) % sortedSubRecos.length
-              : 0;
-            const currentSubReco = sortedSubRecos[subProgIdx];
-            const currentSubProg = (currentSubReco.payload as any)?.program || {};
-            const currentSubEntries = currentSubProg.entries || [];
-
-            const bacsComputed = (currentSubEntries as any[]).map((e: any) => {
-              const uniqueItemsMap: Record<
-                string,
-                { name: string; doseHa: number; unit: string; totalParcel: number }
-              > = {};
-              (e.items || []).forEach((it: any) => {
-                const prodName = (it.name || "").trim();
-                if (!prodName) return;
-                const normKey = prodName.toLowerCase().replace(/\s+/g, " ");
-                const doseHa = parseFloat(String(it.qty || "0").replace(",", ".")) || 0;
-                if (!uniqueItemsMap[normKey]) {
-                  uniqueItemsMap[normKey] = {
-                    name: prodName,
-                    doseHa,
-                    unit: it.unit || "kg",
-                    totalParcel: doseHa * crop.surfaceHa,
-                  };
-                }
-              });
-              return {
-                bac: e.bac,
-                items: Object.values(uniqueItemsMap),
-              };
+          const bacsComputed = (currentSubEntries as any[]).map((e: any) => {
+            const uniqueItemsMap: Record<
+              string,
+              { name: string; doseHa: number; unit: string; totalParcel: number }
+            > = {};
+            (e.items || []).forEach((it: any) => {
+              const prodName = (it.name || "").trim();
+              if (!prodName) return;
+              const normKey = prodName.toLowerCase().replace(/\s+/g, " ");
+              const doseHa = parseFloat(String(it.qty || "0").replace(",", ".")) || 0;
+              if (!uniqueItemsMap[normKey]) {
+                uniqueItemsMap[normKey] = {
+                  name: prodName,
+                  doseHa,
+                  unit: it.unit || "kg",
+                  totalParcel: doseHa * crop.surfaceHa,
+                };
+              }
             });
+            return {
+              bac: e.bac,
+              items: Object.values(uniqueItemsMap),
+            };
+          });
 
-            rawEvents.push({
-              date: dateStr,
-              dayOfWeek,
-              dayName: DAY_NAMES_FR[dayOfWeek],
-              speciesId: crop.id,
-              speciesName: crop.name,
-              cropConfig: crop,
-              type: "fertigation",
-              periodInfo: periodObj,
-              recoTitle: currentSubReco.title || primaryReco.title,
-              recoObj: currentSubReco,
-              irrigationDuration: currentSubProg.irrigationTime || irrigationTime,
-              durationMinutes:
-                parseDurationMinutes(currentSubProg.irrigationTime) || durationMinutes,
-              wettingTime: currentSubProg.wettingTime ?? wettingTime,
-              injectionTime: currentSubProg.injectionTime ?? injectionTime,
-              rinsingTime: currentSubProg.rinsingTime ?? rinsingTime,
-              bacs: bacsComputed,
-              products: [],
+          rawEvents.push({
+            date: dateStr,
+            dayOfWeek,
+            dayName: DAY_NAMES_FR[dayOfWeek],
+            speciesId: crop.id,
+            speciesName: crop.name,
+            cropConfig: crop,
+            type: "fertigation",
+            periodInfo: periodObj,
+            recoTitle: subReco.title || primaryReco.title,
+            recoObj: subReco,
+            irrigationDuration: currentSubProg.irrigationTime || irrigationTime,
+            durationMinutes:
+              parseDurationMinutes(currentSubProg.irrigationTime) || durationMinutes,
+            wettingTime: currentSubProg.wettingTime ?? wettingTime,
+            injectionTime: currentSubProg.injectionTime ?? injectionTime,
+            rinsingTime: currentSubProg.rinsingTime ?? rinsingTime,
+            bacs: bacsComputed,
+            products: [],
+          });
+
+          bacsComputed.forEach((b) => {
+            b.items.forEach((it) => {
+              const prodName = it.name.trim();
+              if (!prodName) return;
+              const normKey = `fert:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
+              if (!productConsolidationMap[normKey]) {
+                productConsolidationMap[normKey] = {
+                  name: prodName,
+                  category: "fertigation",
+                  unit: it.unit,
+                  bySpecies: {},
+                  totalQty: 0,
+                };
+              }
+              productConsolidationMap[normKey].bySpecies[crop.id] =
+                (productConsolidationMap[normKey].bySpecies[crop.id] || 0) + it.totalParcel;
+              productConsolidationMap[normKey].totalQty += it.totalParcel;
             });
+          });
 
-            bacsComputed.forEach((b) => {
-              b.items.forEach((it) => {
-                const prodName = it.name.trim();
-                if (!prodName) return;
-                const normKey = `fert:${prodName.toLowerCase().replace(/\s+/g, " ")}`;
-                if (!productConsolidationMap[normKey]) {
-                  productConsolidationMap[normKey] = {
-                    name: prodName,
-                    category: "fertigation",
-                    unit: it.unit,
-                    bySpecies: {},
-                    totalQty: 0,
-                  };
-                }
-                productConsolidationMap[normKey].bySpecies[crop.id] =
-                  (productConsolidationMap[normKey].bySpecies[crop.id] || 0) + it.totalParcel;
-                productConsolidationMap[normKey].totalQty += it.totalParcel;
-              });
-            });
+          passCount++;
+        };
 
-            passCount++;
+        weeklyCycleStarts.forEach((cycleStart) => {
+          if (isWeeklySingle) {
+            // 1 fois par semaine : Jour 1 du cycle (puis +7 jours exacts au cycle suivant)
+            pushFertigationEvent(cycleStart, sortedSubRecos[0]);
+          } else {
+            // RÈGLE 2 : 2 programmes par semaine répartis équitablement avec décalage de 3 à 4 jours
+            // Passage 1 : Jour 1 (ex: Mardi ou Mercredi)
+            // Passage 2 : Jour 4 (+3 jours, ex: Vendredi ou Samedi) -> prochain cycle à Jour 8 (+4 jours)
+            // Pour Nectarines (Nablara vs Redix 25), inversion des sous-programmes afin que
+            // Jour 1 : Nablara = Bac B (Créneau 1) & Redix 25 = Bac A (Créneau 2)
+            // Jour 4 : Redix 25 = Bac B (Créneau 1) & Nablara = Bac A (Créneau 2)
+            const firstIdx = crop.id === "redix25" && sortedSubRecos.length >= 2 ? 1 : 0;
+            const secondIdx = sortedSubRecos.length >= 2 ? (firstIdx === 0 ? 1 : 0) : 0;
+
+            pushFertigationEvent(cycleStart, sortedSubRecos[firstIdx]);
+
+            const passage2Date = addDays(cycleStart, 3); // +3 jours exacts (ex: Mardi -> Vendredi, Mercredi -> Samedi)
+            if (passage2Date <= endDate) {
+              pushFertigationEvent(passage2Date, sortedSubRecos[secondIdx]);
+            }
           }
         });
 
@@ -759,7 +782,10 @@ export function AgronomicPlanningCalendar({
         return tA.localeCompare(tB);
       });
 
-      sortedSprayRecos.forEach((r, sprayIdx) => {
+      const foliarCountByBaseDate: Record<string, number> = {};
+      const scheduledFoliarDatesForCrop: string[] = [];
+
+      sortedSprayRecos.forEach((r) => {
         const payload = (r.payload || {}) as any;
         const prog = payload.program || {};
         const titleMatch = (r.title || "").match(/(\d{4}-\d{2}-\d{2})/);
@@ -795,19 +821,35 @@ export function AgronomicPlanningCalendar({
         const titleLower = (r.title || "").toLowerCase();
 
         // 1. Événement Pulvérisation Foliaire (Matin au lever du soleil)
-        // RÈGLE 2 : Espacement minimum de 3 jours calendaires entre Pulvérisation 1 et Pulvérisation 2
-        // Démarrage J+1 = Fertigation. Pulvérisation 1 -> J+2 (ex: Mercredi 11 Mars)
-        // Pulvérisation 2 -> J+5 (ex: Samedi 14 Mars) -> écart garanti = 3 jours calendaires (14 - 11 = 3j)
+        // RÈGLE 4 : Espacement minimum de 3 jours calendaires entre Pulvérisation 1 et Pulvérisation 2
+        // Démarrage J+1 = Fertigation. Pulvérisation 1 -> Jour 2 (J+2, ex: Mercredi 11 Mars)
+        // Pulvérisation 2 -> Jour 5 (J+5, ex: Samedi 14 Mars) -> écart garanti >= 3 jours calendaires
         if (foliarItems.length > 0) {
+          const prevCount = foliarCountByBaseDate[baseDateStr] || 0;
           const isPulv2 =
             titleLower.includes("passage 2") ||
             titleLower.includes("pulvérisation 2") ||
             titleLower.includes("pulverisation 2") ||
-            sprayIdx >= 1;
+            prevCount >= 1;
 
           let dateStr = isPulv2 ? addDays(baseDateStr, 5) : addDays(baseDateStr, 2);
-          const dObj = new Date(dateStr);
-          const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
+
+          // Garantie stricte d'un espacement minimum de 3 jours calendaires entre pulvérisations foliaires
+          let safetyPulv = 0;
+          while (safetyPulv < 14) {
+            const tooClose = scheduledFoliarDatesForCrop.some(
+              (d) => Math.abs(diffDaysDate(d, dateStr)) < 3
+            );
+            if (!tooClose) break;
+            dateStr = addDays(dateStr, 3);
+            safetyPulv++;
+          }
+
+          foliarCountByBaseDate[baseDateStr] = prevCount + 1;
+          scheduledFoliarDatesForCrop.push(dateStr);
+
+          const dObj = new Date(`${dateStr}T12:00:00Z`);
+          const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getUTCDay();
 
           const prodsComputed: any[] = [];
           foliarItems.forEach((it: any) => {
