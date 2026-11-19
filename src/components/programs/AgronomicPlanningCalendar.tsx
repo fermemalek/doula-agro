@@ -1010,81 +1010,92 @@ export function AgronomicPlanningCalendar({
       const solar = getSolarTimesForDate(dateKey);
 
       // A. Fertigation séquentielle station (démarrage dynamique au LEVER DU SOLEIL à Benhar)
-      // RÈGLE 1 : Alternance Bac B -> Bac A -> Bac B -> Bacs C+D -> Oliviers (durée = 1h30 par passage)
+      // RÈGLE 1 : Un seul programme de fertigation par parcelle/espèce et par jour
+      // RÈGLE 2 : Ordonnancement physique des Bacs (Alternance Bac B -> sans Bac B -> avec Bac B)
+      // - Créneau 1 (Lever du soleil) : Tâche utilisant le Bac B (préparée avant démarrage).
+      // - Créneau 2 (+ temps fertilisation) : Tâche (d'une autre parcelle) utilisant Bac A ou C (sans Bac B),
+      //   laissant le Bac B libre pendant le temps de fertilisation pour préparer et dissoudre le mélange suivant.
+      // - Créneau 3 (+ cumul fertilisation) : Tâche suivante utilisant le Bac B fraîchement préparé.
+      // - Puis alterner sans Bac B / avec Bac B.
       const fertEvents = dayList.filter((e) => e.type === "fertigation" || e.type === "pure_irrigation");
       const foliarEvents = dayList.filter((e) => e.type === "pulverisation");
       const phytoEvents = dayList.filter((e) => e.type === "phyto");
 
-      const classifyFertEvent = (ev: (typeof rawEvents)[0]) => {
-        const titleLower = (ev.recoTitle || "").toLowerCase();
-        const speciesId = ev.speciesId || "";
-        const bacLetters = (ev.bacs || []).map((b: any) => (b.bac || "").toUpperCase().trim());
-
-        const isBacsCD =
-          speciesId === "pommiers" ||
-          titleLower.includes("pommier") ||
-          bacLetters.includes("C") ||
-          bacLetters.includes("D") ||
-          titleLower.includes("bac c") ||
-          titleLower.includes("bac d");
-
-        if (isBacsCD) return "bacs_cd";
-
-        if (speciesId === "oliviers" || titleLower.includes("olivier")) {
-          return "oliviers";
+      // Inspection directe des Bacs cochés (sans dépendre du nom de chaîne A1 ou A2)
+      const getBacsForEv = (ev: (typeof fertEvents)[0]) => {
+        const letters = new Set<string>();
+        (ev.bacs || []).forEach((b: any) => {
+          const l = String(b.bac || "").toUpperCase().replace(/[^ABCD]/g, "").trim();
+          if (l) l.split("").forEach((x) => letters.add(x));
+        });
+        if (letters.size === 0 && ev.recoObj) {
+          const pProg = (ev.recoObj.payload as any)?.program || {};
+          (pProg.entries || []).forEach((e: any) => {
+            const l = String(e.bac || "").toUpperCase().replace(/[^ABCD]/g, "").trim();
+            if (l) l.split("").forEach((x) => letters.add(x));
+          });
         }
-
-        const isBacA =
-          titleLower.includes("programme a2") ||
-          titleLower.includes("prog. a2") ||
-          titleLower.includes("(a2)") ||
-          (bacLetters.includes("A") && !bacLetters.includes("B") && !bacLetters.includes("C") && !bacLetters.includes("D"));
-
-        if (isBacA) return "bac_a";
-
-        return "bac_b"; // Default (Programme A1, Bac B)
+        return {
+          usesBacB: letters.has("B"),
+          usesBacA: letters.has("A"),
+          usesBacsCD: letters.has("C") || letters.has("D"),
+          letters: Array.from(letters),
+        };
       };
 
-      const orderedFertEvents: Array<{ ev: (typeof fertEvents)[0]; slotLabel: string }> = [];
-      const bacBEvents = fertEvents.filter((e) => classifyFertEvent(e) === "bac_b");
-      const bacAEvents = fertEvents.filter((e) => classifyFertEvent(e) === "bac_a");
-      const bacsCDEvents = fertEvents.filter((e) => classifyFertEvent(e) === "bacs_cd");
-      const olivierEvents = fertEvents.filter((e) => classifyFertEvent(e) === "oliviers");
-      const otherEvents = fertEvents.filter(
-        (e) => !["bac_b", "bac_a", "bacs_cd", "oliviers"].includes(classifyFertEvent(e))
-      );
+      // 1. Règle 1 : Filtrer pour garantir au maximum 1 seule fertigation par parcelle / espèce par jour
+      const seenSpeciesOnDay = new Set<string>();
+      const validDayFertEvents: typeof fertEvents = [];
 
-      // 1. Créneau 1 (Lever du soleil) : Bac B (Prog. A1)
-      if (bacBEvents.length > 0) {
-        orderedFertEvents.push({ ev: bacBEvents.shift()!, slotLabel: "Créneau 1 (Bac B - Prog. A1)" });
-      }
-      // 2. Créneau 2 (+1h30) : Bac A (Prog. A2, Nitrate de Calcium) — laissant Bac B libre pendant 1h30
-      if (bacAEvents.length > 0) {
-        orderedFertEvents.push({ ev: bacAEvents.shift()!, slotLabel: "Créneau 2 (Bac A - Prog. A2)" });
-      }
-      // 3. Créneau 3 (+3h00) : Bac B (Prog. A1)
-      if (bacBEvents.length > 0) {
-        orderedFertEvents.push({ ev: bacBEvents.shift()!, slotLabel: "Créneau 3 (Bac B - Prog. A1)" });
-      }
-      // Reste éventuel Bac B puis Bac A
-      while (bacBEvents.length > 0) {
-        orderedFertEvents.push({ ev: bacBEvents.shift()!, slotLabel: "Créneau Additionnel (Bac B)" });
-      }
-      while (bacAEvents.length > 0) {
-        orderedFertEvents.push({ ev: bacAEvents.shift()!, slotLabel: "Créneau Additionnel (Bac A)" });
-      }
-      // 4. Bacs C+D (Pommiers P7+P8 simultanés)
-      bacsCDEvents.forEach((ev) => {
-        orderedFertEvents.push({ ev, slotLabel: "Créneau Pommiers (Bacs C+D)" });
+      fertEvents.forEach((ev) => {
+        const spKey = ev.speciesId || ev.speciesName;
+        if (!seenSpeciesOnDay.has(spKey)) {
+          seenSpeciesOnDay.add(spKey);
+          validDayFertEvents.push(ev);
+        }
       });
-      // 5. Oliviers
-      olivierEvents.forEach((ev, idx) => {
-        orderedFertEvents.push({ ev, slotLabel: `Créneau Oliviers (${idx === 0 ? "Secteur 1" : "Secteur 2"})` });
-      });
-      // Autres
-      otherEvents.forEach((ev) => {
-        orderedFertEvents.push({ ev, slotLabel: "Créneau Station" });
-      });
+
+      // 2. Règle 2 : Ordonnancement physique des créneaux selon l'utilisation des Bacs
+      const fertWithBacB = validDayFertEvents.filter((e) => getBacsForEv(e).usesBacB);
+      const fertWithoutBacB = validDayFertEvents.filter((e) => !getBacsForEv(e).usesBacB);
+
+      const orderedFertEvents: Array<{ ev: (typeof fertEvents)[0]; slotLabel: string }> = [];
+      let turnWithB = true;
+      let slotIndex = 1;
+
+      while (fertWithBacB.length > 0 || fertWithoutBacB.length > 0) {
+        if (turnWithB) {
+          if (fertWithBacB.length > 0) {
+            const ev = fertWithBacB.shift()!;
+            const label = slotIndex === 1
+              ? "Créneau 1 (Lever du soleil - Bac B)"
+              : `Créneau ${slotIndex} (+ cumul fertilisation - Bac B)`;
+            orderedFertEvents.push({ ev, slotLabel: label });
+            slotIndex++;
+          }
+          if (fertWithoutBacB.length > 0) {
+            turnWithB = false;
+          }
+        } else {
+          if (fertWithoutBacB.length > 0) {
+            const ev = fertWithoutBacB.shift()!;
+            const bacInfo = getBacsForEv(ev);
+            const bacName = bacInfo.usesBacsCD
+              ? "Bacs C+D"
+              : bacInfo.usesBacA
+                ? "Bac A"
+                : "Sans Bac B";
+            const label = slotIndex === 2
+              ? `Créneau 2 (+ temps fertilisation - ${bacName})`
+              : `Créneau ${slotIndex} (+ cumul fertilisation - ${bacName})`;
+            orderedFertEvents.push({ ev, slotLabel: label });
+            slotIndex++;
+          }
+          if (fertWithBacB.length > 0) {
+            turnWithB = true;
+          }
+        }
+      }
 
       let currentStationTime = solar.sunriseMinutes;
 

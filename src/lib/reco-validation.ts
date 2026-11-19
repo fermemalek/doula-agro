@@ -55,128 +55,6 @@ export function isHistoricalReco(recoDateStr: string): boolean {
 }
 
 /**
- * Détecte si un nom de produit correspond à un engrais foliaire / biostimulant
- */
-export function isFoliarProduct(name: string): boolean {
-  if (!name) return false;
-  const lower = name.toLowerCase();
-  if (
-    lower.includes("calcium") ||
-    lower.includes("bore") ||
-    lower.includes("boron") ||
-    lower.includes("zinc") ||
-    lower.includes("algue") ||
-    lower.includes("algreen") ||
-    lower.includes("oligo") ||
-    lower.includes("biostimulant") ||
-    lower.includes("fer") ||
-    lower.includes("magnésium foliaire") ||
-    lower.includes("potasse foliaire") ||
-    lower.includes("azote foliaire") ||
-    lower.includes("بورون") ||
-    lower.includes("كالسيوم") ||
-    lower.includes("طحالب") ||
-    lower.includes("عناصر صغري") ||
-    lower.includes("زنك") ||
-    lower.includes("حديد")
-  ) {
-    if (lower.includes("deltacal") || lower.includes("calypso")) return false;
-    return true;
-  }
-  return false;
-}
-
-/**
- * Détecte si un nom de produit correspond à un produit phytosanitaire (fongicide, insecticide, acaricide, etc.)
- */
-export function isPhytoProduct(name: string): boolean {
-  if (!name) return false;
-  const lower = name.toLowerCase();
-  if (
-    lower.includes("fongicide") ||
-    lower.includes("insecticide") ||
-    lower.includes("acaricide") ||
-    lower.includes("bellis") ||
-    lower.includes("signum") ||
-    lower.includes("decis") ||
-    lower.includes("deltacal") ||
-    lower.includes("sivento") ||
-    lower.includes("calypso") ||
-    lower.includes("sherpa") ||
-    lower.includes("verlan") ||
-    lower.includes("erlan") ||
-    lower.includes("acetaplan") ||
-    lower.includes("aceplan") ||
-    lower.includes("mospilan") ||
-    lower.includes("amistar") ||
-    lower.includes("azostar") ||
-    lower.includes("zorro") ||
-    lower.includes("fosetyl") ||
-    lower.includes("aliette") ||
-    lower.includes("luna") ||
-    lower.includes("criptan") ||
-    lower.includes("phytocap") ||
-    lower.includes("dicis") ||
-    lower.includes("difénoconazole") ||
-    lower.includes("score") ||
-    lower.includes("captan") ||
-    lower.includes("extrachim") ||
-    lower.includes("rustilan") ||
-    lower.includes("tachigazol") ||
-    lower.includes("folicur") ||
-    lower.includes("topas") ||
-    lower.includes("soufre") ||
-    lower.includes("cuivre") ||
-    lower.includes("مبيد") ||
-    lower.includes("فطري") ||
-    lower.includes("حشري") ||
-    lower.includes("عناكب") ||
-    lower.includes("كبريت") ||
-    lower.includes("نحاس")
-  ) {
-    return true;
-  }
-  return false;
-}
-
-/**
- * Détecte si un apport est ponctuel (« مرة » / « واحدة ») ou périodique (« مرة في الاسبوع »)
- */
-export function isOneOffReco(r: Recommendation): boolean {
-  if (!r) return false;
-  const payload = (r.payload || {}) as any;
-  const prog = payload.program || {};
-  const freqStr = String(prog.frequency || payload.frequency || "").toLowerCase();
-  const titleLower = (r.title || "").toLowerCase();
-  const commentLower = (r.comment || "").toLowerCase();
-
-  if (
-    freqStr.includes("مرة واحدة") ||
-    freqStr === "once" ||
-    freqStr === "unique" ||
-    freqStr === "ponctuel" ||
-    (freqStr.startsWith("مرة") &&
-      !freqStr.includes("اسبوع") &&
-      !freqStr.includes("أسبوع") &&
-      !freqStr.includes("شهر"))
-  ) {
-    return true;
-  }
-  if (
-    titleLower.includes("ponctuel") ||
-    titleLower.includes("مرة واحدة") ||
-    commentLower.includes("مرة واحدة") ||
-    (commentLower.includes("مرة") &&
-      !commentLower.includes("اسبوع") &&
-      !commentLower.includes("أسبوع") &&
-      !commentLower.includes("مرات"))
-  ) {
-    return true;
-  }
-  return false;
-}
-
-/**
  * Annule et remplace automatiquement les anciennes recommandations pour les mêmes espèces ciblées
  * dans le cadre du mode historique (date_recommandation < date_du_jour).
  * Conserve intactes les recommandations des autres espèces non visées.
@@ -431,35 +309,35 @@ export async function validateRecommendationAndPurchases({
       // A. FERTIGATION AU SOL (Station & Groupes Hydrauliques)
       // ========================================================
       // Démarrage le jour J+1 au LEVER DU SOLEIL (Benhar)
-      // RÈGLE 1 : Alternance des créneaux de fertigation dans une même journée (Bac B -> Bac A -> Bac B -> Bacs C+D)
-      // 1. Créneau 1 (Lever du soleil, T0) : Parcelle 1 avec programme utilisant le Bac B (Prog. A1, préparé avant démarrage).
-      // 2. Créneau 2 (+1h30, T0 + 90 min) : Parcelle 2 avec programme utilisant le Bac A (Prog. A2, Nitrate de Calcium) — laissant le Bac B libre pendant 1h30 pour préparer le mélange de la parcelle suivante.
-      // 3. Créneau 3 (+3h00, T0 + 180 min) : Parcelle suivante avec programme utilisant le Bac B (Prog. A1).
-      // 4. Suivi des programmes Bacs C+D (ex. Pommiers P7+P8 simultanés à T0 + 270 min).
-      // 5. Suivi des Oliviers Secteur 1 (P1+P2 simultanés), puis Secteur 2 (P3+P4 simultanés).
+      // RÈGLE 1 : Un seul programme de fertigation par parcelle et par jour
+      // RÈGLE 2 : Ordonnancement physique des Bacs (Alternance Bac B -> sans Bac B -> avec Bac B)
+      // 1. Créneau 1 (Lever du soleil, T0) : Tâche utilisant le Bac B (préparée avant démarrage).
+      // 2. Créneau 2 (+ temps fertilisation T0 + duration) : Tâche d'une autre parcelle utilisant Bac A ou C (sans Bac B),
+      //    laissant le Bac B libre pendant le temps de fertilisation pour préparer et dissoudre le mélange suivant.
+      // 3. Créneau 3 (+ cumul fertilisation) : Tâche suivante utilisant le Bac B fraîchement préparé.
+      // 4. Suivi des programmes Bacs C+D (Pommiers P7+P8 simultanés) puis Oliviers (S1 puis S2).
       const fertSolar = getSolarTimesForDate(plannedStartDate);
 
-      // Classification du Bac pour la recommandation en cours de validation :
-      const recoTitleLower = (reco.title || program.label || "").toLowerCase();
+      // Inspection directe des Bacs cochés (indépendamment du nom de chaîne A1 ou A2)
       const entries = Array.isArray(program.entries) ? program.entries : [];
-      const bacLetters = entries.map((e: any) => (e.bac || "").toUpperCase().trim());
+      const detectedBacs = new Set<string>();
+      entries.forEach((e: any) => {
+        const raw = String(e.bac || "").toUpperCase().replace(/[^ABCD]/g, "").trim();
+        if (raw && (!e.items || e.items.length > 0)) {
+          raw.split("").forEach((l) => detectedBacs.add(l));
+        }
+      });
+      if (Array.isArray((program as any).tanks)) {
+        (program as any).tanks.forEach((t: any) => {
+          const raw = String(t).toUpperCase().replace(/[^ABCD]/g, "").trim();
+          if (raw) raw.split("").forEach((l) => detectedBacs.add(l));
+        });
+      }
 
-      const isBacA =
-        recoTitleLower.includes("programme a2") ||
-        recoTitleLower.includes("prog. a2") ||
-        recoTitleLower.includes("(a2)") ||
-        (bacLetters.includes("A") && !bacLetters.includes("B") && !bacLetters.includes("C") && !bacLetters.includes("D")) ||
-        (entries.flatMap((e: any) => e.items || []).every((it: any) => (it.name || "").toLowerCase().includes("calcium")) && !bacLetters.includes("B"));
-
-      const isBacsCD =
-        recoTitleLower.includes("pommier") ||
-        targetParcels.some((p) => p.type === "pommier" || p.id.startsWith("pommier")) ||
-        bacLetters.includes("C") ||
-        bacLetters.includes("D") ||
-        recoTitleLower.includes("bac c") ||
-        recoTitleLower.includes("bac d");
-
-      const isBacB = !isBacA && !isBacsCD;
+      const usesBacB = detectedBacs.has("B");
+      const usesBacA = detectedBacs.has("A");
+      const usesBacsCD = detectedBacs.has("C") || detectedBacs.has("D");
+      const isPureIrrigation = detectedBacs.size === 0;
 
       // Groupes hydrauliques stricts :
       // 1. Nectarine Nablara (p5 / nablara) seule
@@ -481,6 +359,8 @@ export async function validateRecommendationAndPurchases({
           !redixList.includes(p)
       );
 
+      const groupDurationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
+
       // Structure des affectations : [groupe de parcelles, date, startMinuteOffsetFromSunrise, labelCréneau]
       interface GroupScheduleItem {
         group: Parcel[];
@@ -491,106 +371,124 @@ export async function validateRecommendationAndPurchases({
 
       const scheduledGroups: GroupScheduleItem[] = [];
 
-      // A1. NECTARINE NABLARA (Parcelle 1)
-      if (nablaraList.length > 0) {
-        if (isBacB) {
-          // Créneau 1 (Lever du soleil, T0) : Bac B (Prog. A1)
+      // Ordonnancement physique selon les 2 règles :
+      // 1. Interdiction stricte de 2 fertigations pour une même parcelle le même jour (J+1 et J+4/J+3)
+      // 2. Alternance Bac B (matin au lever) puis sans Bac B (+1h30 fertilisation pour libérer Bac B)
+      const day2Date = addDaysDate(plannedStartDate, 3);
+      const solarDay2 = getSolarTimesForDate(day2Date);
+
+      if (nablaraList.length > 0 && redixList.length > 0) {
+        // Cas des deux parcelles de Nectarine dans la même recommandation
+        if (usesBacB) {
+          // Ce programme utilise le Bac B :
+          // - Nablara passe le Jour 1 en Créneau 1 (Lever du soleil, Bac B)
+          // - Redix 25 passe le Jour 2 en Créneau 1 (Lever du soleil, Bac B)
           scheduledGroups.push({
             group: nablaraList,
             date: plannedStartDate,
             startMinute: fertSolar.sunriseMinutes,
             slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
           });
-        } else if (isBacA) {
-          // Interdiction stricte A1 et A2 le même jour sur la même parcelle :
-          // Nablara reçoit Prog. A2 le passage suivant (J+3, ex: Jeudi si A1 était Mardi)
-          const dateNablaraA2 = addDaysDate(plannedStartDate, 2);
-          const solarNablaraA2 = getSolarTimesForDate(dateNablaraA2);
           scheduledGroups.push({
-            group: nablaraList,
-            date: dateNablaraA2,
-            startMinute: solarNablaraA2.sunriseMinutes + 90,
-            slotLabel: "Créneau 2 (+1h30 - Bac A)",
+            group: redixList,
+            date: day2Date,
+            startMinute: solarDay2.sunriseMinutes,
+            slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
           });
         } else {
+          // Ce programme n'utilise PAS le Bac B (ex: Bac A, Nitrate de Calcium) :
+          // - Redix 25 passe le Jour 1 en Créneau 2 (+ temps fertilisation Nablara, sans Bac B, libérant le Bac B)
+          // - Nablara passe le Jour 2 en Créneau 2 (+ temps fertilisation Redix 25, sans Bac B)
+          scheduledGroups.push({
+            group: redixList,
+            date: plannedStartDate,
+            startMinute: fertSolar.sunriseMinutes + groupDurationMinutes,
+            slotLabel: "Créneau 2 (+ temps fertilisation - Bac A)",
+          });
+          scheduledGroups.push({
+            group: nablaraList,
+            date: day2Date,
+            startMinute: solarDay2.sunriseMinutes + groupDurationMinutes,
+            slotLabel: "Créneau 2 (+ temps fertilisation - Bac A)",
+          });
+        }
+      } else if (nablaraList.length > 0) {
+        // Nablara seule
+        if (usesBacB) {
           scheduledGroups.push({
             group: nablaraList,
             date: plannedStartDate,
             startMinute: fertSolar.sunriseMinutes,
-            slotLabel: "Créneau 1 (Lever du soleil)",
+            slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
+          });
+        } else {
+          scheduledGroups.push({
+            group: nablaraList,
+            date: plannedStartDate,
+            startMinute: fertSolar.sunriseMinutes + groupDurationMinutes,
+            slotLabel: "Créneau 2 (+ temps fertilisation - Sans Bac B)",
           });
         }
-      }
-
-      // A2. NECTARINE REDIX 25 (Parcelle 2)
-      if (redixList.length > 0) {
-        if (isBacA) {
-          // Créneau 2 (+1h30, T0 + 90 min) : Bac A (Prog. A2, Nitrate de Calcium) — libère Bac B pendant 1h30
+      } else if (redixList.length > 0) {
+        // Redix 25 seule
+        if (usesBacB) {
           scheduledGroups.push({
             group: redixList,
             date: plannedStartDate,
-            startMinute: fertSolar.sunriseMinutes + 90,
-            slotLabel: "Créneau 2 (+1h30 - Bac A)",
-          });
-        } else if (isBacB) {
-          // Créneau 3 (+3h00, T0 + 180 min) : Bac B (Prog. A1, solution préparée pendant Créneau 2)
-          scheduledGroups.push({
-            group: redixList,
-            date: plannedStartDate,
-            startMinute: fertSolar.sunriseMinutes + 180,
-            slotLabel: "Créneau 3 (+3h00 - Bac B)",
+            startMinute: fertSolar.sunriseMinutes,
+            slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
           });
         } else {
           scheduledGroups.push({
             group: redixList,
             date: plannedStartDate,
-            startMinute: fertSolar.sunriseMinutes + 90,
-            slotLabel: "Créneau 2 (+1h30)",
+            startMinute: fertSolar.sunriseMinutes + groupDurationMinutes,
+            slotLabel: "Créneau 2 (+ temps fertilisation - Sans Bac B)",
           });
         }
       }
 
-      // A3. POMMIERS (P7 + P8 simultanément — Bacs C+D)
+      // POMMIERS (P7 + P8 simultanément — Bacs C+D)
       if (pommiers.length > 0) {
-        // Créneau 4 (+4h30, T0 + 270 min) : Suivi des programmes Bacs C+D
+        const offsetForPommiers = (nablaraList.length > 0 ? groupDurationMinutes : 0) + (redixList.length > 0 && !usesBacB ? groupDurationMinutes : 0);
         scheduledGroups.push({
           group: pommiers,
           date: plannedStartDate,
-          startMinute: fertSolar.sunriseMinutes + 270,
-          slotLabel: "Créneau 4 (+4h30 - Bacs C+D)",
+          startMinute: fertSolar.sunriseMinutes + Math.max(groupDurationMinutes * 2, offsetForPommiers),
+          slotLabel: "Créneau Pommiers (Bacs C+D)",
         });
       }
 
-      // A4. OLIVIERS SECTEUR 1 (P1 + P2 simultanément)
+      // OLIVIERS SECTEUR 1 (P1 + P2 simultanément)
       if (oliS1.length > 0) {
         scheduledGroups.push({
           group: oliS1,
           date: plannedStartDate,
-          startMinute: fertSolar.sunriseMinutes + 360,
-          slotLabel: "Créneau 5 (Oliviers Secteur 1)",
+          startMinute: fertSolar.sunriseMinutes + groupDurationMinutes * 3,
+          slotLabel: "Créneau Oliviers (Secteur 1)",
         });
       }
 
-      // A5. OLIVIERS SECTEUR 2 (P3 + P4 simultanément)
+      // OLIVIERS SECTEUR 2 (P3 + P4 simultanément)
       if (oliS2.length > 0) {
         scheduledGroups.push({
           group: oliS2,
           date: plannedStartDate,
-          startMinute: fertSolar.sunriseMinutes + 450,
-          slotLabel: "Créneau 6 (Oliviers Secteur 2)",
+          startMinute: fertSolar.sunriseMinutes + groupDurationMinutes * 4,
+          slotLabel: "Créneau Oliviers (Secteur 2)",
         });
       }
 
-      // A6. AUTRES PARCELLES ÉVENTUELLES
-      let extraOffset = 540;
+      // AUTRES PARCELLES ÉVENTUELLES
+      let extraIdx = 5;
       for (const op of otherParcels) {
         scheduledGroups.push({
           group: [op],
           date: plannedStartDate,
-          startMinute: fertSolar.sunriseMinutes + extraOffset,
-          slotLabel: "Créneau Station Additionnel",
+          startMinute: fertSolar.sunriseMinutes + groupDurationMinutes * extraIdx,
+          slotLabel: `Créneau Station Additionnel (${extraIdx + 1})`,
         });
-        extraOffset += 90;
+        extraIdx++;
       }
 
       for (const item of scheduledGroups) {
@@ -643,10 +541,10 @@ export async function validateRecommendationAndPurchases({
             status: options.markAsExecutedIfPast ? "execute" : "planifie",
             ...(options.markAsExecutedIfPast
               ? {
-                  executedAt: item.date,
-                  executed_at: item.date,
-                  executionNote: "Exécution historique validée",
-                }
+                executedAt: item.date,
+                executed_at: item.date,
+                executionNote: "Exécution historique validée",
+              }
               : {}),
           };
 
@@ -711,10 +609,10 @@ export async function validateRecommendationAndPurchases({
           status: options.markAsExecutedIfPast ? "execute" : "planifie",
           ...(options.markAsExecutedIfPast
             ? {
-                executedAt: scheduledFoliarDate,
-                executed_at: scheduledFoliarDate,
-                executionNote: "Exécution historique validée",
-              }
+              executedAt: scheduledFoliarDate,
+              executed_at: scheduledFoliarDate,
+              executionNote: "Exécution historique validée",
+            }
             : {}),
         });
       }
@@ -757,10 +655,10 @@ export async function validateRecommendationAndPurchases({
           status: options.markAsExecutedIfPast ? "execute" : "planifie",
           ...(options.markAsExecutedIfPast
             ? {
-                executedAt: scheduledPhytoDate,
-                executed_at: scheduledPhytoDate,
-                executionNote: "Exécution historique validée",
-              }
+              executedAt: scheduledPhytoDate,
+              executed_at: scheduledPhytoDate,
+              executionNote: "Exécution historique validée",
+            }
             : {}),
         });
 
@@ -804,7 +702,7 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
         }
         localStorage.setItem("doula-modules", JSON.stringify(data));
       }
-    } catch {}
+    } catch { }
   }
 
   // 2. Nettoyage de tous les achats automatiques de stock liés aux recommandations
@@ -821,7 +719,7 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
       .from("supplier_purchases")
       .delete()
       .neq("id", "00000000-0000-0000-0000-000000000000");
-  } catch {}
+  } catch { }
 
   // Purge de la file offline des résidus p-reco-
   try {
@@ -831,7 +729,7 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
     for (const item of pendingRecoOps) {
       await offlineDB.outbox.delete(item.client_id);
     }
-  } catch {}
+  } catch { }
 
   // 3. Réinitialisation des statuts dans Supabase vers "envoyee" en une seule requête groupée
   try {
@@ -857,7 +755,7 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
             transferred_record_id: null,
           })
           .eq("id", r.id);
-      } catch {}
+      } catch { }
     }
   }
 
@@ -870,49 +768,5 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
         .delete()
         .neq("id", "00000000-0000-0000-0000-000000000000");
     }
-  } catch {}
-}
-
-/**
- * Synchronise et restaure les achats et tâches pour toutes les recommandations actuellement validées (status === "acceptee")
- * Garantit que chaque ordonnance possède son Bon d'Achat sans omission.
- */
-export async function syncPurchasesForAcceptedRecos({
-  recos,
-  parcels,
-  suppliers,
-  addPurchase,
-  acceptReco,
-  addModuleRecord,
-  setParcelStatus,
-}: {
-  recos: Recommendation[];
-  parcels: Parcel[];
-  suppliers: SupplierPurchase[];
-  addPurchase: (p: Omit<SupplierPurchase, "id" | "consumed">) => void;
-  acceptReco: (id: string) => Promise<unknown>;
-  addModuleRecord: (parcelId: string, kind: any, data: any) => void;
-  setParcelStatus?: (parcelId: string, status: any) => void;
-}): Promise<number> {
-  const accepted = recos.filter((r) => r.status === "acceptee");
-  let totalCreated = 0;
-
-  for (const r of accepted) {
-    const res = await validateRecommendationAndPurchases({
-      reco: r,
-      parcels,
-      suppliers,
-      addPurchase,
-      acceptReco,
-      addModuleRecord,
-      setParcelStatus,
-      options: {
-        supplierName: "Achat Validé (Historique Ingénieur)",
-        markAsExecutedIfPast: false,
-      },
-    });
-    totalCreated += res.createdPurchasesCount;
-  }
-
-  return totalCreated;
+  } catch { }
 }
