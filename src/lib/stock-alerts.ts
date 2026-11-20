@@ -170,7 +170,7 @@ function normalizeProductKey(raw: string): string {
 
 const PRODUCT_SYNONYM_GROUPS: string[][] = [
   ["uree", "uree 46", "urea"],
-  ["calcibore", "calcibore 10l", "calcium bore", "calcium-bore", "ca b", "ca bore"],
+  ["calcibore", "calcibore 10l", "calcium bore", "ca bore", "bore calcium"],
   ["sulfate de potassium", "sulfate de potasse", "potasse", "0 0 50", "sop"],
   ["npk 13 0 46", "13 0 46", "nitrate de potassium", "nitrate de potasse"],
   ["nitrate de calcium", "nitrate de chaux"],
@@ -179,18 +179,17 @@ const PRODUCT_SYNONYM_GROUPS: string[][] = [
   ["sulfate d ammonium", "sulfate dammonium", "sulfate d ammonium 21", "ammonitrate 21"],
   ["acide phosphorique", "acide phosphorique 85", "acide phosphorique 85 20l"],
   ["acide nitrique", "acide nitrique 20l"],
-  ["fertimix", "fertimix plus"],
-  ["ferland", "ferland 648"],
-  ["algreen", "algreen 1l"],
-  ["algua live", "algua live 1l", "algalive"],
-  ["azostar", "azostar 1l", "azostar 325sc", "azostar 325 sc"],
-  ["decis", "decis expert", "decis expert 100 ec", "dicis"],
-  ["acetaplan", "acetaplan 200 sl", "acetaplan 200 sl 1 1l"],
-  ["humi plus", "humi plus 20l", "humiplus", "acide humique"],
-  ["lamdoc", "lamdoc 50 ec", "lamdoc 50ec"],
-  ["bouillie bordelaise", "bouille bordelaise", "bouillie bordelaise wg 10kg"],
-  ["foliboost", "foliboost bz", "foliboost bz 1kg"],
-  ["zoro"],
+  ["ferland", "ferland 648", "fer chelate", "fer chelate 6", "chelate de fer", "fer eddha", "fer 6"],
+  ["fertimix", "fertimix plus", "oligo elements", "oligoelements", "micro elements", "oligo"],
+  ["algua live", "algua live 1l", "algalive", "algreen", "algreen 1l", "algues marines", "algue marine", "extrait d algues", "algues"],
+  ["humi plus", "humi plus 20l", "humiplus", "acide humique", "acides humiques", "humique"],
+  ["acetaplan", "acetaplan 200 sl", "acetaplan 200 sl 1 1l", "acetamipride", "mospilan"],
+  ["zoro", "zorro", "abamectine", "abamectin", "vertimec"],
+  ["decis", "decis expert", "decis expert 100 ec", "dicis", "deltamethrine"],
+  ["azostar", "azostar 1l", "azostar 325sc", "azostar 325 sc", "azoxystrobine", "amistar"],
+  ["lamdoc", "lamdoc 50 ec", "lamdoc 50ec", "lambda cyhalothrine"],
+  ["bouillie bordelaise", "bouille bordelaise", "bouillie bordelaise wg 10kg", "cuivre"],
+  ["foliboost", "foliboost bz", "foliboost bz 1kg", "bore zinc"],
 ];
 
 export function matchProductName(a: string, b: string): boolean {
@@ -199,11 +198,17 @@ export function matchProductName(a: string, b: string): boolean {
   const cleanB = normalizeProductKey(b);
   if (!cleanA || !cleanB) return false;
   if (cleanA === cleanB) return true;
-  if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) return true;
+  if (cleanA.length >= 4 && cleanB.length >= 4 && (cleanA.includes(cleanB) || cleanB.includes(cleanA))) {
+    return true;
+  }
 
   for (const group of PRODUCT_SYNONYM_GROUPS) {
-    const matchA = group.some((kw) => cleanA === kw || cleanA.includes(kw) || kw.includes(cleanA));
-    const matchB = group.some((kw) => cleanB === kw || cleanB.includes(kw) || kw.includes(cleanB));
+    const matchA = group.some(
+      (kw) => cleanA === kw || cleanA.includes(kw) || (cleanA.length >= 5 && kw.includes(cleanA))
+    );
+    const matchB = group.some(
+      (kw) => cleanB === kw || cleanB.includes(kw) || (cleanB.length >= 5 && kw.includes(cleanB))
+    );
     if (matchA && matchB) return true;
   }
   return false;
