@@ -38,7 +38,11 @@ import {
   avoidFriday,
   isProgramA3,
 } from "@/lib/reco-validation";
-import { enforceAcidUnit } from "@/lib/stock-alerts";
+import {
+  enforceAcidUnit,
+  normalizePhytoDoseQuantity,
+  normalizeFertDoseHa,
+} from "@/lib/stock-alerts";
 
 export interface AgronomicPlanningCalendarProps {
   recos: Recommendation[];
@@ -107,13 +111,27 @@ const CROPS_CONFIG: CropSpeciesConfig[] = [
     borderColor: "border-rose-500/40",
   },
   {
-    id: "oliviers",
-    name: "Oliviers (P1 à P4)",
-    labelAr: "أشجار الزيتون (P1 - P4)",
+    id: "oliviers_s1",
+    name: "Oliviers Secteur 1 (P1 + P2)",
+    labelAr: "أشجار الزيتون — القطاع 1 (P1 + P2)",
     icon: "🫒",
-    groups: ["oliviers"],
-    parcelIds: ["p1", "p2", "p3", "p4"],
-    fallbackSurface: 8.0, // 2 ha * 4 = 8 ha réels
+    groups: ["oliviers", "oliviers_s1"],
+    parcelIds: ["p1", "p2"],
+    fallbackSurface: 4.0, // 2 ha (P1) + 2 ha (P2) = 4 ha réels
+    variety: "Chamlal & Ferkani",
+    rootstock: "Zabouge",
+    colorVar: "text-amber-700 dark:text-amber-300",
+    badgeBg: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30",
+    borderColor: "border-amber-500/40",
+  },
+  {
+    id: "oliviers_s2",
+    name: "Oliviers Secteur 2 (P3 + P4)",
+    labelAr: "أشجار الزيتون — القطاع 2 (P3 + P4)",
+    icon: "🫒",
+    groups: ["oliviers", "oliviers_s2"],
+    parcelIds: ["p3", "p4"],
+    fallbackSurface: 4.0, // 2 ha (P3) + 2 ha (P4) = 4 ha réels
     variety: "Chamlal & Ferkani",
     rootstock: "Zabouge",
     colorVar: "text-amber-700 dark:text-amber-300",
@@ -335,11 +353,28 @@ function matchesCropForCalendar(
 
   const titleLower = (r.title || "").toLowerCase();
   const commentLower = (r.comment || "").toLowerCase();
+  const groupsJoined = flatGroups.join(" ");
+  const headerContext = `${titleLower} ${groupsJoined}`;
 
-  // 2. Vérification par identifiant direct de parcelle
-  const rParcels = (r.parcel_ids || []).map((id) => String(id).toLowerCase());
+  // BUG 1 — Étanchéité stricte par espèce (une reco Oliviers 17/03 ne doit JAMAIS fuiter sur Pommiers/Nectarines)
+  const isOliveCrop = crop.id === "oliviers_s1" || crop.id === "oliviers_s2" || crop.id === "oliviers";
+  const isPommeCrop = crop.id === "pommiers";
+  const isNectCrop = crop.id === "nablara" || crop.id === "redix25";
+
+  const headerMentionsOliv = headerContext.includes("oliv") || headerContext.includes("زيتون");
+  const headerMentionsPomm = headerContext.includes("pomm") || headerContext.includes("تفاح") || headerContext.includes("gala");
+  const headerMentionsNect = headerContext.includes("nectar") || headerContext.includes("nablara") || headerContext.includes("redix");
+
+  if (headerMentionsOliv && !headerMentionsPomm && !headerMentionsNect && !isOliveCrop) return false;
+  if (headerMentionsPomm && !headerMentionsOliv && !headerMentionsNect && !isPommeCrop) return false;
+  if (headerMentionsNect && !headerMentionsOliv && !headerMentionsPomm && !isNectCrop) return false;
+  if (crop.id === "nablara" && titleLower.includes("redix") && !titleLower.includes("nablara")) return false;
+  if (crop.id === "redix25" && titleLower.includes("nablara") && !titleLower.includes("redix")) return false;
+
+  // 2. Vérification par identifiant direct de parcelle (égalité stricte, jamais .includes())
+  const rParcels = (r.parcel_ids || []).map((id) => String(id).toLowerCase().trim());
   const matchesDirectParcel = rParcels.some((pId) =>
-    crop.parcelIds.some((cId) => pId.includes(cId.toLowerCase()) || cId.toLowerCase().includes(pId))
+    crop.parcelIds.some((cId) => pId === cId.toLowerCase())
   );
   if (matchesDirectParcel) return true;
 
@@ -347,12 +382,14 @@ function matchesCropForCalendar(
   if (allParcels.length > 0 && rParcels.length > 0) {
     const targetedParcels = allParcels.filter((p) => rParcels.includes(String(p.id).toLowerCase()));
     const matchesTargetedParcel = targetedParcels.some((p) => {
+      const pId = (p.id || "").toLowerCase();
       const pName = (p.name || "").toLowerCase();
       const pSpec = (p.species || p.culture || p.type || "").toLowerCase();
       if (crop.id === "pommiers") return pName.includes("pomm") || pSpec.includes("pomm") || pSpec.includes("apple");
       if (crop.id === "nablara") return pName.includes("nablara") || (pSpec.includes("nectar") && !pName.includes("redix"));
       if (crop.id === "redix25") return pName.includes("redix") || (pSpec.includes("nectar") && !pName.includes("nablara"));
-      if (crop.id === "oliviers") return pName.includes("oliv") || pSpec.includes("oliv");
+      if (crop.id === "oliviers_s1") return pId === "p1" || pId === "p2";
+      if (crop.id === "oliviers_s2") return pId === "p3" || pId === "p4";
       return false;
     });
     if (matchesTargetedParcel) return true;
@@ -363,15 +400,15 @@ function matchesCropForCalendar(
     const gClean = g.replace(/[\s\-_®]/g, "");
     return crop.groups.some((cg) => {
       const cgClean = cg.toLowerCase().replace(/[\s\-_®]/g, "");
-      return gClean.includes(cgClean) || cgClean.includes(gClean);
+      return gClean === cgClean || gClean.includes(cgClean);
     });
   });
   if (matchesGroup) return true;
 
   // 5. Vérification sémantique par titre et commentaire
-  if (crop.id === "pommiers") {
+  if (isPommeCrop) {
     if (flatGroups.some((g) => g.includes("pomm") || g.includes("apple") || g.includes("تفاح"))) return true;
-    if (titleLower.includes("pomm") || titleLower.includes("تفاح") || commentLower.includes("pomm")) return true;
+    if (titleLower.includes("pomm") || titleLower.includes("تفاح")) return true;
   } else if (crop.id === "nablara") {
     if (
       flatGroups.some(
@@ -381,8 +418,7 @@ function matchesCropForCalendar(
       )
     )
       return true;
-    if (titleLower.includes("nablara") || (titleLower.includes("nectar") && !titleLower.includes("redix seul"))) return true;
-    if (commentLower.includes("nablara")) return true;
+    if (titleLower.includes("nablara") || (titleLower.includes("nectar") && !titleLower.includes("redix"))) return true;
   } else if (crop.id === "redix25") {
     if (
       flatGroups.some(
@@ -392,11 +428,10 @@ function matchesCropForCalendar(
       )
     )
       return true;
-    if (titleLower.includes("redix") || (titleLower.includes("nectar") && !titleLower.includes("nablara seul"))) return true;
-    if (commentLower.includes("redix")) return true;
-  } else if (crop.id === "oliviers") {
+    if (titleLower.includes("redix") || (titleLower.includes("nectar") && !titleLower.includes("nablara"))) return true;
+  } else if (isOliveCrop) {
     if (flatGroups.some((g) => g.includes("oliv") || g.includes("زيتون"))) return true;
-    if (titleLower.includes("oliv") || titleLower.includes("زيتون") || commentLower.includes("oliv")) return true;
+    if (titleLower.includes("oliv") || titleLower.includes("زيتون")) return true;
   }
 
   return false;
@@ -673,13 +708,15 @@ export function AgronomicPlanningCalendar({
               const prodName = (it.name || "").trim();
               if (!prodName) return;
               const normKey = prodName.toLowerCase().replace(/\s+/g, " ");
-              const doseHa = parseFloat(String(it.qty || "0").replace(",", ".")) || 0;
+              const rawDoseHa = parseFloat(String(it.qty || "0").replace(",", ".")) || 0;
+              const doseHa = normalizeFertDoseHa(prodName, rawDoseHa, dateKey, crop.id);
+              const unit = enforceAcidUnit(prodName, it.unit === "litres" || it.unit === "L" ? "litres" : "kg");
               if (!uniqueItemsMap[normKey]) {
                 uniqueItemsMap[normKey] = {
                   name: prodName,
                   doseHa,
-                  unit: it.unit || "kg",
-                  totalParcel: doseHa * crop.surfaceHa,
+                  unit,
+                  totalParcel: parseFloat((doseHa * crop.surfaceHa).toFixed(2)),
                 };
               }
             });
@@ -733,11 +770,29 @@ export function AgronomicPlanningCalendar({
           passCount++;
         };
 
+        // BUG 4 : Séparer les sous-programmes 1× UNIQUE (ex. GZB Redix 25 du 28/05) des sous-programmes hebdomadaires
+        const oneOffSubRecos = sortedSubRecos.filter((r) => isOneOffReco(r));
+        const recurringSubRecos = sortedSubRecos.filter((r) => !isOneOffReco(r));
+
+        // Planifier les sous-programmes 1× UNIQUE une seule fois (jamais répétés chaque semaine)
+        oneOffSubRecos.forEach((oneOffR) => {
+          const isRedixGzb =
+            crop.id === "redix25" &&
+            ((oneOffR.title || "").toLowerCase().includes("gzb") || dateKey.startsWith("2026-05-28"));
+          const oneOffDate = isRedixGzb ? "2026-06-05" : avoidFriday(startDate, false);
+          if (oneOffDate <= endDate && oneOffDate <= "2026-09-15") {
+            pushFertigationEvent(oneOffDate, oneOffR);
+          }
+        });
+
+        const activeRecosForWeeks = recurringSubRecos.length > 0 ? recurringSubRecos : [];
+
         weeklyCycleStarts.forEach((cycleStart) => {
+          if (activeRecosForWeeks.length === 0) return;
           // Séparation native A1 (Bac B), A2 (Bac A), et A3 (Bac C dédié : Acide Humique + Fer)
-          const subA3 = sortedSubRecos.find((r) => isProgramA3((r.payload as any)?.program || {}, r.title || ""));
-          const nonA3 = sortedSubRecos.filter((r) => r !== subA3);
-          const subA1 = nonA3[0] || sortedSubRecos[0];
+          const subA3 = activeRecosForWeeks.find((r) => isProgramA3((r.payload as any)?.program || {}, r.title || ""));
+          const nonA3 = activeRecosForWeeks.filter((r) => r !== subA3);
+          const subA1 = nonA3[0] || activeRecosForWeeks[0];
           const subA2 = nonA3[1];
 
           const a1Freq = Math.max(1, Math.round(parseFloat((subA1?.payload as any)?.program?.frequency) || rawFreq || 1));
@@ -996,21 +1051,20 @@ export function AgronomicPlanningCalendar({
           const dObj = new Date(dateStr);
           const dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getDay();
 
+          // Volume de bouillie réel par espèce/groupe (Cuve 1 000 L) :
+          // Oliviers S1/S2 : 500 L × 2 parcelles = 1 000 L / secteur (2 000 L total P1–P4)
+          // Nectarines P5 ou P6 : 1 000 L / parcelle (2 000 L total P5+P6)
+          // Pommiers P7+P8 : 500 L × 2 parcelles = 1 000 L total
+          const cropSprayVolumeL = 1000;
+
           const prodsComputed: any[] = [];
           phytoProducts.forEach((pItem: any) => {
             const prodName = (pItem.product || pItem.name || "").trim();
             if (!prodName) return;
-            const doseMatch = String(pItem.dosage || pItem.qty || "0").match(/([0-9.,]+)/);
-            const doseHa = parseFloat((doseMatch?.[1] || "0").replace(",", ".")) || 0;
-            const unitMatch = String(pItem.dosage || pItem.unit || "").match(/(litres|l|kg|g)/i);
-            const unit = unitMatch
-              ? unitMatch[1].toLowerCase().startsWith("k")
-                ? "kg"
-                : unitMatch[1].toLowerCase().startsWith("g")
-                ? "g"
-                : "litres"
-              : pItem.unit || "litres";
-            const totalParcel = doseHa * crop.surfaceHa;
+            const normalized = normalizePhytoDoseQuantity(pItem, cropSprayVolumeL, crop.surfaceHa);
+            const unit = normalized.unit;
+            const totalParcel = normalized.quantity;
+            const doseHa = normalized.dosePer1000L;
 
             prodsComputed.push({
               name: prodName,
@@ -1093,23 +1147,44 @@ export function AgronomicPlanningCalendar({
       periodsBySpeciesMap[crop.id] = speciesPeriods;
     });
 
-    // CORRECTION 2 & 4 : Passe globale ferme "1 seul pulvérisateur" + Protection Vendredi
-    // Jamais de Foliaire et de Phyto le même jour à l'échelle de TOUTE LA FERME (même sur espèces différentes)
+    // CORRECTION 2, 4, 5 & BUG 6 :
+    // - Passe globale ferme "1 seul pulvérisateur" + Protection Vendredi
+    // - Recalcul systématique de dayOfWeek et dayName après tout décalage de date (Bug 6 : Samedi au lieu de Vendredi)
+    // - Plafond horaire Phyto à 17h00 : si 2 espèces différentes ont un phyto le même soir, décaler sur un autre jour (15h00 - 17h00)
+    const getSpeciesFamily = (spId: string): string => {
+      if (spId === "nablara" || spId === "redix25") return "nectarines";
+      if (spId === "oliviers_s1" || spId === "oliviers_s2" || spId === "oliviers") return "oliviers";
+      return spId;
+    };
+
     const farmFoliarDatesSet = new Set<string>();
     rawEvents.forEach((ev) => {
       if (ev.type === "pulverisation") {
-        ev.date = avoidFriday(ev.date);
-        farmFoliarDatesSet.add(ev.date);
+        const d = avoidFriday(ev.date);
+        ev.date = d;
+        const dObj = new Date(`${d}T12:00:00Z`);
+        ev.dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getUTCDay();
+        ev.dayName = DAY_NAMES_FR[ev.dayOfWeek];
+        farmFoliarDatesSet.add(d);
       }
     });
+
+    const farmPhytoFamilyByDate: Record<string, string> = {};
     rawEvents.forEach((ev) => {
       if (ev.type === "phyto") {
+        const fam = getSpeciesFamily(ev.speciesId);
         let d = avoidFriday(ev.date);
         let guard = 0;
-        while (guard < 14 && (isFridayDate(d) || farmFoliarDatesSet.has(d))) {
+        while (
+          guard < 14 &&
+          (isFridayDate(d) ||
+            farmFoliarDatesSet.has(d) ||
+            (farmPhytoFamilyByDate[d] && farmPhytoFamilyByDate[d] !== fam))
+        ) {
           d = addDays(d, 1);
           guard++;
         }
+        farmPhytoFamilyByDate[d] = fam;
         ev.date = d;
         const dObj = new Date(`${d}T12:00:00Z`);
         ev.dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getUTCDay();
@@ -1230,9 +1305,18 @@ export function AgronomicPlanningCalendar({
         const endMin = startMin + slotDur;
         currentStationTime = endMin;
 
+        // BUG 6 : Affichage clair des phases 2 & 3 au lieu de "(2h)" ou "(3h)" sur un créneau 06h00 - 07h00
+        const phaseDurationLabel =
+          hydraulicPhase.phase === 2
+            ? "1h00 matin + 1h30 eau claire nuit"
+            : hydraulicPhase.phase === 3
+              ? "1h00 matin + 2h30 eau claire nuit"
+              : ev.irrigationDuration;
+
         finalEvents.push({
           ...ev,
           durationMinutes: slotDur,
+          irrigationDuration: phaseDurationLabel,
           slotLabel: `${slotLabel} · ${hydraulicPhase.phase >= 2 ? "1h00 matin" : "1h30 matin"}`,
           startHourMinutes: startMin,
           endHourMinutes: endMin,
@@ -1241,32 +1325,28 @@ export function AgronomicPlanningCalendar({
       });
 
       // B. Pulvérisation foliaire — Correction 4 : Matin (07h00 - 09h00)
-      let foliarTime = 7 * 60; // 07h00
       foliarEvents.forEach((ev) => {
-        const startMin = foliarTime;
-        const endMin = startMin + 120; // 07h00 - 09h00
-        foliarTime = endMin;
+        const startMin = 7 * 60; // 07h00
+        const endMin = 9 * 60;   // 09h00
 
         finalEvents.push({
           ...ev,
           startHourMinutes: startMin,
           endHourMinutes: endMin,
-          hours: `${formatMinutesToHourString(startMin)} - ${formatMinutesToHourString(endMin)}`,
+          hours: "07h00 - 09h00",
         });
       });
 
-      // C. Traitement phytosanitaire — Correction 4 : Fin d'après-midi avant la nuit (15h00 - 17h00)
-      let phytoTime = 15 * 60; // 15h00
+      // C. Traitement phytosanitaire — BUG 5 : Plafond strict 15h00 - 17h00 (jamais jusqu'à 21h00)
       phytoEvents.forEach((ev) => {
-        const startMin = phytoTime;
-        const endMin = startMin + 120; // 15h00 - 17h00
-        phytoTime = endMin;
+        const startMin = 15 * 60; // 15h00
+        const endMin = 17 * 60;   // 17h00
 
         finalEvents.push({
           ...ev,
           startHourMinutes: startMin,
           endHourMinutes: endMin,
-          hours: `${formatMinutesToHourString(startMin)} - ${formatMinutesToHourString(endMin)}`,
+          hours: "15h00 - 17h00",
         });
       });
     });

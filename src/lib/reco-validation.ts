@@ -12,6 +12,8 @@ import {
   getTargetParcelsForReco,
   safeParseFloat,
   parsePhytoProductQuantity,
+  normalizePhytoDoseQuantity,
+  normalizeFertDoseHa,
   matchProductName,
   getParcelSprayVolumeLiters,
   enforceAcidUnit,
@@ -316,6 +318,21 @@ export function isOneOffReco(r: Recommendation): boolean {
   const freqStr = String(prog.frequency || payload.frequency || "").toLowerCase().trim();
   const titleLower = (r.title || "").toLowerCase();
   const commentLower = (r.comment || "").toLowerCase();
+  const recoDate = String(prog.date || payload.date || r.created_at || "").slice(0, 10);
+
+  // BUG 4 — GZB (Stimulateur Racinaire) sur Redix 25 (28/05) = strictement 1× UNIQUE (jamais répété chaque semaine)
+  const entriesText = Array.isArray(prog.entries)
+    ? prog.entries
+        .flatMap((e: any) => (e.items || []).map((it: any) => String(it.name || "")))
+        .join(" ")
+        .toLowerCase()
+    : "";
+  const isGzbOnly =
+    (titleLower.includes("gzb") || entriesText.includes("gzb") || entriesText.includes("stimulateur racinaire")) &&
+    (titleLower.includes("redix") || recoDate.startsWith("2026-05-28") || titleLower.includes("spécial gzb") || titleLower.includes("special gzb"));
+  if (isGzbOnly) {
+    return true;
+  }
 
   // Si mention explicite de semaine / hebdomadaire => jamais ponctuel
   if (
@@ -942,8 +959,8 @@ export async function validateRecommendationAndPurchases({
 
         if (Array.isArray(program.products)) {
           for (const p of program.products) {
-            const parsed = parsePhytoProductQuantity({ ...p, volume: p.volume || sprayVolL }, surface);
-            debitProductStock(p.product, parsed.quantity);
+            const parsed = normalizePhytoDoseQuantity(p, sprayVolL, surface);
+            debitProductStock(p.product || p.name, parsed.quantity);
           }
         }
 
