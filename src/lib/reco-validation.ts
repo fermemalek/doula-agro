@@ -1,6 +1,12 @@
 import type { Recommendation } from "@/lib/cloud/recommendations";
 import type { Parcel } from "@/data/parcels";
-import { type SupplierPurchase, debitProductStock, deletePurchasesForReco } from "@/lib/suppliers-store";
+import {
+  type SupplierPurchase,
+  debitProductStock,
+  deletePurchasesForReco,
+  getSuppliersSnapshot,
+  resetAllConsumedQuantities,
+} from "@/lib/suppliers-store";
 import { checkRecoStock, getTargetParcelsForReco, safeParseFloat, parsePhytoProductQuantity, matchProductName } from "@/lib/stock-alerts";
 import { removeModuleRecordsByRecoId, getAllModuleRecordsSnapshot } from "@/lib/modules-store";
 import { supabase } from "@/integrations/supabase/client";
@@ -346,75 +352,19 @@ export async function validateRecommendationAndPurchases({
     });
   }
 
-  // 4. Gestion des stocks & Achats
+  // 4. Gestion des stocks & Achats (Priorité au stock réel Agrimax / fournisseurs existants)
+  // RÈGLE : Vérifier d'abord le stock disponible dans la liste des achats fournisseurs (Agrimax inclus).
+  // - Si le produit est déjà alimenté en stock suffisant : aucun achat n'est créé (débit FIFO direct).
+  // - Si le produit n'est PAS alimenté ou stock insuffisant : création automatique d'un achat uniquement pour le manquant.
   let createdPurchasesCount = 0;
 
-  if (isPast) {
-    // RÈGLE 6.2 : Égalité stricte Achats = Quantités prescrites pour l'historique
-    // Aucun déficit théorique, montant payé = 100%
-    const prescribedItemsMap: Record<
-      string,
-      { name: string; quantity: number; unit: "kg" | "litres"; price: number }
-    > = {};
+  const liveSuppliers = getSuppliersSnapshot();
+  const effectiveSuppliers = liveSuppliers.length > 0 ? liveSuppliers : suppliers;
+  const stockReport = checkRecoStock(reco, effectiveSuppliers, parcels, 1, targetParcels);
 
-    for (const parcel of targetParcels) {
-      const surface = safeParseFloat(parcel.info?.surface) || 1;
-
-      if (reco.kind === "fertilisation") {
-        if (payload.method === "irrigation" || program.kind === "irrigation") {
-          const entries = Array.isArray(program.entries) ? program.entries : [];
-          for (const entry of entries) {
-            for (const it of entry.items || []) {
-              const pName = (it.name || "").trim();
-              if (!pName) continue;
-              const doseHa = safeParseFloat(it.qty);
-              const qtyTotale = parseFloat((doseHa * surface).toFixed(2));
-              const price = safeParseFloat(it.price) || 0;
-              const unit = it.unit || "kg";
-
-              if (!prescribedItemsMap[pName]) {
-                prescribedItemsMap[pName] = { name: pName, quantity: 0, unit, price };
-              }
-              prescribedItemsMap[pName].quantity += qtyTotale;
-            }
-          }
-        } else {
-          // Pulvérisation foliaire
-          const items = Array.isArray(program.items) ? program.items : (payload.items || []);
-          for (const it of items) {
-            const pName = (it.name || it.product || "").trim();
-            if (!pName) continue;
-            const doseHa = safeParseFloat(it.qty || it.dosage);
-            const qtyTotale = parseFloat((doseHa * surface).toFixed(2));
-            const price = safeParseFloat(it.price) || 0;
-            const unit = it.unit || "litres";
-
-            if (!prescribedItemsMap[pName]) {
-              prescribedItemsMap[pName] = { name: pName, quantity: 0, unit, price };
-            }
-            prescribedItemsMap[pName].quantity += qtyTotale;
-          }
-        }
-      } else if (reco.kind === "phytosanitaire") {
-        const prods = Array.isArray(program.products) ? program.products : [];
-        for (const p of prods) {
-          const pName = (p.product || p.name || "").trim();
-          if (!pName) continue;
-          const parsed = parsePhytoProductQuantity(p, surface);
-          const price = safeParseFloat(p.price) || 0;
-
-          if (!prescribedItemsMap[pName]) {
-            prescribedItemsMap[pName] = { name: pName, quantity: 0, unit: parsed.unit, price };
-          }
-          prescribedItemsMap[pName].quantity += parsed.quantity;
-        }
-      }
-    }
-
-    // Création exacte des achats pour alignement parfait Achats = Quantités prescrites
-    for (const item of Object.values(prescribedItemsMap)) {
-      const missingQty = parseFloat(item.quantity.toFixed(2));
-      if (missingQty <= 0) continue;
+  if (stockReport.hasMissingStock && stockReport.missingItems.length > 0) {
+    for (const item of stockReport.missingItems) {
+      const missingQty = Math.max(0.01, parseFloat(item.missing.toFixed(2)));
       const unitPrice = item.price || 0;
       const totalCost = parseFloat((missingQty * unitPrice).toFixed(2));
       const purchaseId = `p-reco-${reco.id}-${item.name.replace(/[^a-zA-Z0-9]/g, "_")}`;
@@ -422,41 +372,18 @@ export async function validateRecommendationAndPurchases({
       addPurchase({
         id: purchaseId,
         recoId: reco.id,
-        supplierName: options.supplierName || "Achat Validé (Historique Ingénieur)",
+        supplierName: isPast
+          ? (options.supplierName || "Achat Complémentaire (Hors Agrimax)")
+          : (options.supplierName || "Fournisseur à désigner"),
         productName: item.name,
         purchaseDate: recoDate,
         quantity: missingQty,
         unit: item.unit,
         pricePerUnit: unitPrice,
         totalCost,
-        paidAmount: totalCost, // 100% payé = Aucune dette ni déficit fictif
+        paidAmount: isPast ? totalCost : 0, // Historique soldé, futur = Bon d'achat à régler
       } as any);
       createdPurchasesCount++;
-    }
-  } else {
-    // Mode courant / futur : Calcul FIFO & Bon d'achat pour manquant
-    const stockReport = checkRecoStock(reco, suppliers, parcels, 1, targetParcels);
-    if (stockReport.hasMissingStock && stockReport.missingItems.length > 0) {
-      for (const item of stockReport.missingItems) {
-        const missingQty = Math.max(0.01, parseFloat(item.missing.toFixed(2)));
-        const unitPrice = item.price || 0;
-        const totalCost = parseFloat((missingQty * unitPrice).toFixed(2));
-        const purchaseId = `p-reco-${reco.id}-${item.name.replace(/[^a-zA-Z0-9]/g, "_")}`;
-
-        addPurchase({
-          id: purchaseId,
-          recoId: reco.id,
-          supplierName: options.supplierName || "Fournisseur à désigner",
-          productName: item.name,
-          purchaseDate: recoDate,
-          quantity: missingQty,
-          unit: item.unit,
-          pricePerUnit: unitPrice,
-          totalCost,
-          paidAmount: 0, // Bon d'achat à régler
-        } as any);
-        createdPurchasesCount++;
-      }
     }
   }
 
@@ -877,19 +804,22 @@ export async function resetAllAppliedRecoHistory(recos: Recommendation[]) {
   }
 
   // 2. Nettoyage de tous les achats automatiques de stock liés aux recommandations
+  // (Les achats réels fournisseurs comme Agrimax sont conservés et leur consommation est remise à 0)
   for (const r of recos) {
     deletePurchasesForReco(r.id);
   }
+  resetAllConsumedQuantities();
 
-  // Purge de la table supplier_purchases et du cache local
+  // Purge uniquement des achats auto-générés p-reco- / p-ba- dans Supabase (conserve agrimax-*)
   try {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("doula-suppliers");
-    }
     await (supabase as any)
       .from("supplier_purchases")
       .delete()
-      .neq("id", "00000000-0000-0000-0000-000000000000");
+      .like("id", "p-reco-%");
+    await (supabase as any)
+      .from("supplier_purchases")
+      .delete()
+      .like("id", "p-ba-%");
   } catch { }
 
   // Purge de la file offline des résidus p-reco-

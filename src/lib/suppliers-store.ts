@@ -1,8 +1,11 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { enqueueOp } from "./offline/sync-engine";
+import { AGRIMAX_PURCHASES } from "@/data/agrimax-purchases";
+import { matchProductName } from "@/lib/stock-alerts";
 
 const KEY = "doula-suppliers";
+const AGRIMAX_SEED_KEY = "doula-agrimax-seeded-v1";
 
 export interface SupplierPurchase {
   id: string;
@@ -165,6 +168,36 @@ export function reconcilePurchases(sourceList: SupplierPurchase[]): { clean: Sup
   return { clean: list, changedItems };
 }
 
+function ensureAgrimaxPurchases(sourceList: SupplierPurchase[]): { merged: SupplierPurchase[]; added: SupplierPurchase[] } {
+  const existingIds = new Set(sourceList.map((p) => p.id));
+  const added: SupplierPurchase[] = [];
+
+  const alreadySeeded = typeof window !== "undefined" && localStorage.getItem(AGRIMAX_SEED_KEY) === "1";
+  const hasAnyAgrimax = sourceList.some((p) => p.id.startsWith("agrimax-"));
+
+  // Injecter les achats Agrimax s'ils n'ont pas encore été initialisés ou si aucun achat Agrimax n'est présent
+  if (!alreadySeeded || !hasAnyAgrimax) {
+    for (const item of AGRIMAX_PURCHASES) {
+      if (!existingIds.has(item.id)) {
+        added.push({ ...item });
+      }
+    }
+    if (typeof window !== "undefined") {
+      localStorage.setItem(AGRIMAX_SEED_KEY, "1");
+    }
+  }
+
+  if (added.length === 0) {
+    return { merged: sourceList, added: [] };
+  }
+
+  return { merged: [...sourceList, ...added], added };
+}
+
+export function getSuppliersSnapshot(): SupplierPurchase[] {
+  return [...purchases];
+}
+
 function load() {
   if (typeof window === "undefined") return;
   try {
@@ -191,14 +224,19 @@ function load() {
     }
   }
 
-  // 2. Réalignement strict des achats de recommandations (Acheté = Consommé = Validé, Restant = 0)
+  // 2. Alimentation automatique des achats réels fournisseur Agrimax
+  const { merged: withAgrimax, added: addedAgrimax } = ensureAgrimaxPurchases(purchases);
+  purchases = withAgrimax;
+
+  // 3. Réalignement strict des achats de recommandations (Acheté = Consommé = Validé, Restant = 0)
   const { clean: reconciled, changedItems } = reconcilePurchases(purchases);
-  if (changedItems.length > 0 || removed.length > 0) {
+  if (changedItems.length > 0 || removed.length > 0 || addedAgrimax.length > 0) {
     purchases = reconciled;
     if (typeof window !== "undefined") {
       localStorage.setItem(KEY, JSON.stringify(purchases));
     }
-    for (const item of changedItems) {
+    const toSync = [...addedAgrimax, ...changedItems];
+    for (const item of toSync) {
       void (async () => {
         try {
           await supabase.from("supplier_purchases" as any).upsert(mapToDb(item) as never, { onConflict: "id" });
@@ -278,10 +316,15 @@ async function fetchOnline() {
       const cloudIds = new Set(reconciled.map((c) => c.id));
       const localOnly = purchases.filter((p) => !cloudIds.has(p.id) && !p.id.startsWith("sys-del-"));
 
-      purchases = [...reconciled, ...localOnly];
+      const { merged: withAgrimax, added: addedAgrimax } = ensureAgrimaxPurchases([
+        ...reconciled,
+        ...localOnly,
+      ]);
+
+      purchases = withAgrimax;
       persist();
 
-      for (const item of changedItems) {
+      for (const item of [...changedItems, ...addedAgrimax]) {
         void (async () => {
           try {
             await supabase.from("supplier_purchases" as any).upsert(mapToDb(item) as never, { onConflict: "id" });
@@ -397,10 +440,8 @@ export function useSuppliers(): SupplierPurchase[] {
  * Débite une quantité consommée du stock en méthode FIFO.
  */
 export function debitProductStock(productName: string, quantityToDebit: number) {
-  const normName = productName.trim().toLowerCase();
-
   const matches = purchases.filter(
-    (p) => p.productName.trim().toLowerCase() === normName && p.quantity > p.consumed
+    (p) => matchProductName(p.productName, productName) && p.quantity > p.consumed
   );
 
   matches.sort((a, b) => a.purchaseDate.localeCompare(b.purchaseDate));
@@ -423,7 +464,7 @@ export function debitProductStock(productName: string, quantityToDebit: number) 
   }
 
   if (remainingToDebit > 0) {
-    const fallback = purchases.find((p) => p.productName.trim().toLowerCase() === normName);
+    const fallback = purchases.find((p) => matchProductName(p.productName, productName));
     if (fallback) {
       const idx = purchases.findIndex((p) => p.id === fallback.id);
       if (idx >= 0) {
