@@ -20,6 +20,44 @@ import type { SupplierPurchase } from "@/lib/suppliers-store";
  * Total versé + retour      :   772 400 DA
  * Reste à payer             :   560 150 DA
  */
+/**
+ * Retour physique officiel du 04/08/2026 chez Agrimax (tableau jaune du relevé, valeur 372 400 DA) :
+ * Ces quantités ont été physiquement retournées au fournisseur et doivent être déduites
+ * du stock physique disponible en FIFO (sans modifier les montants de facturation).
+ * - Master Gel 10-52-10 : 9 bidons
+ * - Fertimix Plus       : 40 kg
+ * - Acide Phosphorique  : 916 kg (~543.6 L à densité 1.685 kg/L)
+ */
+export const AGRIMAX_PHYSICAL_RETURNS: Array<{
+  date: string;
+  productName: string;
+  returnedQuantity: number;
+  unit: "kg" | "litres";
+  note: string;
+}> = [
+  {
+    date: "2026-08-04",
+    productName: "Master Gel 10 52 10",
+    returnedQuantity: 9,
+    unit: "litres",
+    note: "Retour Agrimax 04/08/2026 (-9 bidons)",
+  },
+  {
+    date: "2026-08-04",
+    productName: "Fertimix Plus",
+    returnedQuantity: 40,
+    unit: "kg",
+    note: "Retour Agrimax 04/08/2026 (-40 kg)",
+  },
+  {
+    date: "2026-08-04",
+    productName: "Acide phosphorique 85% 20L",
+    returnedQuantity: 543.6, // 916 kg / 1.685 kg/L = 543.6 L
+    unit: "litres",
+    note: "Retour Agrimax 04/08/2026 (-916 kg ≈ -543.6 L)",
+  },
+];
+
 export const AGRIMAX_PURCHASES: SupplierPurchase[] = [
   // ========================
   // FACTURE 01 — 21.02.2026 (75 000 DA — payée)

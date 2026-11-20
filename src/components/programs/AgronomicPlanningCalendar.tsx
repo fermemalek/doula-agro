@@ -33,7 +33,12 @@ import {
   isOneOffReco,
   getUsedBacsFromProgram,
   diffDaysDate,
+  getHydraulicPhaseForDate,
+  isFridayDate,
+  avoidFriday,
+  isProgramA3,
 } from "@/lib/reco-validation";
+import { enforceAcidUnit } from "@/lib/stock-alerts";
 
 export interface AgronomicPlanningCalendarProps {
   recos: Recommendation[];
@@ -552,11 +557,15 @@ export function AgronomicPlanningCalendar({
           // (L'ancien programme s'arrête à J_nouvelle pour cette espèce uniquement)
           endDate = addDays(addDays(nextDate, 1), -1);
         } else if (isOneOff) {
-          // Apports ponctuels (« مرة » / « واحدة ») : 1 seule fois, pas de reconduction les semaines suivantes
+          // Apports ponctuels (« مرة واحدة ») : 1 seule fois, pas de reconduction les semaines suivantes
           endDate = addDays(startDate, 6);
         } else {
-          // Reconduction hebdomadaire automatique en continu tant qu'aucune nouvelle recommandation ne vient les remplacer
-          endDate = "2026-06-30";
+          // Correction 7 (Phase 4) : Arrêt total de la fertigation le 16 Septembre 2026
+          endDate = "2026-09-15";
+        }
+        // Sécurité absolue : ne jamais dépasser le 15 Septembre 2026 pour la fertigation
+        if (endDate > "2026-09-15") {
+          endDate = "2026-09-15";
         }
 
         const isCurrent = startDate <= todayStr && todayStr <= endDate;
@@ -725,24 +734,70 @@ export function AgronomicPlanningCalendar({
         };
 
         weeklyCycleStarts.forEach((cycleStart) => {
-          if (isWeeklySingle) {
-            // 1 fois par semaine : Jour 1 du cycle (puis +7 jours exacts au cycle suivant)
-            pushFertigationEvent(cycleStart, sortedSubRecos[0]);
+          // Séparation native A1 (Bac B), A2 (Bac A), et A3 (Bac C dédié : Acide Humique + Fer)
+          const subA3 = sortedSubRecos.find((r) => isProgramA3((r.payload as any)?.program || {}, r.title || ""));
+          const nonA3 = sortedSubRecos.filter((r) => r !== subA3);
+          const subA1 = nonA3[0] || sortedSubRecos[0];
+          const subA2 = nonA3[1];
+
+          const a1Freq = Math.max(1, Math.round(parseFloat((subA1?.payload as any)?.program?.frequency) || rawFreq || 1));
+
+          const scheduleSafeDate = (rawD: string, allowFriExc = false): string | null => {
+            const safeD = avoidFriday(rawD, allowFriExc);
+            if (safeD > endDate || safeD > "2026-09-15") return null;
+            return safeD;
+          };
+
+          if (isWeeklySingle && !subA3 && a1Freq <= 1) {
+            // 1 fois par semaine : Jour 1 du cycle (hors Vendredi), puis +7 jours exacts au cycle suivant
+            const d1 = scheduleSafeDate(cycleStart);
+            if (d1) pushFertigationEvent(d1, subA1);
+          } else if (a1Freq >= 3 || subA3) {
+            // CORRECTION 3 : Fréquences élevées (>= 3×/semaine) & support natif Programme A3 (Bac C dédié)
+            // Conserve strictement max 1 programme de fertigation par parcelle et par jour, hors Vendredi
+            const usedDaysInWeek = new Set<string>();
+            const pickFreeDay = (offset: number): string | null => {
+              let cand = addDays(cycleStart, offset);
+              for (let step = 0; step < 7; step++) {
+                if (!isFridayDate(cand) && !usedDaysInWeek.has(cand) && cand <= endDate && cand <= "2026-09-15") {
+                  usedDaysInWeek.add(cand);
+                  return cand;
+                }
+                cand = addDays(cand, 1);
+              }
+              return null;
+            };
+
+            // Passages A1 (ex. 3×, 4× ou 5×/semaine)
+            const a1Offsets =
+              a1Freq >= 5 ? [0, 1, 2, 3, 4] : a1Freq === 4 ? [0, 1, 2, 4] : a1Freq === 3 ? [0, 2, 4] : [0, 3];
+            a1Offsets.slice(0, a1Freq).forEach((off) => {
+              const d = pickFreeDay(off);
+              if (d) pushFertigationEvent(d, subA1);
+            });
+
+            // Passage A2 (Bac A, 1×/semaine sur jour libre)
+            if (subA2) {
+              const d2 = pickFreeDay(5);
+              if (d2) pushFertigationEvent(d2, subA2);
+            }
+
+            // Passage A3 dédié (Bac C : Acide Humique + Fer, 1×/semaine sur journée séparée)
+            if (subA3) {
+              const d3 = pickFreeDay(3);
+              if (d3) pushFertigationEvent(d3, subA3);
+            }
           } else {
-            // RÈGLE 2 : 2 programmes par semaine répartis équitablement avec décalage de 3 à 4 jours
-            // Passage 1 : Jour 1 (ex: Mardi ou Mercredi)
-            // Passage 2 : Jour 4 (+3 jours, ex: Vendredi ou Samedi) -> prochain cycle à Jour 8 (+4 jours)
-            // Pour Nectarines (Nablara vs Redix 25), inversion des sous-programmes afin que
-            // Jour 1 : Nablara = Bac B (Créneau 1) & Redix 25 = Bac A (Créneau 2)
-            // Jour 4 : Redix 25 = Bac B (Créneau 1) & Nablara = Bac A (Créneau 2)
+            // 2 programmes par semaine répartis équitablement avec décalage de 3 à 4 jours (hors Vendredi)
             const firstIdx = crop.id === "redix25" && sortedSubRecos.length >= 2 ? 1 : 0;
             const secondIdx = sortedSubRecos.length >= 2 ? (firstIdx === 0 ? 1 : 0) : 0;
 
-            pushFertigationEvent(cycleStart, sortedSubRecos[firstIdx]);
+            const d1 = scheduleSafeDate(cycleStart);
+            if (d1) pushFertigationEvent(d1, sortedSubRecos[firstIdx]);
 
-            const passage2Date = addDays(cycleStart, 3); // +3 jours exacts (ex: Mardi -> Vendredi, Mercredi -> Samedi)
-            if (passage2Date <= endDate) {
-              pushFertigationEvent(passage2Date, sortedSubRecos[secondIdx]);
+            const d2 = scheduleSafeDate(addDays(cycleStart, 3));
+            if (d2 && d2 !== d1) {
+              pushFertigationEvent(d2, sortedSubRecos[secondIdx]);
             }
           }
         });
@@ -1038,7 +1093,31 @@ export function AgronomicPlanningCalendar({
       periodsBySpeciesMap[crop.id] = speciesPeriods;
     });
 
-    // 3. Calcul séquentiel des horaires (Station Fertigation, Pulvérisation Matin, Traitement Soir)
+    // CORRECTION 2 & 4 : Passe globale ferme "1 seul pulvérisateur" + Protection Vendredi
+    // Jamais de Foliaire et de Phyto le même jour à l'échelle de TOUTE LA FERME (même sur espèces différentes)
+    const farmFoliarDatesSet = new Set<string>();
+    rawEvents.forEach((ev) => {
+      if (ev.type === "pulverisation") {
+        ev.date = avoidFriday(ev.date);
+        farmFoliarDatesSet.add(ev.date);
+      }
+    });
+    rawEvents.forEach((ev) => {
+      if (ev.type === "phyto") {
+        let d = avoidFriday(ev.date);
+        let guard = 0;
+        while (guard < 14 && (isFridayDate(d) || farmFoliarDatesSet.has(d))) {
+          d = addDays(d, 1);
+          guard++;
+        }
+        ev.date = d;
+        const dObj = new Date(`${d}T12:00:00Z`);
+        ev.dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getUTCDay();
+        ev.dayName = DAY_NAMES_FR[ev.dayOfWeek];
+      }
+    });
+
+    // 3. Calcul séquentiel des horaires (Station Fertigation 5 Phases, Pulvérisation 07h00-09h00, Phyto 15h00-17h00)
     const eventsByDateMap: Record<string, typeof rawEvents> = {};
     rawEvents.forEach((ev) => {
       if (!eventsByDateMap[ev.date]) eventsByDateMap[ev.date] = [];
@@ -1050,6 +1129,7 @@ export function AgronomicPlanningCalendar({
     Object.keys(eventsByDateMap).sort().forEach((dateKey) => {
       const dayList = eventsByDateMap[dateKey];
       const solar = getSolarTimesForDate(dateKey);
+      const hydraulicPhase = getHydraulicPhaseForDate(dateKey);
 
       // A. Fertigation séquentielle station (démarrage dynamique au LEVER DU SOLEIL à Benhar)
       // RÈGLE 1 : Un seul programme de fertigation par parcelle/espèce et par jour
@@ -1139,27 +1219,32 @@ export function AgronomicPlanningCalendar({
         }
       }
 
-      let currentStationTime = solar.sunriseMinutes;
+      let currentStationTime =
+        hydraulicPhase.morningStartMinutes !== null
+          ? hydraulicPhase.morningStartMinutes
+          : solar.sunriseMinutes;
 
       orderedFertEvents.forEach(({ ev, slotLabel }) => {
+        const slotDur = hydraulicPhase.phase >= 2 ? hydraulicPhase.morningSlotMinutes : ev.durationMinutes;
         const startMin = currentStationTime;
-        const endMin = startMin + ev.durationMinutes;
+        const endMin = startMin + slotDur;
         currentStationTime = endMin;
 
         finalEvents.push({
           ...ev,
-          slotLabel,
+          durationMinutes: slotDur,
+          slotLabel: `${slotLabel} · ${hydraulicPhase.phase >= 2 ? "1h00 matin" : "1h30 matin"}`,
           startHourMinutes: startMin,
           endHourMinutes: endMin,
           hours: `${formatMinutesToHourString(startMin)} - ${formatMinutesToHourString(endMin)}`,
         });
       });
 
-      // B. Pulvérisation foliaire (démarrage dynamique au LEVER DU SOLEIL à Benhar)
-      let foliarTime = solar.sunriseMinutes;
+      // B. Pulvérisation foliaire — Correction 4 : Matin (07h00 - 09h00)
+      let foliarTime = 7 * 60; // 07h00
       foliarEvents.forEach((ev) => {
         const startMin = foliarTime;
-        const endMin = startMin + ev.durationMinutes;
+        const endMin = startMin + 120; // 07h00 - 09h00
         foliarTime = endMin;
 
         finalEvents.push({
@@ -1170,11 +1255,11 @@ export function AgronomicPlanningCalendar({
         });
       });
 
-      // C. Traitement phytosanitaire (planifié le soir au COUCHER DU SOLEIL / CRÉPUSCULE à Benhar)
-      let phytoTime = solar.sunsetMinutes;
+      // C. Traitement phytosanitaire — Correction 4 : Fin d'après-midi avant la nuit (15h00 - 17h00)
+      let phytoTime = 15 * 60; // 15h00
       phytoEvents.forEach((ev) => {
         const startMin = phytoTime;
-        const endMin = startMin + ev.durationMinutes;
+        const endMin = startMin + 120; // 15h00 - 17h00
         phytoTime = endMin;
 
         finalEvents.push({

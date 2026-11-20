@@ -35,21 +35,21 @@ export interface WeatherSafetyResult {
 }
 
 /**
- * Dates de récolte estimées par défaut pour la Ferme Malek (Année en cours)
+ * Dates de récolte réelles 2026 pour la Ferme Malek (Référentiel Campagne 2026) :
+ * - Nectarines (P5, P6) : Fin Juin 2026 (2026-06-30)
+ * - Pommiers (P7, P8)   : 1er Août 2026 (2026-08-01)
+ * - Oliviers (P1 à P4)  : Novembre 2026 (2026-11-15)
  */
 export function getEstimatedHarvestDate(parcelId: string, parcelType: string, year = new Date().getFullYear()): Date {
   const pId = parcelId.toLowerCase();
-  if (pId === "nablara" || pId === "p5") {
-    return new Date(`${year}-06-15T00:00:00`);
-  }
-  if (pId === "redix25" || pId === "p6") {
-    return new Date(`${year}-06-20T00:00:00`);
+  if (pId === "nablara" || pId === "p5" || pId === "redix25" || pId === "p6" || parcelType === "nectarine") {
+    return new Date(`${year}-06-30T00:00:00`);
   }
   if (pId.startsWith("pommier") || pId === "p7" || pId === "p8" || parcelType === "pommier") {
-    return new Date(`${year}-08-15T00:00:00`);
+    return new Date(`${year}-08-01T00:00:00`);
   }
-  // Oliviers P1..P4
-  return new Date(`${year}-11-01T00:00:00`);
+  // Oliviers P1..P4 : Novembre
+  return new Date(`${year}-11-15T00:00:00`);
 }
 
 /**
@@ -107,11 +107,12 @@ export function checkDARCompliance(
       const safeHarvestDate = new Date(plannedDate);
       safeHarvestDate.setDate(safeHarvestDate.getDate() + darDays);
 
-      if (safeHarvestDate > harvestDate) {
+      // Ne bloquer le DAR que pour les traitements AVANT récolte (un traitement post-récolte est autorisé)
+      if (plannedDate <= harvestDate && safeHarvestDate > harvestDate) {
         result.isCompliant = false;
         const msg = `[DAR BLOQUANT] Sur ${parcel.name} : le produit "${pName}" a un DAR de ${darDays} jours. Traitement prévu le ${plannedDateStr.slice(0, 10)}, récolte estimée le ${harvestDate.toISOString().slice(0, 10)}. Fin du délai DAR le ${safeHarvestDate.toISOString().slice(0, 10)}.`;
         result.blockingErrors.push(msg);
-      } else {
+      } else if (plannedDate <= harvestDate) {
         const daysRemaining = Math.round((harvestDate.getTime() - safeHarvestDate.getTime()) / 86400000);
         if (daysRemaining <= 7) {
           result.warnings.push(`[ATTENTION DAR] Sur ${parcel.name} : "${pName}" fin de DAR seulement ${daysRemaining} jour(s) avant la récolte.`);

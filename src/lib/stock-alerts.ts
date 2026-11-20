@@ -3,6 +3,7 @@ import type { SupplierPurchase } from "@/lib/suppliers-store";
 import type { Parcel } from "@/data/parcels";
 import { FERTILIZER_DATABASE } from "@/data/fertilizers";
 import { PHYTO_DATABASE } from "@/data/phytosanitaires";
+import { AGRIMAX_PHYSICAL_RETURNS } from "@/data/agrimax-purchases";
 
 export interface RecoProductStockItem {
   name: string;
@@ -28,6 +29,46 @@ export function safeParseFloat(val: unknown): number {
   const str = String(val).trim().replace(",", ".");
   const parsed = parseFloat(str);
   return isNaN(parsed) ? 0 : parsed;
+}
+
+/**
+ * CORRECTION 6 — Volumes de bouillie réels par parcelle (Cuve 1 000 L) :
+ * - Oliviers (P1 à P4) : 500 L / parcelle (2 000 L total)
+ * - Nectarines (P5, P6) : 1 000 L / parcelle (2 000 L total)
+ * - Pommiers (P7, P8)   : 500 L / parcelle (1 000 L total P7+P8)
+ */
+export function getParcelSprayVolumeLiters(parcel: Parcel): number {
+  const pId = (parcel?.id || "").toLowerCase();
+  const pType = (parcel?.type || "").toLowerCase();
+  if (pId === "nablara" || pId === "p5" || pId === "redix25" || pId === "p6" || pType === "nectarine") {
+    return 1000;
+  }
+  if (pId.startsWith("pommier") || pId === "p7" || pId === "p8" || pType === "pommier") {
+    return 500;
+  }
+  if (pId === "p1" || pId === "p2" || pId === "p3" || pId === "p4" || pType === "olivier") {
+    return 500;
+  }
+  return 1000;
+}
+
+/**
+ * CORRECTION 6 — Unités strictes des acides :
+ * - Acide Phosphorique & Acide Nitrique => toujours en Litres ("litres")
+ * - Acide Citrique & Acide Ascorbique   => toujours en Kilogrammes ("kg")
+ */
+export function enforceAcidUnit(productName: string, fallbackUnit: "kg" | "litres"): "kg" | "litres" {
+  const norm = (productName || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (norm.includes("acide phosphorique") || norm.includes("acide nitrique")) {
+    return "litres";
+  }
+  if (norm.includes("acide citrique") || norm.includes("acide ascorbique")) {
+    return "kg";
+  }
+  return fallbackUnit;
 }
 
 /**
@@ -305,7 +346,8 @@ export function checkRecoStock(
 
                 const doseHa = safeParseFloat(it.qty);
                 const price = safeParseFloat(it.price);
-                const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+                const rawUnit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+                const unit = enforceAcidUnit(name, rawUnit);
 
                 for (const parcel of targetParcels) {
                   const surface = safeParseFloat(parcel?.info?.surface) || 1;
@@ -320,18 +362,38 @@ export function checkRecoStock(
           }
         }
       } else {
-        // Pulvérisation foliaire
+        // Pulvérisation foliaire : distinguer strictement doses / 1 000 L (nbCuves) vs doses / ha (surface)
+        const totalSprayVolumeL = targetParcels.reduce(
+          (sum, parcel) => sum + getParcelSprayVolumeLiters(parcel),
+          0
+        ) || 1000;
+        const nbCuves1000L = totalSprayVolumeL / 1000;
+        const totalSurface = targetParcels.reduce(
+          (sum, parcel) => sum + (safeParseFloat(parcel?.info?.surface) || 1),
+          0
+        ) || 1;
+
         if (Array.isArray(program.items)) {
           for (const it of program.items) {
             const name = it.name?.trim();
             if (!name) continue;
             const qty = safeParseFloat(it.qty);
             const price = safeParseFloat(it.price);
-            const unit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+            const rawUnit: "kg" | "litres" = (it.unit === "litres" || it.unit === "L") ? "litres" : "kg";
+            const unit = enforceAcidUnit(name, rawUnit);
+            const dosageHint = String(it.dosage || it.unit || it.note || "").toLowerCase();
+            const isPerHa = dosageHint.includes("/ha") || dosageHint.includes("/ ha") || dosageHint.includes("هكتار");
+            const isPer1000L = dosageHint.includes("1000") || dosageHint.includes("cuve") || dosageHint.includes("hl");
+            const computedQty = isPerHa
+              ? parseFloat((qty * totalSurface).toFixed(2))
+              : isPer1000L
+                ? parseFloat((qty * nbCuves1000L).toFixed(2))
+                : qty;
+
             if (!sumsMap[name]) {
               sumsMap[name] = { name, neededPerPassage: 0, unit, price };
             }
-            sumsMap[name].neededPerPassage += qty;
+            sumsMap[name].neededPerPassage += computedQty;
           }
         }
       }
@@ -341,25 +403,39 @@ export function checkRecoStock(
           (sum, parcel) => sum + (safeParseFloat(parcel?.info?.surface) || 1),
           0
         ) || 1;
+        const totalSprayVolumeL = targetParcels.reduce(
+          (sum, parcel) => sum + getParcelSprayVolumeLiters(parcel),
+          0
+        ) || 1000;
 
         for (const p of program.products) {
           const name = (p.product || p.name)?.trim();
           if (!name) continue;
-          const parsed = parsePhytoProductQuantity(p, totalSurface);
+          const parsed = parsePhytoProductQuantity(
+            { ...p, volume: p.volume || totalSprayVolumeL },
+            totalSurface
+          );
+          const unit = enforceAcidUnit(name, parsed.unit);
           const price = safeParseFloat(p.price);
           if (!sumsMap[name]) {
-            sumsMap[name] = { name, neededPerPassage: 0, unit: parsed.unit, price };
+            sumsMap[name] = { name, neededPerPassage: 0, unit, price };
           }
           sumsMap[name].neededPerPassage += parsed.quantity;
         }
       }
     }
 
-    // Stock disponible par produit
+    // Stock net disponible par produit (déduit aussi le retour physique Agrimax du 04/08/2026)
     const getProductStock = (prodName: string): number => {
-      return safeSuppliers
+      const grossAvailable = safeSuppliers
         .filter((p) => p && matchProductName(p.productName, prodName))
         .reduce((sum, p) => sum + Math.max(0, (p.quantity || 0) - (p.consumed || 0)), 0);
+
+      const returnedQty = AGRIMAX_PHYSICAL_RETURNS
+        .filter((ret) => matchProductName(ret.productName, prodName))
+        .reduce((sum, ret) => sum + ret.returnedQuantity, 0);
+
+      return Math.max(0, grossAvailable - returnedQty);
     };
 
     const items: RecoProductStockItem[] = [];

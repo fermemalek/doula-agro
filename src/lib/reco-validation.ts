@@ -7,7 +7,15 @@ import {
   getSuppliersSnapshot,
   resetAllConsumedQuantities,
 } from "@/lib/suppliers-store";
-import { checkRecoStock, getTargetParcelsForReco, safeParseFloat, parsePhytoProductQuantity, matchProductName } from "@/lib/stock-alerts";
+import {
+  checkRecoStock,
+  getTargetParcelsForReco,
+  safeParseFloat,
+  parsePhytoProductQuantity,
+  matchProductName,
+  getParcelSprayVolumeLiters,
+  enforceAcidUnit,
+} from "@/lib/stock-alerts";
 import { removeModuleRecordsByRecoId, getAllModuleRecordsSnapshot } from "@/lib/modules-store";
 import { supabase } from "@/integrations/supabase/client";
 import { offlineDB } from "@/lib/offline/db";
@@ -68,6 +76,118 @@ export function diffDaysDate(d1: string, d2: string): number {
   const t2 = new Date(`${d2.slice(0, 10)}T12:00:00Z`).getTime();
   if (isNaN(t1) || isNaN(t2)) return 0;
   return Math.round((t2 - t1) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * CORRECTION 2 — Protection du Vendredi (VENDREDI REPOS)
+ */
+export function isFridayDate(dateStr: string): boolean {
+  const d = new Date(`${dateStr.slice(0, 10)}T12:00:00Z`);
+  return !isNaN(d.getTime()) && d.getUTCDay() === 5;
+}
+
+export function avoidFriday(dateStr: string, allowException: boolean = false): string {
+  if (allowException) return dateStr;
+  if (isFridayDate(dateStr)) {
+    return addDaysDate(dateStr, 1); // Décale Vendredi -> Samedi
+  }
+  return dateStr;
+}
+
+/**
+ * CORRECTION 3 — Détection native du Programme A3 (Bac C dédié : Acide Humique + Fer)
+ */
+export function isProgramA3(program: any, title: string = ""): boolean {
+  const t = `${title} ${program?.label || ""}`.toLowerCase();
+  if (t.includes("programme a3") || t.includes("prog. a3") || t.includes("(a3)")) {
+    return true;
+  }
+  const bacs = getUsedBacsFromProgram(program);
+  if (bacs.usesBacC && !bacs.usesBacB && !bacs.usesBacA) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * CORRECTION 7 — Moteur hydraulique en 5 phases (Campagne 2026 — Ferme Malek)
+ * 1. 10 Mars – 6 Mai   : 1h30 / secteur le matin (lever du soleil)
+ * 2. 7 Mai – 24 Juin   : 2h30 / j / secteur (1h30 nuit 21h00–04h30 eau claire + 1h00 matin 06h00–11h00)
+ * 3. 25 Juin – 15 Sept : 3h30 / j / secteur (2h30 nuit eau claire + 1h00 matin 06h00–11h00 + Lessivage 5h 26/06)
+ * 4. 16 Sept – 31 Oct  : Arrêt total fertigation — eau claire uniquement 3×/jour (P1–P8)
+ * 5. Dès 1er Nov       : Sans fertigation — P1–P4: 3×/j | P5–P6: 1×/j | P7–P8: 2×/j
+ */
+export interface HydraulicPhaseInfo {
+  phase: 1 | 2 | 3 | 4 | 5;
+  label: string;
+  fertigationAllowed: boolean;
+  morningSlotMinutes: number;
+  morningStartMinutes: number | null; // null = lever du soleil dynamique
+  nightWaterMinutes: number;
+  nightWindow: string;
+  dailyWaterPassages: { oliviers: number; nectarines: number; pommiers: number };
+}
+
+export function getHydraulicPhaseForDate(dateStr: string): HydraulicPhaseInfo {
+  const md = dateStr.slice(5, 10); // MM-DD
+  if (md >= "11-01") {
+    return {
+      phase: 5,
+      label: "Phase 5 (Dès 1er Nov — Automne sans fertigation)",
+      fertigationAllowed: false,
+      morningSlotMinutes: 60,
+      morningStartMinutes: 360,
+      nightWaterMinutes: 0,
+      nightWindow: "—",
+      dailyWaterPassages: { oliviers: 3, nectarines: 1, pommiers: 2 },
+    };
+  }
+  if (md >= "09-16" && md <= "10-31") {
+    return {
+      phase: 4,
+      label: "Phase 4 (16 Sept – 31 Oct — Arrêt fertigation, eau claire 3×/j)",
+      fertigationAllowed: false,
+      morningSlotMinutes: 60,
+      morningStartMinutes: 360,
+      nightWaterMinutes: 0,
+      nightWindow: "—",
+      dailyWaterPassages: { oliviers: 3, nectarines: 3, pommiers: 3 },
+    };
+  }
+  if (md >= "06-25" && md <= "09-15") {
+    return {
+      phase: 3,
+      label: "Phase 3 (25 Juin – 15 Sept — 3h30/j : 2h30 nuit + 1h00 matin)",
+      fertigationAllowed: true,
+      morningSlotMinutes: 60,
+      morningStartMinutes: 360, // 06h00 fixe (06h00 - 11h00)
+      nightWaterMinutes: 150,
+      nightWindow: "21h00 - 04h30 (2h30/secteur)",
+      dailyWaterPassages: { oliviers: 2, nectarines: 2, pommiers: 2 },
+    };
+  }
+  if (md >= "05-07" && md <= "06-24") {
+    return {
+      phase: 2,
+      label: "Phase 2 (7 Mai – 24 Juin — 2h30/j : 1h30 nuit + 1h00 matin)",
+      fertigationAllowed: true,
+      morningSlotMinutes: 60,
+      morningStartMinutes: 360, // 06h00 fixe (06h00 - 11h00)
+      nightWaterMinutes: 90,
+      nightWindow: "21h00 - 04h30 (1h30/secteur)",
+      dailyWaterPassages: { oliviers: 2, nectarines: 2, pommiers: 2 },
+    };
+  }
+  return {
+    phase: 1,
+    label: "Phase 1 (10 Mars – 6 Mai — 1h30/secteur au lever du soleil)",
+    fertigationAllowed: true,
+    morningSlotMinutes: 90,
+    morningStartMinutes: null, // Lever du soleil dynamique Benhar
+    nightWaterMinutes: 0,
+    nightWindow: "—",
+    dailyWaterPassages: { oliviers: 1, nectarines: 1, pommiers: 1 },
+  };
 }
 
 /**
@@ -426,23 +546,59 @@ export async function validateRecommendationAndPurchases({
           !redixList.includes(p)
       );
 
-      const groupDurationMinutes = parseDurationToMinutes(program.irrigationTime || "1h30");
+      const phaseInfo = getHydraulicPhaseForDate(plannedStartDate);
+      const groupDurationMinutes =
+        phaseInfo.phase >= 2
+          ? phaseInfo.morningSlotMinutes
+          : parseDurationToMinutes(program.irrigationTime || "1h30");
       const existingFertRecords = getAllModuleRecordsSnapshot("fertilisation");
+      const freqPerWeek = parseFloat(String(program.frequency || "1")) || 1;
+      const isHighFreq = freqPerWeek >= 3; // Correction 3 : >= 3×/sem lève l'écart 3j, garde max 1 fert/parcelle/jour
+      const isA3 = isProgramA3(program, reco.title || "");
+      const titleLowerFert = (reco.title || "").toLowerCase();
+      const allowFridayException =
+        (titleLowerFert.includes("gzb") && plannedStartDate === "2026-06-05") ||
+        titleLowerFert.includes("lessivage");
 
-      // Garantit qu'une même parcelle ne reçoit jamais 2 fertigations le même jour ni à 1–2 jours d'intervalle
-      // (décalage strict de +3 jours -> J1 -> J4 -> J8)
+      const getMorningStartMinute = (dateStr: string): number => {
+        const ph = getHydraulicPhaseForDate(dateStr);
+        return ph.morningStartMinutes !== null
+          ? ph.morningStartMinutes
+          : getSolarTimesForDate(dateStr).sunriseMinutes;
+      };
+
+      // Correction 2, 3, 5 : Vendredi repos par défaut + max 1 fert/parcelle/jour
+      // (+ écart 3j si <= 2×/sem, ou >= 1j si >= 3×/sem) + continuité inter-recos (éviter même bac 2j d'affilée)
       const resolveFertDateForGroup = (group: Parcel[], preferredDate: string): string => {
         const groupIds = new Set(group.map((p) => p.id));
-        const parcelDates = existingFertRecords
-          .filter((r: any) => groupIds.has(r.parcelId) && r.reco_id !== reco.id && typeof r.date === "string")
-          .map((r: any) => String(r.date).slice(0, 10));
+        const parcelRecs = existingFertRecords
+          .filter((r: any) => groupIds.has(r.parcelId) && r.reco_id !== reco.id && typeof r.date === "string");
+        const parcelDates = parcelRecs.map((r: any) => String(r.date).slice(0, 10));
+        const minGapDays = isHighFreq || isA3 ? 1 : 3;
 
-        let candidate = preferredDate;
+        let candidate = avoidFriday(preferredDate, allowFridayException);
         let safety = 0;
         while (safety < 14) {
-          const hasTooClose = parcelDates.some((d) => Math.abs(diffDaysDate(d, candidate)) < 3);
-          if (!hasTooClose) break;
-          candidate = addDaysDate(candidate, 3);
+          if (!allowFridayException && isFridayDate(candidate)) {
+            candidate = addDaysDate(candidate, 1);
+            safety++;
+            continue;
+          }
+          const sameDayExists = parcelDates.includes(candidate);
+          const tooCloseExists = parcelDates.some((d) => {
+            const gap = Math.abs(diffDaysDate(d, candidate));
+            return gap > 0 && gap < minGapDays;
+          });
+          // Correction 5 : Continuité inter-recommandations (ne pas répéter le même bac la veille)
+          const yesterdayStr = addDaysDate(candidate, -1);
+          const yesterdayRec = parcelRecs.find((r: any) => String(r.date).slice(0, 10) === yesterdayStr);
+          const sameBacAsYesterday =
+            Boolean(yesterdayRec) &&
+            !isHighFreq &&
+            getUsedBacsFromProgram(yesterdayRec).usesBacB === usesBacB;
+
+          if (!sameDayExists && !tooCloseExists && !sameBacAsYesterday) break;
+          candidate = addDaysDate(candidate, isHighFreq || isA3 ? 1 : 3);
           safety++;
         }
         return candidate;
@@ -458,120 +614,135 @@ export async function validateRecommendationAndPurchases({
 
       const scheduledGroups: GroupScheduleItem[] = [];
 
-      // Règle 2 & 3 : Alternance Nectarines Jour 1 (J+1) / Jour 4 (J+1 + 3 jours)
-      const day2Date = addDaysDate(plannedStartDate, 3);
+      // Si phase >= 4 (16 Septembre et après) : arrêt total de la fertigation
+      if (!phaseInfo.fertigationAllowed) {
+        // Aucun programme de fertigation généré après le 15 Septembre
+      } else {
+        const day2Date = avoidFriday(addDaysDate(plannedStartDate, isHighFreq ? 2 : 3), allowFridayException);
 
-      if (nablaraList.length > 0 && redixList.length > 0) {
-        if (usesBacB) {
-          // Bac B : Nablara le Jour 1 (Créneau 1, Lever du soleil), Redix 25 le Jour 4 (+3j, Créneau 1)
+        if (nablaraList.length > 0 && redixList.length > 0) {
+          if (isA3) {
+            const dNab = resolveFertDateForGroup(nablaraList, plannedStartDate);
+            const dRed = resolveFertDateForGroup(redixList, plannedStartDate);
+            scheduledGroups.push({
+              group: nablaraList,
+              date: dNab,
+              startMinute: getMorningStartMinute(dNab) + groupDurationMinutes,
+              slotLabel: "Prog. A3 (Bac C dédié - Humique + Fer)",
+            });
+            scheduledGroups.push({
+              group: redixList,
+              date: dRed,
+              startMinute: getMorningStartMinute(dRed) + groupDurationMinutes * 2,
+              slotLabel: "Prog. A3 (Bac C dédié - Humique + Fer)",
+            });
+          } else if (usesBacB) {
+            const dNab = resolveFertDateForGroup(nablaraList, plannedStartDate);
+            const dRed = resolveFertDateForGroup(redixList, day2Date);
+            scheduledGroups.push({
+              group: nablaraList,
+              date: dNab,
+              startMinute: getMorningStartMinute(dNab),
+              slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
+            });
+            scheduledGroups.push({
+              group: redixList,
+              date: dRed,
+              startMinute: getMorningStartMinute(dRed),
+              slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
+            });
+          } else {
+            const dRed = resolveFertDateForGroup(redixList, plannedStartDate);
+            const dNab = resolveFertDateForGroup(nablaraList, day2Date);
+            const bacTag = bacsInfo.usesBacsCD ? "Bacs C+D" : bacsInfo.usesBacA ? "Bac A" : "Sans Bac B";
+            scheduledGroups.push({
+              group: redixList,
+              date: dRed,
+              startMinute: getMorningStartMinute(dRed) + groupDurationMinutes,
+              slotLabel: `Créneau 2 (+${groupDurationMinutes}m - ${bacTag})`,
+            });
+            scheduledGroups.push({
+              group: nablaraList,
+              date: dNab,
+              startMinute: getMorningStartMinute(dNab) + groupDurationMinutes,
+              slotLabel: `Créneau 2 (+${groupDurationMinutes}m - ${bacTag})`,
+            });
+          }
+        } else if (nablaraList.length > 0) {
           const dNab = resolveFertDateForGroup(nablaraList, plannedStartDate);
-          const dRed = resolveFertDateForGroup(redixList, day2Date);
           scheduledGroups.push({
             group: nablaraList,
             date: dNab,
-            startMinute: getSolarTimesForDate(dNab).sunriseMinutes,
-            slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
+            startMinute: usesBacB ? getMorningStartMinute(dNab) : getMorningStartMinute(dNab) + groupDurationMinutes,
+            slotLabel: isA3
+              ? "Prog. A3 (Bac C dédié)"
+              : usesBacB
+                ? "Créneau 1 (Lever du soleil - Bac B)"
+                : "Créneau 2 (Sans Bac B)",
           });
-          scheduledGroups.push({
-            group: redixList,
-            date: dRed,
-            startMinute: getSolarTimesForDate(dRed).sunriseMinutes,
-            slotLabel: "Créneau 1 (Lever du soleil - Bac B)",
-          });
-        } else {
-          // Sans Bac B (Bac A / C) : Redix 25 le Jour 1 (Créneau 2, +1h30), Nablara le Jour 4 (+3j, Créneau 2)
+        } else if (redixList.length > 0) {
           const dRed = resolveFertDateForGroup(redixList, plannedStartDate);
-          const dNab = resolveFertDateForGroup(nablaraList, day2Date);
-          const bacTag = bacsInfo.usesBacsCD ? "Bacs C+D" : bacsInfo.usesBacA ? "Bac A" : "Sans Bac B";
           scheduledGroups.push({
             group: redixList,
             date: dRed,
-            startMinute: getSolarTimesForDate(dRed).sunriseMinutes + groupDurationMinutes,
-            slotLabel: `Créneau 2 (+1h30 - ${bacTag})`,
-          });
-          scheduledGroups.push({
-            group: nablaraList,
-            date: dNab,
-            startMinute: getSolarTimesForDate(dNab).sunriseMinutes + groupDurationMinutes,
-            slotLabel: `Créneau 2 (+1h30 - ${bacTag})`,
+            startMinute: usesBacB ? getMorningStartMinute(dRed) : getMorningStartMinute(dRed) + groupDurationMinutes,
+            slotLabel: isA3
+              ? "Prog. A3 (Bac C dédié)"
+              : usesBacB
+                ? "Créneau 1 (Lever du soleil - Bac B)"
+                : "Créneau 2 (Sans Bac B)",
           });
         }
-      } else if (nablaraList.length > 0) {
-        const dNab = resolveFertDateForGroup(nablaraList, plannedStartDate);
-        const solarNab = getSolarTimesForDate(dNab);
-        scheduledGroups.push({
-          group: nablaraList,
-          date: dNab,
-          startMinute: usesBacB ? solarNab.sunriseMinutes : solarNab.sunriseMinutes + groupDurationMinutes,
-          slotLabel: usesBacB
-            ? "Créneau 1 (Lever du soleil - Bac B)"
-            : "Créneau 2 (+1h30 - Sans Bac B)",
-        });
-      } else if (redixList.length > 0) {
-        const dRed = resolveFertDateForGroup(redixList, plannedStartDate);
-        const solarRed = getSolarTimesForDate(dRed);
-        scheduledGroups.push({
-          group: redixList,
-          date: dRed,
-          startMinute: usesBacB ? solarRed.sunriseMinutes : solarRed.sunriseMinutes + groupDurationMinutes,
-          slotLabel: usesBacB
-            ? "Créneau 1 (Lever du soleil - Bac B)"
-            : "Créneau 2 (+1h30 - Sans Bac B)",
-        });
-      }
 
-      // POMMIERS (P7 + P8 simultanément — Bacs C+D)
-      if (pommiers.length > 0) {
-        const dPom = resolveFertDateForGroup(pommiers, plannedStartDate);
-        const solarPom = getSolarTimesForDate(dPom);
-        scheduledGroups.push({
-          group: pommiers,
-          date: dPom,
-          startMinute: solarPom.sunriseMinutes + (usesBacB ? groupDurationMinutes * 2 : groupDurationMinutes),
-          slotLabel: usesBacB ? "Créneau 3 (+3h00 - Bac B)" : "Créneau 2 (+1h30 - Bacs C+D)",
-        });
-      }
+        // POMMIERS (P7 + P8 simultanément — Bacs C+D)
+        if (pommiers.length > 0) {
+          const dPom = resolveFertDateForGroup(pommiers, plannedStartDate);
+          scheduledGroups.push({
+            group: pommiers,
+            date: dPom,
+            startMinute: getMorningStartMinute(dPom) + (usesBacB ? groupDurationMinutes * 2 : groupDurationMinutes),
+            slotLabel: isA3
+              ? "Prog. A3 Pommiers (Bac C dédié)"
+              : usesBacB
+                ? "Créneau 3 (Bac B)"
+                : "Créneau 2 (Bacs C+D)",
+          });
+        }
 
-      // OLIVIERS SECTEUR 1 (P1 + P2 simultanément)
-      if (oliS1.length > 0) {
-        const dOli1 = resolveFertDateForGroup(oliS1, plannedStartDate);
-        const solarOli1 = getSolarTimesForDate(dOli1);
-        scheduledGroups.push({
-          group: oliS1,
-          date: dOli1,
-          startMinute: solarOli1.sunriseMinutes + (usesBacB ? 0 : groupDurationMinutes),
-          slotLabel: usesBacB
-            ? "Créneau 1 (Oliviers S1 - Bac B)"
-            : "Créneau 2 (Oliviers S1 - Sans Bac B)",
-        });
-      }
+        // OLIVIERS SECTEUR 1 (P1 + P2 simultanément)
+        if (oliS1.length > 0) {
+          const dOli1 = resolveFertDateForGroup(oliS1, plannedStartDate);
+          scheduledGroups.push({
+            group: oliS1,
+            date: dOli1,
+            startMinute: getMorningStartMinute(dOli1) + (usesBacB ? 0 : groupDurationMinutes),
+            slotLabel: usesBacB ? "Créneau 1 (Oliviers S1 - Bac B)" : "Créneau 2 (Oliviers S1 - Sans Bac B)",
+          });
+        }
 
-      // OLIVIERS SECTEUR 2 (P3 + P4 simultanément — séquentiel après S1)
-      if (oliS2.length > 0) {
-        const dOli2 = resolveFertDateForGroup(oliS2, plannedStartDate);
-        const solarOli2 = getSolarTimesForDate(dOli2);
-        scheduledGroups.push({
-          group: oliS2,
-          date: dOli2,
-          startMinute: solarOli2.sunriseMinutes + groupDurationMinutes * 2,
-          slotLabel: usesBacB
-            ? "Créneau 3 (Oliviers S2 - Bac B)"
-            : "Créneau 3 (Oliviers S2 - Sans Bac B)",
-        });
-      }
+        // OLIVIERS SECTEUR 2 (P3 + P4 simultanément — séquentiel après S1)
+        if (oliS2.length > 0) {
+          const dOli2 = resolveFertDateForGroup(oliS2, plannedStartDate);
+          scheduledGroups.push({
+            group: oliS2,
+            date: dOli2,
+            startMinute: getMorningStartMinute(dOli2) + groupDurationMinutes * 2,
+            slotLabel: usesBacB ? "Créneau 3 (Oliviers S2 - Bac B)" : "Créneau 3 (Oliviers S2 - Sans Bac B)",
+          });
+        }
 
-      // AUTRES PARCELLES ÉVENTUELLES
-      let extraIdx = 3;
-      for (const op of otherParcels) {
-        const dOp = resolveFertDateForGroup([op], plannedStartDate);
-        const solarOp = getSolarTimesForDate(dOp);
-        scheduledGroups.push({
-          group: [op],
-          date: dOp,
-          startMinute: solarOp.sunriseMinutes + groupDurationMinutes * extraIdx,
-          slotLabel: `Créneau Station Additionnel (${extraIdx + 1})`,
-        });
-        extraIdx++;
+        // AUTRES PARCELLES ÉVENTUELLES
+        let extraIdx = 3;
+        for (const op of otherParcels) {
+          const dOp = resolveFertDateForGroup([op], plannedStartDate);
+          scheduledGroups.push({
+            group: [op],
+            date: dOp,
+            startMinute: getMorningStartMinute(dOp) + groupDurationMinutes * extraIdx,
+            slotLabel: `Créneau Station Additionnel (${extraIdx + 1})`,
+          });
+          extraIdx++;
+        }
       }
 
       for (const item of scheduledGroups) {
@@ -666,33 +837,49 @@ export async function validateRecommendationAndPurchases({
         }
       }
 
-      // Sécurité Règle 4 : Vérifier les pulvérisations foliaires existantes pour garantir >= 3 jours d'écart
+      // Sécurité Corrections 2 & 4 :
+      // - Protection du Vendredi (VENDREDI REPOS)
+      // - Contrainte "1 seul pulvérisateur" à l'échelle de toute la ferme (jamais Foliaire et Phyto le même jour)
+      // - Écart >= 3 jours calendaires entre deux pulvérisations foliaires sur la même parcelle
       const existingPulvRecords = getAllModuleRecordsSnapshot("pulverisation");
+      const existingPhytoRecords = getAllModuleRecordsSnapshot("phytosanitaire");
       const targetIdsSet = new Set(targetParcels.map((p) => p.id));
       const existingPulvDates = existingPulvRecords
         .filter((r: any) => targetIdsSet.has(r.parcelId) && r.reco_id !== reco.id && typeof r.date === "string")
         .map((r: any) => String(r.date).slice(0, 10));
+      const farmPhytoDates = new Set(
+        existingPhytoRecords
+          .filter((r: any) => r.reco_id !== reco.id && typeof r.date === "string")
+          .map((r: any) => String(r.date).slice(0, 10))
+      );
 
+      scheduledFoliarDate = avoidFriday(scheduledFoliarDate);
       let pulvSafety = 0;
       while (pulvSafety < 14) {
+        const isFri = isFridayDate(scheduledFoliarDate);
+        const hasFarmPhyto = farmPhytoDates.has(scheduledFoliarDate);
         const hasTooClosePulv = existingPulvDates.some((d) => Math.abs(diffDaysDate(d, scheduledFoliarDate)) < 3);
-        if (!hasTooClosePulv) break;
-        scheduledFoliarDate = addDaysDate(scheduledFoliarDate, 3);
+        if (!isFri && !hasFarmPhyto && !hasTooClosePulv) break;
+        scheduledFoliarDate = addDaysDate(scheduledFoliarDate, hasTooClosePulv ? 3 : 1);
         pulvSafety++;
       }
 
-      const foliarSolar = getSolarTimesForDate(scheduledFoliarDate);
-      const foliarStartHour = foliarSolar.sunriseStr;
+      // Correction 4 : Horaire Foliaire matin (07h00 - 09h00)
+      const foliarStartHour = "07:00";
 
       for (const parcel of targetParcels) {
         const surface = safeParseFloat(parcel.info?.surface) || 1;
+        const sprayVolL = getParcelSprayVolumeLiters(parcel);
+        const nbCuves = sprayVolL / 1000;
         clonedCount++;
 
-        // Débit des produits foliaires
+        // Correction 6 : Débit des produits foliaires selon dose / 1000 L vs dose / ha
         const items = Array.isArray(program.items) ? program.items : (payload.items || []);
         for (const it of items) {
-          const doseHa = safeParseFloat(it.qty || it.dosage);
-          const doseTotale = parseFloat((doseHa * surface).toFixed(2));
+          const doseVal = safeParseFloat(it.qty || it.dosage);
+          const hint = String(it.dosage || it.unit || it.note || "").toLowerCase();
+          const isPer1000L = hint.includes("1000") || hint.includes("cuve") || hint.includes("hl");
+          const doseTotale = parseFloat((isPer1000L ? doseVal * nbCuves : doseVal * surface).toFixed(2));
           debitProductStock(it.name || it.product, doseTotale);
         }
 
@@ -704,6 +891,8 @@ export async function validateRecommendationAndPurchases({
           reco_id: reco.id,
           date: scheduledFoliarDate,
           dateStartHour: foliarStartHour,
+          hoursSlot: "07h00 - 09h00",
+          sprayVolumeL: sprayVolL,
           status: options.markAsExecutedIfPast ? "execute" : "planifie",
           ...(options.markAsExecutedIfPast
             ? {
@@ -716,28 +905,44 @@ export async function validateRecommendationAndPurchases({
       }
     } else if (reco.kind === "phytosanitaire") {
       // ========================================================
-      // C. TRAITEMENT PHYTOSANITAIRE (Soir / Crépuscule)
+      // C. TRAITEMENT PHYTOSANITAIRE (1× UNIQUE, Fin d'après-midi 15h00 - 17h00)
       // ========================================================
-      // Planifié au COUCHER DU SOLEIL (Benhar)
-      // Étalement glissant : Traitement 1 à J+3, Traitement 2 à J+7
-      // Exclusion stricte : Ne jamais planifier foliaire et phyto le même jour
+      // Correction 1 : 1× UNIQUE par recommandation (sauf Traitement 2 explicite ex. Fluxapyroxad +7j)
+      // Correction 2 : Protection du Vendredi
+      // Correction 4 : Contrainte "1 seul pulvérisateur" ferme entière (jamais le même jour qu'un Foliaire)
       const titleLower = (reco.title || "").toLowerCase();
       let scheduledPhytoDate = addDaysDate(plannedStartDate, 2); // J+3 par défaut
 
-      if (titleLower.includes("traitement 2")) {
-        scheduledPhytoDate = addDaysDate(plannedStartDate, 6); // J+7
+      if (titleLower.includes("traitement 2") || titleLower.includes("fluxapyroxad")) {
+        scheduledPhytoDate = addDaysDate(plannedStartDate, 7); // +7j après Traitement 1
       }
 
-      const phytoSolar = getSolarTimesForDate(scheduledPhytoDate);
-      const phytoStartHour = phytoSolar.sunsetStr;
+      const existingPulvRecordsFarm = getAllModuleRecordsSnapshot("pulverisation");
+      const farmFoliarDates = new Set(
+        existingPulvRecordsFarm
+          .filter((r: any) => r.reco_id !== reco.id && typeof r.date === "string")
+          .map((r: any) => String(r.date).slice(0, 10))
+      );
+
+      scheduledPhytoDate = avoidFriday(scheduledPhytoDate);
+      let phytoSafety = 0;
+      while (phytoSafety < 14) {
+        if (!isFridayDate(scheduledPhytoDate) && !farmFoliarDates.has(scheduledPhytoDate)) break;
+        scheduledPhytoDate = addDaysDate(scheduledPhytoDate, 1);
+        phytoSafety++;
+      }
+
+      // Correction 4 : Horaire Phytosanitaire fin d'après-midi avant la nuit (15h00 - 17h00)
+      const phytoStartHour = "15:00";
 
       for (const parcel of targetParcels) {
         const surface = safeParseFloat(parcel.info?.surface) || 1;
+        const sprayVolL = getParcelSprayVolumeLiters(parcel);
         clonedCount++;
 
         if (Array.isArray(program.products)) {
           for (const p of program.products) {
-            const parsed = parsePhytoProductQuantity(p, surface);
+            const parsed = parsePhytoProductQuantity({ ...p, volume: p.volume || sprayVolL }, surface);
             debitProductStock(p.product, parsed.quantity);
           }
         }
