@@ -263,13 +263,13 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
       clearTimeout(pressTimer);
       setPressTimer(null);
     }
-    
+
     if (hasLongPressed) {
       e.preventDefault();
       e.stopPropagation();
       return;
     }
-    
+
     // Regular click
     handleOpenEdit(lineNumber, treeNumber);
   };
@@ -286,7 +286,7 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
     const { lineNumber, treeNumber } = varietySelectionTree;
     const key = `${lineNumber}-${treeNumber}`;
     const cur = predictionMap.get(key);
-    
+
     upsertPrediction({
       parcelId,
       lineNumber,
@@ -295,10 +295,9 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
       estimatedQty: cur ? cur.estimatedQty : 0,
       treeType: variety,
     });
-    
-    toast.success(`Variété modifiée pour L${lineNumber}-A${treeNumber} : ${
-      variety === "gala" ? "Gala One®" : variety === "golden" ? "Golden Delicious" : "Granny Smith"
-    }`);
+
+    toast.success(`Variété modifiée pour L${lineNumber}-A${treeNumber} : ${variety === "gala" ? "Gala One®" : variety === "golden" ? "Golden Delicious" : "Granny Smith"
+      }`);
     setVarietySelectionTree(null);
   };
 
@@ -363,7 +362,7 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
       let lineTotal = 0;
       let lineFruiting = 0;
       let lineQty = 0;
-      
+
       for (let s = 1; s <= totalSections; s++) {
         const count = configsMap.get(`${l}-${s}`) ?? 8;
         lineTotal += count;
@@ -772,11 +771,10 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
               <button
                 key={line}
                 onClick={() => setSelectedLine(line)}
-                className={`flex flex-col items-center justify-center shrink-0 w-16 py-1.5 rounded-xl border text-xs font-bold transition-all ${
-                  selectedLine === line
+                className={`flex flex-col items-center justify-center shrink-0 w-16 py-1.5 rounded-xl border text-xs font-bold transition-all ${selectedLine === line
                     ? "bg-primary border-primary text-primary-foreground shadow-sm"
                     : "bg-muted/10 border-input text-muted-foreground hover:bg-muted/30"
-                }`}
+                  }`}
               >
                 <span>Ligne {line}</span>
                 <span className={`text-[9px] font-normal mt-0.5 ${selectedLine === line ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
@@ -792,7 +790,7 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
       <div className="space-y-4">
         {selectedLineSections.map((sec) => {
           const sectionNumStr = String(sec.sectionNumber).padStart(2, "0");
-          
+
           // Get predictions in this section to find fruiting count
           let sectionFruitingCount = 0;
           for (let t = sec.startTreeIndex; t < sec.startTreeIndex + sec.treeCount; t++) {
@@ -813,7 +811,7 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
                     ({sectionFruitingCount} / {sec.treeCount} {fruitIcon})
                   </span>
                 </div>
-                
+
                 {/* Configuration of tree count and quick actions */}
                 <div className="flex gap-2 items-center justify-end">
                   <div className="flex items-center gap-1">
@@ -878,13 +876,12 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
                       onPointerMove={handlePointerCancel}
                       onContextMenu={(e) => e.preventDefault()}
                       disabled={!canEdit}
-                      className={`relative flex flex-col items-center justify-center p-2 rounded-2xl border text-center transition-all ${bgClass} ${
-                        canEdit ? "cursor-pointer active:scale-95 touch-none" : "cursor-default"
-                      }`}
+                      className={`relative flex flex-col items-center justify-center p-2 rounded-2xl border text-center transition-all ${bgClass} ${canEdit ? "cursor-pointer active:scale-95 touch-none" : "cursor-default"
+                        }`}
                     >
                       <span className="text-[9px] font-bold">A-{treeIdx}</span>
                       <div className="my-1 text-sm">{currentIcon}</div>
-                      
+
                       {/* Variety Indicator */}
                       {varietyBadge && (
                         <span className="text-[8px] uppercase tracking-tighter opacity-80 mb-0.5 block font-extrabold">

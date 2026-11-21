@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import TabsLayout from "@/pages/TabsLayout";
 import Home from "@/pages/Home";
 import Parcelles from "@/pages/Parcelles";
@@ -21,9 +22,19 @@ import DonneesEnAttente from "@/pages/DonneesEnAttente";
 import ManageUsers from "@/pages/ManageUsers";
 import Meteo from "@/pages/Meteo";
 
+function ScrollToTop() {
+  const { pathname, search } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname, search]);
+  return null;
+}
+
 export default function App() {
   return (
-    <Routes>
+    <>
+      <ScrollToTop />
+      <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/configuration" element={<Configuration />} />
       <Route path="/parcelle/:id" element={<Parcelle />} />
@@ -47,5 +58,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </>
   );
 }

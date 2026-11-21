@@ -103,7 +103,18 @@ export function ParcelExecutantView({ parcel }: { parcel: Parcel }) {
           <h2 className="text-lg font-bold">Irrigation</h2>
         </header>
         <p className="text-sm text-muted-foreground">
-          Fréquence : {parcel.info.frequency || "—"} · Pompe : {parcel.info.pumpBar || "—"}
+          Fréquence :{" "}
+          {parcel.info.frequency
+            ? /hz/i.test(parcel.info.frequency)
+              ? parcel.info.frequency
+              : `${parcel.info.frequency} Hz`
+            : "—"}{" "}
+          · Pression :{" "}
+          {parcel.info.pumpBar
+            ? /bar/i.test(parcel.info.pumpBar)
+              ? parcel.info.pumpBar
+              : `${parcel.info.pumpBar} bar`
+            : "—"}
         </p>
         <button 
           onClick={handleStartIrrigation}

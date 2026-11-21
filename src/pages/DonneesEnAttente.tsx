@@ -93,7 +93,7 @@ export default function DonneesEnAttente() {
           <div className="text-sm">
             <div><strong>{entries.length}</strong> action{entries.length > 1 ? "s" : ""} en attente</div>
             <div><strong>{photos.length}</strong> photo{photos.length > 1 ? "s" : ""} • {(totalPhotosBytes / 1024 / 1024).toFixed(1)} Mo</div>
-            <div><strong>{conflicts.length}</strong> conflit{conflicts.length > 1 ? "s" : ""} récents</div>
+            <div><strong>{conflicts.length}</strong> {conflicts.length > 1 ? "conflits récents" : "conflit récent"}</div>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
             {(entries.length > 0 || photos.length > 0) && (

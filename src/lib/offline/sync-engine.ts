@@ -17,9 +17,30 @@ export function registerOp(op: string, handler: Handler): void {
   handlers.set(op, handler);
 }
 
+const LAST_SYNC_KEY = "doula-last-sync-at";
+
 let runningPromise: Promise<void> | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 const subscribers = new Set<() => void>();
+
+export function getLastSuccessSyncAt(): number | null {
+  try {
+    const raw = localStorage.getItem(LAST_SYNC_KEY);
+    if (!raw) return null;
+    const ts = Number(raw);
+    return Number.isFinite(ts) && ts > 0 ? ts : null;
+  } catch {
+    return null;
+  }
+}
+
+export function markSyncSuccess(): void {
+  try {
+    localStorage.setItem(LAST_SYNC_KEY, String(Date.now()));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export interface OutboxStats {
   pending: number;
@@ -251,6 +272,13 @@ async function runOnce(): Promise<void> {
         last_error: serializeError(err),
         updated_at: Date.now(),
       });
+    }
+  }
+
+  if (getNetworkStatus() === "online") {
+    const remainingErrors = await offlineDB.outbox.where("status").equals("error").count();
+    if (remainingErrors === 0) {
+      markSyncSuccess();
     }
   }
 

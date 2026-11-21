@@ -8,9 +8,18 @@ function current(): NetworkStatus {
   return typeof navigator !== "undefined" && navigator.onLine ? "online" : "offline";
 }
 
+function emit() {
+  const s = current();
+  listeners.forEach((l) => l(s));
+}
+
 if (typeof window !== "undefined") {
-  window.addEventListener("online", () => listeners.forEach((l) => l("online")));
-  window.addEventListener("offline", () => listeners.forEach((l) => l("offline")));
+  window.addEventListener("online", emit);
+  window.addEventListener("offline", emit);
+  window.addEventListener("focus", emit);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") emit();
+  });
 }
 
 export function subscribeNetwork(cb: (s: NetworkStatus) => void): () => void {

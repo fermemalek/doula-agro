@@ -1,11 +1,22 @@
 import { useEffect, useState } from "react";
 import { Wifi, WifiOff, CloudOff, RefreshCw } from "lucide-react";
-import { useNetworkStatus } from "@/lib/offline/network";
-import { getStats, subscribeStats, scheduleSync, type OutboxStats } from "@/lib/offline/sync-engine";
+import { useNetworkStatus, getNetworkStatus } from "@/lib/offline/network";
+import {
+  getStats,
+  subscribeStats,
+  scheduleSync,
+  getLastSuccessSyncAt,
+  markSyncSuccess,
+  type OutboxStats,
+} from "@/lib/offline/sync-engine";
 import { cn } from "@/lib/utils";
 
 export function OfflineBadge({ className }: { className?: string }) {
-  const status = useNetworkStatus();
+  const networkStatus = useNetworkStatus();
+  const [liveOnline, setLiveOnline] = useState<boolean>(
+    () => getNetworkStatus() === "online"
+  );
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(() => getLastSuccessSyncAt());
   const [stats, setStats] = useState<OutboxStats>({
     pending: 0,
     processing: 0,
@@ -15,10 +26,21 @@ export function OfflineBadge({ className }: { className?: string }) {
   });
 
   useEffect(() => {
+    setLiveOnline(networkStatus === "online");
+  }, [networkStatus]);
+
+  useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
+      const onlineNow = getNetworkStatus() === "online";
       const s = await getStats();
-      if (!cancelled) setStats(s);
+      if (cancelled) return;
+      setLiveOnline(onlineNow);
+      setStats(s);
+      if (onlineNow && s.pending === 0 && s.processing === 0 && s.photos_pending === 0 && s.error === 0) {
+        if (!getLastSuccessSyncAt()) markSyncSuccess();
+      }
+      setLastSyncAt(getLastSuccessSyncAt());
     };
     void refresh();
     const unsub = subscribeStats(refresh);
@@ -32,6 +54,10 @@ export function OfflineBadge({ className }: { className?: string }) {
 
   const totalPending = stats.pending + stats.processing + stats.photos_pending;
   const hasErrors = stats.error > 0;
+  const status = liveOnline && networkStatus === "online" ? "online" : "offline";
+  const lastSyncLabel = lastSyncAt
+    ? new Date(lastSyncAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+    : null;
 
   if (status === "online" && totalPending === 0 && !hasErrors) {
     return (
@@ -40,7 +66,11 @@ export function OfflineBadge({ className }: { className?: string }) {
           "inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400",
           className,
         )}
-        title="En ligne — toutes les données sont synchronisées"
+        title={
+          lastSyncLabel
+            ? `En ligne — dernière synchronisation réussie à ${lastSyncLabel}`
+            : "En ligne — toutes les données sont synchronisées"
+        }
       >
         <Wifi className="h-3 w-3" />
         En ligne

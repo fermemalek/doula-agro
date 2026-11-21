@@ -7,11 +7,11 @@ import { useAlertActions, uploadAlertPhotos, type AlertKind } from "@/lib/cloud/
 import { useNetworkStatus } from "@/lib/offline/network";
 import { toast } from "sonner";
 
-const TYPES: { id: AnomalyType; icon: typeof Bug }[] = [
-  { id: "maladie", icon: Bug },
-  { id: "casse", icon: Hammer },
-  { id: "fuite", icon: Droplets },
-  { id: "autre", icon: HelpCircle },
+const TYPES: { id: AnomalyType; icon: typeof Bug; emoji: string }[] = [
+  { id: "maladie", icon: Bug, emoji: "🐛" },
+  { id: "casse", icon: Hammer, emoji: "🔧" },
+  { id: "fuite", icon: Droplets, emoji: "💧" },
+  { id: "autre", icon: HelpCircle, emoji: "❓" },
 ];
 
 function AnomaliePage() {
@@ -78,7 +78,26 @@ function AnomaliePage() {
         <ArrowLeft className="h-4 w-4" /> Retour
       </button>
       <h1 className="text-xl font-bold">Signaler une anomalie</h1>
-      <p className="mb-4 text-sm text-muted-foreground">Étape {step} / 3</p>
+      <p className="mb-3 text-sm text-muted-foreground">Étape {step} / 3</p>
+
+      {step > 1 && (parcelId || type) && (() => {
+        const selectedParcel = parcels.find((p) => p.id === parcelId);
+        const selectedTypeMeta = TYPES.find((t) => t.id === type);
+        return (
+          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border bg-muted/40 px-3 py-2 text-xs font-semibold">
+            {selectedParcel && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-primary border border-primary/20">
+                📍 {selectedParcel.name}
+              </span>
+            )}
+            {step === 3 && type && selectedTypeMeta && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-1 text-destructive border border-destructive/20">
+                {selectedTypeMeta.emoji} {ANOMALY_LABELS[type]}
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {step === 1 && (
         <section>

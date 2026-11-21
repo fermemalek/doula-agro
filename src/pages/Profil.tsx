@@ -212,36 +212,38 @@ function ProfilPage() {
             <span className="font-semibold">Données en attente & conflits</span>
           </Link>
         </li>
-        <li>
-          <button
-            onClick={async () => {
-              if (!confirm("Effacer tout l'historique local (pulvérisation, phytosanitaire, irrigation, fertilisation, récolte, anomalies) ? Cette action est irréversible.")) return;
-              try {
-                // Remove all local storage items starting with doula-
-                Object.keys(localStorage).forEach((key) => {
-                  if (key.startsWith("doula-")) {
-                    localStorage.removeItem(key);
-                  }
-                });
-                
-                // Clear IndexedDB offline queue
-                await offlineDB.outbox.clear();
-                await offlineDB.photos_outbox.clear();
-                await offlineDB.conflict_log.clear();
+        {role !== "executant" && (
+          <li>
+            <button
+              onClick={async () => {
+                if (!confirm("Effacer tout l'historique local (pulvérisation, phytosanitaire, irrigation, fertilisation, récolte, anomalies) ? Cette action est irréversible.")) return;
+                try {
+                  // Remove all local storage items starting with doula-
+                  Object.keys(localStorage).forEach((key) => {
+                    if (key.startsWith("doula-")) {
+                      localStorage.removeItem(key);
+                    }
+                  });
+                  
+                  // Clear IndexedDB offline queue
+                  await offlineDB.outbox.clear();
+                  await offlineDB.photos_outbox.clear();
+                  await offlineDB.conflict_log.clear();
 
-                toast.success("Historique local effacé");
-                setTimeout(() => window.location.reload(), 600);
-              } catch (err) {
-                console.error(err);
-                toast.error("Impossible d'effacer l'historique");
-              }
-            }}
-            className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-destructive active:scale-95"
-          >
-            <Trash2 className="h-5 w-5" />
-            <span className="font-semibold">Effacer tout l'historique (local)</span>
-          </button>
-        </li>
+                  toast.success("Historique local effacé");
+                  setTimeout(() => window.location.reload(), 600);
+                } catch (err) {
+                  console.error(err);
+                  toast.error("Impossible d'effacer l'historique");
+                }
+              }}
+              className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-destructive active:scale-95"
+            >
+              <Trash2 className="h-5 w-5" />
+              <span className="font-semibold">Effacer tout l'historique (local)</span>
+            </button>
+          </li>
+        )}
         {role === "admin" && (
           <li>
             <button

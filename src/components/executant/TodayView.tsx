@@ -396,7 +396,7 @@ export function TodayView() {
   };
 
   return (
-    <main className="mx-auto max-w-3xl px-4 pb-4 pt-4">
+    <main className="mx-auto max-w-3xl px-4 pb-28 pt-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div>
           <h1 className="text-lg font-semibold capitalize text-foreground">
