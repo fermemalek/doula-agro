@@ -349,8 +349,10 @@ export function checkTankMixCompatibility(
   const isCaptaneA = codeA.includes("M04") || cleanA.toLowerCase().includes("captan") || cleanA.toLowerCase().includes("criptan") || cleanA.toLowerCase().includes("capitan");
   const isCaptaneB = codeB.includes("M04") || cleanB.toLowerCase().includes("captan") || cleanB.toLowerCase().includes("criptan") || cleanB.toLowerCase().includes("capitan");
 
-  const isHuileA = cleanA.toLowerCase().includes("huile") || cleanA.toLowerCase().includes("agroil") || cleanA.toLowerCase().includes("oil");
-  const isHuileB = cleanB.toLowerCase().includes("huile") || cleanB.toLowerCase().includes("agroil") || cleanB.toLowerCase().includes("oil");
+  const activeFrA = getMatiereActive(cleanA).toLowerCase();
+  const activeFrB = getMatiereActive(cleanB).toLowerCase();
+  const isHuileA = activeFrA.includes("huile") || cleanA.toLowerCase().includes("huile") || cleanA.toLowerCase().includes("agroil") || cleanA.toLowerCase().includes("oil") || cleanA.toLowerCase().includes("citrole") || cleanA.toLowerCase().includes("beidazit") || cleanA.toLowerCase().includes("hp22");
+  const isHuileB = activeFrB.includes("huile") || cleanB.toLowerCase().includes("huile") || cleanB.toLowerCase().includes("agroil") || cleanB.toLowerCase().includes("oil") || cleanB.toLowerCase().includes("citrole") || cleanB.toLowerCase().includes("beidazit") || cleanB.toLowerCase().includes("hp22");
 
   // Incompatibilité Cuivre + Fosétyl
   if ((isCuivreA && isFosetylB) || (isCuivreB && isFosetylA)) {
