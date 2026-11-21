@@ -203,8 +203,8 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        overlayClassName="z-[105]"
-        className="z-[110] max-h-[92vh] overflow-y-auto sm:max-w-2xl bg-card text-card-foreground p-0 rounded-3xl shadow-2xl border"
+        overlayClassName="z-[10000]"
+        className="z-[10001] max-h-[92vh] overflow-y-auto sm:max-w-2xl bg-card text-card-foreground p-0 rounded-3xl shadow-2xl border"
       >
         {/* En-tête avec indicateur de culture hôte */}
         <div className="bg-gradient-to-r from-emerald-700 via-teal-800 to-slate-900 text-white p-5 rounded-t-3xl relative">

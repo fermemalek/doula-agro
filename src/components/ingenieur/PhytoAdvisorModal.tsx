@@ -1,8 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-} from '@/components/ui/dialog';
+import ReactDOM from 'react-dom';
 import {
   ShieldAlert,
   Sparkles,
@@ -27,7 +24,8 @@ import {
   CloudRain,
   GitFork,
   Activity,
-  Shield
+  Shield,
+  X,
 } from 'lucide-react';
 import { PestVisualGalleryDialog } from './PestVisualGalleryDialog';
 import { useTranslation } from '@/lib/i18n';
@@ -326,15 +324,44 @@ export function PhytoAdvisorModal({
       });
   }, [catalogCropFilter, catalogSearch, selectedStage, hideBlockedInCatalog]);
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        overlayClassName="z-[90]"
-        className="z-[100] max-h-[94vh] overflow-y-auto sm:max-w-4xl bg-card text-card-foreground p-0 rounded-3xl shadow-2xl border"
+  // Fermer avec la touche Échap lorsque la modale est ouverte
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !galleryPest) {
+        e.stopPropagation();
+        onOpenChange(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [open, galleryPest, onOpenChange]);
+
+  if (!open || typeof document === 'undefined') return null;
+
+  return ReactDOM.createPortal(
+    <>
+      <div
+        role="dialog"
+        aria-modal="true"
+        onClick={() => onOpenChange(false)}
+        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in-0 duration-150"
       >
-        {/* En-tête avec bannière scientifique */}
-        <div className="bg-gradient-to-r from-emerald-600 via-teal-700 to-sky-700 text-white p-5 rounded-t-3xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="relative w-full max-w-4xl max-h-[94vh] overflow-y-auto bg-card text-card-foreground p-0 rounded-3xl shadow-2xl border"
+        >
+          {/* En-tête avec bannière scientifique */}
+          <div className="bg-gradient-to-r from-emerald-600 via-teal-700 to-sky-700 text-white p-5 rounded-t-3xl relative">
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              aria-label={isAr ? "إغلاق" : "Fermer"}
+              className="absolute top-3.5 right-3.5 rtl:right-auto rtl:left-3.5 h-8 w-8 rounded-full bg-black/25 hover:bg-black/45 text-white flex items-center justify-center transition cursor-pointer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pr-9 rtl:pr-0 rtl:pl-9">
             <div className="flex items-center gap-3">
               <div className="h-12 w-12 rounded-2xl bg-white/15 backdrop-blur-md flex items-center justify-center shadow-inner shrink-0">
                 <Sparkles className="h-6 w-6 text-amber-300" />
@@ -1304,9 +1331,10 @@ export function PhytoAdvisorModal({
                   : "Ne réalisez jamais deux traitements successifs avec le même code de groupe chimique (même numéro). L'alternance stricte des modes d'action est indispensable pour préserver l'efficacité des matières actives."}
               </p>
             </div>
+            </div>
           </div>
         </div>
-      </DialogContent>
+      </div>
 
       {/* Modale de la galerie visuelle hybride en 3 niveaux */}
       <PestVisualGalleryDialog
@@ -1319,6 +1347,7 @@ export function PhytoAdvisorModal({
           setGalleryPest(null);
         }}
       />
-    </Dialog>
+    </>,
+    document.body
   );
 }
