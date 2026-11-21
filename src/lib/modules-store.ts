@@ -154,7 +154,9 @@ function persist() {
 }
 
 /**
- * Récupère tous les enregistrements de modules depuis Supabase Cloud
+ * Récupère tous les enregistrements de modules depuis Supabase Cloud.
+ * Supabase est la source de vérité autoritaire : les enregistrements supprimés dans le cloud
+ * (ex. après une réinitialisation sur un autre micro) sont immédiatement purgés du cache local.
  */
 export async function fetchCloudModules() {
   try {
@@ -164,14 +166,27 @@ export async function fetchCloudModules() {
       .order("created_at", { ascending: false });
 
     if (!error && records) {
-      let changed = false;
+      const cloudModules = new Set<ModuleName>(Object.values(REVERSE_CLOUD_KIND));
+      const nextData: Store = {};
+
+      // Conserver uniquement les modules strictement locaux (taille, amendement) non synchronisés dans module_records
+      for (const pid of Object.keys(data)) {
+        for (const mod of Object.keys(data[pid] || {}) as ModuleName[]) {
+          if (!cloudModules.has(mod) && Array.isArray(data[pid][mod]) && data[pid][mod].length > 0) {
+            if (!nextData[pid]) nextData[pid] = {} as any;
+            nextData[pid][mod] = data[pid][mod];
+          }
+        }
+      }
+
+      // Reconstruire intégralement les modules cloud depuis la réponse autoritaire de Supabase
       for (const rec of records) {
         if (!rec.parcel_id || !rec.kind) continue;
         const mod = REVERSE_CLOUD_KIND[rec.kind];
         if (!mod) continue;
 
-        if (!data[rec.parcel_id]) data[rec.parcel_id] = {} as any;
-        if (!data[rec.parcel_id][mod]) data[rec.parcel_id][mod] = [];
+        if (!nextData[rec.parcel_id]) nextData[rec.parcel_id] = {} as any;
+        if (!nextData[rec.parcel_id][mod]) nextData[rec.parcel_id][mod] = [];
 
         const payload = typeof rec.payload === "object" && rec.payload !== null ? (rec.payload as any) : {};
         const item = {
@@ -185,18 +200,11 @@ export async function fetchCloudModules() {
           executed_at: rec.executed_at,
         };
 
-        const existingIdx = data[rec.parcel_id][mod].findIndex((existing: any) => existing.id === item.id);
-        if (existingIdx >= 0) {
-          data[rec.parcel_id][mod][existingIdx] = { ...data[rec.parcel_id][mod][existingIdx], ...item };
-        } else {
-          data[rec.parcel_id][mod].unshift(item);
-          changed = true;
-        }
+        nextData[rec.parcel_id][mod].push(item);
       }
 
-      if (changed) {
-        persist();
-      }
+      data = nextData;
+      persist();
     }
   } catch (err) {
     console.debug("[modules-store] cloud fetch error", err);
@@ -204,40 +212,22 @@ export async function fetchCloudModules() {
 }
 
 /**
- * Migre les enregistrements locaux vers le Cloud dès qu'une session est active
+ * Vide immédiatement tous les enregistrements de modules en mémoire et en localStorage
+ * (appelé lors d'une réinitialisation globale des recommandations).
  */
-async function syncLocalModulesToCloud() {
-  try {
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) return;
-    for (const pid of Object.keys(data)) {
-      if (!data[pid]) continue;
-      for (const mod of Object.keys(data[pid]) as ModuleName[]) {
-        const list = data[pid][mod];
-        if (Array.isArray(list)) {
-          for (const item of list) {
-            if (item && item.id) {
-              void dualWriteCloud(pid, mod, item);
-            }
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.debug("[modules-store] syncLocalModulesToCloud skipped", err);
-  }
+export function clearAllModuleRecordsLocal() {
+  data = {};
+  persist();
 }
 
 if (typeof window !== "undefined") {
   setTimeout(() => {
     void fetchCloudModules();
-    void syncLocalModulesToCloud();
-  }, 400);
+  }, 300);
 
   supabase.auth.onAuthStateChange((event) => {
     if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
       void fetchCloudModules();
-      void syncLocalModulesToCloud();
     }
   });
 

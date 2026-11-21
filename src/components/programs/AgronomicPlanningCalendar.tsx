@@ -2633,8 +2633,8 @@ export function AgronomicPlanningCalendar({
                     </div>
                   </div>
 
-                  {/* Note explicative spécifique pour Pommier Gala One */}
-                  {crop.id === "pommiers" && !has20AvrInCrop && (
+                  {/* Note explicative spécifique pour Pommier Gala One (uniquement si des paliers actifs existent) */}
+                  {crop.id === "pommiers" && cropPeriods.length > 0 && !has20AvrInCrop && (
                     <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2.5 text-xs text-amber-900 dark:text-amber-200 flex items-center gap-2">
                       <Info className="h-4 w-4 shrink-0 text-amber-600" />
                       <span>
