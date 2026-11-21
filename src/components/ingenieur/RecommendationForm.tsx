@@ -998,7 +998,7 @@ export function RecommendationForm({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={handleSafeClose}>
+      <Dialog open={open} onOpenChange={handleSafeClose} modal={!phytoAdvisorOpen}>
         <DialogContent
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
