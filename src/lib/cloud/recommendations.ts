@@ -47,7 +47,7 @@ export function addLocalDeletedRecoId(id: string) {
     const s = getLocalDeletedRecoIds();
     s.add(id);
     localStorage.setItem(LOCAL_DELETED_KEY, JSON.stringify(Array.from(s)));
-  } catch {}
+  } catch { }
 }
 
 const STATUS_OVERRIDES_KEY = "doula_recos_status_overrides";
@@ -68,7 +68,7 @@ export function setRecoStatusOverride(id: string, status: RecoStatus) {
     const overrides = getRecoStatusOverrides();
     overrides[id] = status;
     localStorage.setItem(STATUS_OVERRIDES_KEY, JSON.stringify(overrides));
-  } catch {}
+  } catch { }
 }
 
 export function resetAllRecoStatusOverrides(allIds: string[]) {
@@ -79,7 +79,7 @@ export function resetAllRecoStatusOverrides(allIds: string[]) {
       overrides[id] = "envoyee";
     }
     localStorage.setItem(STATUS_OVERRIDES_KEY, JSON.stringify(overrides));
-  } catch {}
+  } catch { }
 }
 
 export function cleanRecoTitle(title: string | null | undefined): string {
@@ -135,12 +135,18 @@ export function useRecommendations() {
         return true;
       });
 
-      const statusOverrides = getRecoStatusOverrides();
+      // Supabase est la source de vérité autoritaire : purger les anciens overrides locaux
+      // afin qu'un autre PC ne réaffiche jamais d'anciens statuts "acceptee" après une réinitialisation cloud.
+      if (typeof window !== "undefined" && Array.isArray(data)) {
+        try {
+          localStorage.removeItem(STATUS_OVERRIDES_KEY);
+        } catch { }
+      }
 
       return valid.map((r) => {
         let title = cleanRecoTitle(r.title);
         let payload = (r.payload || {}) as Record<string, any>;
-        const status = statusOverrides[r.id] ?? r.status ?? "envoyee";
+        const status = (r.status ?? "envoyee") as RecoStatus;
 
         // Remplacement systématique de Passage par Pulvérisation dans le titre et les sous-programmes
         title = title.replace(/\bPassage\s*(\d+)/gi, "Pulvérisation $1").replace(/\bPassage\b/gi, "Pulvérisation");
@@ -187,7 +193,7 @@ export function useRecommendations() {
               /\b(?:Pulv[ée]risation|Passage|رشة)\s*2\b/i.test(title) ||
               /\b(?:Pulv[ée]risation|Passage|رشة)\s*2\b/i.test(payload.program?.label || "") ||
               ((itemText.includes("algreen") || itemText.includes("طحالب") || itemText.includes("oligo") || itemText.includes("عناصر")) &&
-               !(itemText.includes("calcium") || itemText.includes("bore") || itemText.includes("كالسيوم") || itemText.includes("بور")))
+                !(itemText.includes("calcium") || itemText.includes("bore") || itemText.includes("كالسيوم") || itemText.includes("بور")))
             ) {
               pulvNum = 2;
             } else if (
@@ -388,9 +394,14 @@ export function useRecommendationActions() {
 
   const resetAllToPending = useMutation({
     mutationFn: async () => {
-      // 1. Mise à jour optimiste immédiate dans le cache et écriture de l'état persistant
       const currentList = qc.getQueryData<Recommendation[]>(KEY) || [];
-      resetAllRecoStatusOverrides(currentList.map((r) => r.id));
+
+      // 1. Purger les overrides locaux et mettre à jour immédiatement le cache React Query
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.removeItem(STATUS_OVERRIDES_KEY);
+        } catch { }
+      }
 
       qc.setQueryData<Recommendation[]>(KEY, (old) => {
         if (!old) return old;
@@ -403,38 +414,17 @@ export function useRecommendationActions() {
         }));
       });
 
-      // 2. Mise à jour directe dans Supabase pour toutes les recommandations
-      try {
-        await (supabase as any)
-          .from("recommendations")
-          .update({
-            status: "envoyee",
-            reviewed_at: null,
-            reviewed_by: null,
-            transferred_record_id: null,
-          })
-          .neq("id", "00000000-0000-0000-0000-000000000000");
-      } catch (err) {
-        console.warn("[recommendations] Direct resetAllToPending failed:", err);
-      }
-
-      // 3. Purge locale des enregistrements générés
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.removeItem("doula-modules");
-          localStorage.removeItem("doula-suppliers");
-        } catch {}
-      }
-
-      // 4. Dual-clean des achats dans Supabase
-      try {
-        await (supabase as any)
-          .from("supplier_purchases")
-          .delete()
-          .neq("id", "00000000-0000-0000-0000-000000000000");
-      } catch {}
+      // 2. Exécuter la réinitialisation complète Cloud + Local (recommendations, module_records,
+      //    tasks, task_executions, parcels -> "ok", purge achats auto-générés tout en conservant Agrimax)
+      const { resetAllAppliedRecoHistory } = await import("@/lib/reco-validation");
+      await resetAllAppliedRecoHistory(currentList);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEY });
+      qc.invalidateQueries({ queryKey: ["programs"] });
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["executions"] });
+    },
   });
 
   const update = useMutation({
@@ -561,7 +551,7 @@ export function useRecommendationActions() {
           const histList: string[] = rawHist ? JSON.parse(rawHist) : [];
           if (!histList.includes(id)) histList.push(id, `reco-${id}`);
           localStorage.setItem("doula_dismissed_phyto_history", JSON.stringify(histList));
-        } catch {}
+        } catch { }
       }
 
       // 3. Retrait optimiste immédiat du cache React Query
@@ -620,7 +610,7 @@ export function useRecommendationActions() {
           payload: { id },
         });
         scheduleSync();
-      } catch {}
+      } catch { }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
   });
