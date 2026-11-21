@@ -188,28 +188,30 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
         weinberger += 1;
       }
 
-      // --- Modèle Utah (Unités CU avec pénalités thermiques) ---
+      // --- Modèle Utah (Unités CU avec pénalités thermiques et plancher à 0 heure par heure) ---
+      let hourCU = 0;
       if (t < 1.4) {
-        utah += 0;
+        hourCU = 0;
       } else if (t >= 1.4 && t <= 2.4) {
-        utah += 0.5;
+        hourCU = 0.5;
       } else if (t > 2.4 && t <= 9.1) {
-        utah += 1.0;
+        hourCU = 1.0;
       } else if (t > 9.1 && t <= 12.4) {
-        utah += 0.5;
+        hourCU = 0.5;
       } else if (t > 12.4 && t <= 15.9) {
-        utah += 0;
+        hourCU = 0;
       } else if (t >= 16.0 && t <= 18.0) {
-        utah -= 0.5; // Début d'annulation par la chaleur
+        hourCU = -0.5; // Début d'annulation par la chaleur
         warmHours += 1;
       } else if (t > 18.0) {
-        utah -= 1.0; // Forte annulation de l'accumulation
+        hourCU = -1.0; // Forte annulation de l'accumulation
         warmHours += 1;
       }
+      utah = Math.max(0, utah + hourCU);
     }
 
     setWeinbergerHours(weinberger);
-    setUtahUnits(Math.max(0, Math.round(utah))); // Le cumul Utah ne peut être négatif
+    setUtahUnits(Math.round(utah));
     setWarmHoursCount(warmHours);
     setTotalHoursAnalyzed(count);
   }, []);
@@ -593,13 +595,17 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
                 <span>{isAr ? "تشخيص ورأي المهندس الفلاحي :" : "💡 Avis Agronome :"}</span>
               </p>
               <p className="leading-relaxed">
-                {difference > 20
+                {weinbergerHours < 20 || warmHoursCount > 100
                   ? isAr
-                    ? "تؤدي ساعات النهار المشمسة والدافئة إلى إضعاف فعالية البرودة المتراكمة ليلاً. نموذج يوتا يعكس بشكل أصدق مرحلة السكون الفسيولوجي للأشجار في ضيعتنا مقارنة بالعد الخام البسيط."
-                    : "Les journées chaudes actuelles réduisent l'efficacité du froid accumulé la nuit. Le modèle Utah reflète plus fidèlement la dormance physiologique que le simple décompte brut."
-                  : isAr
-                    ? "توافق ممتاز بين النموذجين : تبقى درجات الحرارة النهارية معتدلة وباردة مما يمنع إتلاف وتدمير وحدات البرودة المتراكمة."
-                    : "Bonne concordance entre les modèles : les températures diurnes restent suffisamment fraîches pour éviter la destruction des unités de froid."}
+                    ? "بداية موسم البرودة — تراكم ساعات حرارة مرتفعة (>16°م) يؤخر بداية السكون."
+                    : "Début de la saison de froid — l'accumulation d'heures chaudes (> 16°C) retarde l'entrée en dormance."
+                  : difference > 20
+                    ? isAr
+                      ? "تؤدي ساعات النهار المشمسة والدافئة إلى إضعاف فعالية البرودة المتراكمة ليلاً. نموذج يوتا يعكس بشكل أصدق مرحلة السكون الفسيولوجي للأشجار في ضيعتنا مقارنة بالعد الخام البسيط."
+                      : "Les journées chaudes actuelles réduisent l'efficacité du froid accumulé la nuit. Le modèle Utah reflète plus fidèlement la dormance physiologique que le simple décompte brut."
+                    : isAr
+                      ? "توافق ممتاز بين النموذجين : تبقى درجات الحرارة النهارية معتدلة وباردة مما يمنع إتلاف وتدمير وحدات البرودة المتراكمة."
+                      : "Bonne concordance entre les modèles : les températures diurnes restent suffisamment fraîches pour éviter la destruction des unités de froid."}
               </p>
             </div>
           </div>
@@ -721,7 +727,7 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
                       <span className="font-semibold text-muted-foreground flex items-center gap-1">
                         <span>Weinberger (&le; 7.2°C) :</span>
                       </span>
-                      <span className="font-black text-foreground">
+                      <span dir="ltr" className="inline-block font-black text-foreground">
                         {weinbergerHours} / {reqW} h ({pctW}%)
                       </span>
                     </div>
@@ -740,7 +746,7 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
                       <span className="font-semibold text-muted-foreground flex items-center gap-1">
                         <span>Utah (Unités CU) :</span>
                       </span>
-                      <span className="font-black text-sky-600 dark:text-sky-400">
+                      <span dir="ltr" className="inline-block font-black text-sky-600 dark:text-sky-400">
                         {utahUnits} / {reqU} CU ({pctU}%)
                       </span>
                     </div>

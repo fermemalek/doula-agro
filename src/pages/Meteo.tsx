@@ -287,9 +287,14 @@ export default function MeteoPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const currentTemp = meteo?.current?.temperature_2m ?? 22;
-  const todayMaxTemp = meteo?.daily?.temperature_2m_max?.[0] ?? currentTemp;
-  const isThresholdExceeded = alertEnabled && (currentTemp >= maxTempThreshold || todayMaxTemp >= maxTempThreshold);
+  const hasLiveTemp = typeof meteo?.current?.temperature_2m === "number";
+  const currentTemp = hasLiveTemp ? meteo!.current.temperature_2m : null;
+  const formattedCurrentTemp = currentTemp !== null ? `${currentTemp.toFixed(1)}°C` : "—";
+  const todayMaxTemp = meteo?.daily?.temperature_2m_max?.[0] ?? currentTemp ?? 0;
+  const isThresholdExceeded =
+    alertEnabled &&
+    ((currentTemp !== null && currentTemp >= maxTempThreshold) ||
+      (todayMaxTemp > 0 && todayMaxTemp >= maxTempThreshold));
 
   // Envoi / Préparation de l'email d'alerte
   const handleTriggerEmailAlert = () => {
@@ -302,7 +307,7 @@ export default function MeteoPage() {
       `⚠️ ALERTE MÉTÉO DOULA AGRO — Température Max Dépassée (${todayMaxTemp.toFixed(1)}°C)`
     );
 
-    const bodyText = `Bonjour Ingénieur,\n\nUne température maximale critique de ${todayMaxTemp.toFixed(1)}°C a été détectée sur la ferme Doula Agro (Seuil d'alerte configuré : ${maxTempThreshold}°C).\n\nDonnées Météo Actuelles :\n- Température actuelle : ${currentTemp.toFixed(1)}°C\n- Température maximale prévue aujourd'hui : ${todayMaxTemp.toFixed(1)}°C\n- Humidité relative : ${meteo?.current?.relative_humidity_2m ?? 0}%\n- Vitesse du vent : ${Math.round((meteo?.current?.wind_speed_10m ?? 0) * 3.6)} km/h\n\nRecommandations agronomiques d'urgence :\n- Éviter les traitements foliaires ou phytosanitaires aux heures chaudes.\n- Renforcer l'irrigation des parcelles sensibles tôt le matin ou le soir.\n- Vérifier l'état d'hydratation des vergers (oliviers, pommiers, nectariniers).\n\nSystème Automatique Doula Agro 🌱`;
+    const bodyText = `Bonjour Ingénieur,\n\nUne température maximale critique de ${todayMaxTemp.toFixed(1)}°C a été détectée sur la ferme Doula Agro (Seuil d'alerte configuré : ${maxTempThreshold}°C).\n\nDonnées Météo Actuelles :\n- Température actuelle : ${formattedCurrentTemp}\n- Température maximale prévue aujourd'hui : ${todayMaxTemp.toFixed(1)}°C\n- Humidité relative : ${meteo?.current?.relative_humidity_2m ?? 0}%\n- Vitesse du vent : ${Math.round((meteo?.current?.wind_speed_10m ?? 0) * 3.6)} km/h\n\nRecommandations agronomiques d'urgence :\n- Éviter les traitements foliaires ou phytosanitaires aux heures chaudes.\n- Renforcer l'irrigation des parcelles sensibles tôt le matin ou le soir.\n- Vérifier l'état d'hydratation des vergers (oliviers, pommiers, nectariniers).\n\nSystème Automatique Doula Agro 🌱`;
 
     const body = encodeURIComponent(bodyText);
 
@@ -392,8 +397,8 @@ export default function MeteoPage() {
             >
               <Sun className="h-6 w-6" />
             </span>
-            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
-              {currentTemp.toFixed(1)}°C
+            <span dir="ltr" className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
+              {formattedCurrentTemp}
             </span>
           </div>
           <div className="mt-3.5 space-y-1">
@@ -486,13 +491,15 @@ export default function MeteoPage() {
                   <span>📍 Doula Agro — Ain Oussera</span>
                 </span>
                 <div className="flex items-baseline gap-3 mt-1">
-                  <span className="text-4xl sm:text-5xl font-black text-foreground">
-                    {currentTemp.toFixed(1)}°C
+                  <span dir="ltr" className="inline-block text-4xl sm:text-5xl font-black text-foreground">
+                    {formattedCurrentTemp}
                   </span>
                   <div className="text-xs text-muted-foreground font-semibold">
                     <span>{isAr ? "المحسوسة: " : "Ressenti: "}</span>
-                    <span className="text-foreground font-bold">
-                      {meteo?.current?.apparent_temperature?.toFixed(1) ?? currentTemp.toFixed(1)}°C
+                    <span dir="ltr" className="inline-block text-foreground font-bold">
+                      {typeof meteo?.current?.apparent_temperature === "number"
+                        ? `${meteo.current.apparent_temperature.toFixed(1)}°C`
+                        : formattedCurrentTemp}
                     </span>
                   </div>
                 </div>
@@ -674,11 +681,11 @@ export default function MeteoPage() {
 
                     <div className="flex items-center gap-2 text-muted-foreground font-semibold">
                       <Droplets className="h-3.5 w-3.5 text-sky-500" />
-                      <span>{rainSum > 0 ? `${rainSum} mm` : `${rainProb}%`}</span>
+                      <span dir="ltr" className="inline-block">{rainSum > 0 ? `${rainSum} mm` : `${rainProb}%`}</span>
                     </div>
 
                     <div className="text-muted-foreground text-[11px] hidden sm:block">
-                      <span>ETo : <strong className="text-foreground">{et0.toFixed(1)} mm</strong></span>
+                      <span>ETo : <strong dir="ltr" className="inline-block text-foreground">{et0.toFixed(1)} mm</strong></span>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -921,7 +928,9 @@ export default function MeteoPage() {
                     <p className="text-xl font-black text-orange-600 dark:text-orange-400">
                       {m.et0} <span className="text-xs font-normal">mm/j</span>
                     </p>
-                    <p className="text-[10px] text-muted-foreground">~{Math.round(m.et0 * 30)} mm / mois</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {isAr ? `~${Math.round(m.et0 * 30)} ملم / شهر` : `~${Math.round(m.et0 * 30)} mm / mois`}
+                    </p>
                   </div>
                 </div>
 
