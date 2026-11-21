@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
-import { Clock, Droplets, Droplet, CheckCircle2, Calendar, X } from "lucide-react";
+import { Clock, Droplets, Droplet, CheckCircle2, Calendar, X, AlertTriangle, PackageCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import type { RecoStockStatus } from "@/lib/stock-alerts";
 
 export interface OrderScheduleConfirmation {
   customStartHour: string;          // HH:MM (ex: "06:30", "07:00", "15:00")
   customFertIrrigationTime: string; // ex: "1h30", "1h00", "2h00"
   customPureIrrigationTime: string; // ex: "0h", "1h30", "2h30"
+}
+
+export interface OrderStockSummary {
+  status: RecoStockStatus;
+  missingLabels: string[];
+  lowLabels: string[];
 }
 
 interface ValidateOrderScheduleDialogProps {
@@ -15,6 +22,7 @@ interface ValidateOrderScheduleDialogProps {
   title: string;
   subtitle?: string;
   operationLabel?: string;
+  stockSummary?: OrderStockSummary;
   mode: "execute" | "plan";
   defaultStartHour: string;
   defaultFertIrrigationTime: string;
@@ -32,6 +40,7 @@ export function ValidateOrderScheduleDialog({
   title,
   subtitle,
   operationLabel,
+  stockSummary,
   mode,
   defaultStartHour,
   defaultFertIrrigationTime,
@@ -79,6 +88,48 @@ export function ValidateOrderScheduleDialog({
           {operationLabel && (
             <div className="rounded-xl bg-primary/5 border border-primary/20 px-3 py-2 text-xs font-bold text-primary">
               Opération : {operationLabel}
+            </div>
+          )}
+
+          {/* Indicateur d'approvisionnement (Rouge = Achat requis | Orange = Stock min. | Vert = Dispo) */}
+          {stockSummary && (
+            <div
+              className={`rounded-xl border px-3 py-2 text-xs space-y-1 ${
+                stockSummary.status === "missing"
+                  ? "bg-rose-500/10 border-rose-500/40 text-rose-700 dark:text-rose-300"
+                  : stockSummary.status === "low"
+                    ? "bg-amber-500/10 border-amber-500/40 text-amber-800 dark:text-amber-300"
+                    : "bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300"
+              }`}
+            >
+              <div className="font-black flex items-center gap-1.5">
+                {stockSummary.status === "missing" ? (
+                  <>
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span>Achat requis — Approvisionnement nécessaire</span>
+                  </>
+                ) : stockSummary.status === "low" ? (
+                  <>
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span>Disponible — Stock au minimum</span>
+                  </>
+                ) : (
+                  <>
+                    <PackageCheck className="h-3.5 w-3.5 shrink-0" />
+                    <span>Stock disponible — Aucun achat requis</span>
+                  </>
+                )}
+              </div>
+              {stockSummary.missingLabels.length > 0 && (
+                <p className="text-[11px] font-medium leading-snug">
+                  Manquant : {stockSummary.missingLabels.join(", ")}
+                </p>
+              )}
+              {stockSummary.missingLabels.length === 0 && stockSummary.lowLabels.length > 0 && (
+                <p className="text-[11px] font-medium leading-snug">
+                  Stock minimum : {stockSummary.lowLabels.join(", ")}
+                </p>
+              )}
             </div>
           )}
 

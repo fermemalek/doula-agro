@@ -16,10 +16,15 @@ export interface RecoProductStockItem {
   isMissing: boolean;
 }
 
+export type RecoStockStatus = "available" | "low" | "missing";
+
 export interface RecoStockReport {
   hasMissingStock: boolean;
+  isLowStock: boolean;
+  stockStatus: RecoStockStatus;
   items: RecoProductStockItem[];
   missingItems: RecoProductStockItem[];
+  lowStockItems: RecoProductStockItem[];
   totalEstimatedMissingCost: number;
 }
 
@@ -408,8 +413,11 @@ export function checkRecoStock(
 ): RecoStockReport {
   const emptyReport: RecoStockReport = {
     hasMissingStock: false,
+    isLowStock: false,
+    stockStatus: "available",
     items: [],
     missingItems: [],
+    lowStockItems: [],
     totalEstimatedMissingCost: 0,
   };
 
@@ -533,6 +541,7 @@ export function checkRecoStock(
 
     const items: RecoProductStockItem[] = [];
     const missingItems: RecoProductStockItem[] = [];
+    const lowStockItems: RecoProductStockItem[] = [];
     let totalEstimatedMissingCost = 0;
 
     for (const key of Object.keys(sumsMap)) {
@@ -540,8 +549,11 @@ export function checkRecoStock(
       const totalNeeded = parseFloat((raw.neededPerPassage * repeatPassages).toFixed(2));
       const available = parseFloat(getProductStock(raw.name).toFixed(2));
       const missing = parseFloat(Math.max(0, totalNeeded - available).toFixed(2));
+      const remainingAfter = parseFloat(Math.max(0, available - totalNeeded).toFixed(2));
       const cost = parseFloat((missing * raw.price).toFixed(2));
       const isMissing = missing > 0;
+      // Stock minimum (Orange) : disponible pour ce passage, mais réserve restante <= 1 passage ou <= 2 unités
+      const isLow = !isMissing && totalNeeded > 0 && (remainingAfter <= totalNeeded || remainingAfter <= 2);
 
       const item: RecoProductStockItem = {
         name: raw.name,
@@ -558,13 +570,21 @@ export function checkRecoStock(
       if (isMissing) {
         missingItems.push(item);
         totalEstimatedMissingCost += cost;
+      } else if (isLow) {
+        lowStockItems.push(item);
       }
     }
 
+    const stockStatus: RecoStockStatus =
+      missingItems.length > 0 ? "missing" : lowStockItems.length > 0 ? "low" : "available";
+
     return {
       hasMissingStock: missingItems.length > 0,
+      isLowStock: lowStockItems.length > 0,
+      stockStatus,
       items,
       missingItems,
+      lowStockItems,
       totalEstimatedMissingCost: parseFloat(totalEstimatedMissingCost.toFixed(2)),
     };
   } catch (err) {

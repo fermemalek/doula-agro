@@ -19,6 +19,7 @@ import {
   RefreshCw,
   Filter,
   Lock,
+  PackageCheck,
 } from "lucide-react";
 import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
 import { useRole } from "@/lib/role";
@@ -33,7 +34,7 @@ import { useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useParcels, useParcelActions } from "@/lib/parcel-store";
 import { checkRecoStock, getTargetParcelsForReco } from "@/lib/stock-alerts";
 import { validateRecommendationAndPurchases, resetAllAppliedRecoHistory, syncPurchasesForAcceptedRecos, getHydraulicPhaseForDate } from "@/lib/reco-validation";
-import { ValidateOrderScheduleDialog, type OrderScheduleConfirmation } from "@/components/ValidateOrderScheduleDialog";
+import { ValidateOrderScheduleDialog, type OrderScheduleConfirmation, type OrderStockSummary } from "@/components/ValidateOrderScheduleDialog";
 import { getSolarTimesForDate } from "@/lib/astronomy";
 
 type PrescriptionType = "all" | "fert_irrigation" | "fert_foliaire" | "phytosanitaire";
@@ -209,6 +210,7 @@ function RecommandationsPageContent() {
     defaultStartHour: string;
     defaultFertIrrigationTime: string;
     defaultPureIrrigationTime: string;
+    stockSummary: OrderStockSummary;
   } | null>(null);
 
   const openScheduleConfirm = (
@@ -254,6 +256,26 @@ function RecommandationsPageContent() {
       )
     ).join(" · ");
 
+    const missingSet = new Set<string>();
+    const lowSet = new Set<string>();
+    for (const r of recosToRun) {
+      const report = checkRecoStock(r, suppliers, parcels);
+      report.missingItems.forEach((it) => {
+        missingSet.add(`${it.name} (manque ${Math.round(it.missing * 100) / 100} ${it.unit})`);
+      });
+      report.lowStockItems.forEach((it) => {
+        const rem = Math.max(0, Math.round((it.available - it.totalNeeded) * 100) / 100);
+        lowSet.add(`${it.name} (reste ${rem} ${it.unit})`);
+      });
+    }
+    const missingLabels = Array.from(missingSet);
+    const lowLabels = Array.from(lowSet);
+    const stockSummary: OrderStockSummary = {
+      status: missingLabels.length > 0 ? "missing" : lowLabels.length > 0 ? "low" : "available",
+      missingLabels,
+      lowLabels,
+    };
+
     setScheduleConfirmState({
       open: true,
       recosToRun,
@@ -264,6 +286,7 @@ function RecommandationsPageContent() {
       defaultStartHour,
       defaultFertIrrigationTime,
       defaultPureIrrigationTime,
+      stockSummary,
     });
   };
 
@@ -968,7 +991,7 @@ function RecommandationsPageContent() {
             const author = profiles[r.created_by] || "Ingénieur";
             const statusInfo = getRecoStatusInfo(r);
             const isPending = r.status === "envoyee" || r.status === "rejetee";
-            const stockReport = isPending ? checkRecoStock(r, suppliers, parcels) : { hasMissingStock: false };
+            const stockReport = isPending ? checkRecoStock(r, suppliers, parcels) : null;
             const targetParcels = getTargetParcelsForReco(r, parcels);
             const rDate = getRecoDate(r);
             const todayStr = new Date().toISOString().slice(0, 10);
@@ -1020,9 +1043,28 @@ function RecommandationsPageContent() {
                       <span>{config.label}</span>
                     </span>
 
-                    {stockReport.hasMissingStock && (
-                      <span className="shrink-0 rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400 px-2 py-0.5 text-[9px] font-black flex items-center gap-1">
+                    {stockReport && stockReport.stockStatus === "missing" && (
+                      <span
+                        title={`Produits manquants : ${stockReport.missingItems.map((i) => `${i.name} (-${Math.round(i.missing * 100) / 100} ${i.unit})`).join(", ")}`}
+                        className="shrink-0 rounded-full border border-rose-500/40 bg-rose-500/15 text-rose-600 dark:text-rose-400 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
+                      >
                         <AlertTriangle className="h-2.5 w-2.5" /> Achat requis
+                      </span>
+                    )}
+                    {stockReport && stockReport.stockStatus === "low" && (
+                      <span
+                        title={`Stock au minimum après application : ${stockReport.lowStockItems.map((i) => `${i.name} (reste ${Math.max(0, Math.round((i.available - i.totalNeeded) * 100) / 100)} ${i.unit})`).join(", ")}`}
+                        className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
+                      >
+                        <AlertTriangle className="h-2.5 w-2.5" /> Dispo (Stock min.)
+                      </span>
+                    )}
+                    {stockReport && stockReport.stockStatus === "available" && (
+                      <span
+                        title="Tous les produits sont disponibles en stock"
+                        className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
+                      >
+                        <PackageCheck className="h-2.5 w-2.5" /> Stock dispo
                       </span>
                     )}
                   </div>
@@ -1179,6 +1221,7 @@ function RecommandationsPageContent() {
           defaultStartHour={scheduleConfirmState.defaultStartHour}
           defaultFertIrrigationTime={scheduleConfirmState.defaultFertIrrigationTime}
           defaultPureIrrigationTime={scheduleConfirmState.defaultPureIrrigationTime}
+          stockSummary={scheduleConfirmState.stockSummary}
           loading={isBatchValidating}
           onConfirm={executeConfirmedValidation}
         />
