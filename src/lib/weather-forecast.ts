@@ -15,8 +15,9 @@ export function windDir(deg: number): string {
   return dirs[Math.round(deg / 45) % 8];
 }
 
-// Threshold: > 5 m/s = mauvais (≈ 18 km/h)
-export const WIND_LIMIT_MS = 5;
+// Seuil agronomique unifié pulvérisation : < 15 km/h (≈ 4,17 m/s)
+export const WIND_LIMIT_KMH = 15;
+export const WIND_LIMIT_MS = WIND_LIMIT_KMH / 3.6;
 
 export async function diagnoseWindForDate(isoDate: string): Promise<WindDiag | null> {
   const target = new Date(isoDate).getTime();
@@ -38,11 +39,13 @@ export async function diagnoseWindForDate(isoDate: string): Promise<WindDiag | n
       }
     }
     const wind = best.wind?.speed ?? 0;
+    const windKmhExact = wind * 3.6;
+    const isOk = windKmhExact < WIND_LIMIT_KMH;
     return {
       windMs: wind,
-      windKmh: Math.round(wind * 3.6),
-      ok: wind <= WIND_LIMIT_MS,
-      label: wind <= WIND_LIMIT_MS ? "Vent faible — favorable" : "Vent fort — défavorable",
+      windKmh: Math.round(windKmhExact),
+      ok: isOk,
+      label: isOk ? `Vent faible (< ${WIND_LIMIT_KMH} km/h) — favorable` : `Vent fort (>= ${WIND_LIMIT_KMH} km/h) — défavorable`,
       forecastDate: new Date(best.dt * 1000).toLocaleString("fr-FR"),
     };
   } catch {

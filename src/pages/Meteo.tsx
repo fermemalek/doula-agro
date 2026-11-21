@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { useRole } from "@/lib/role";
+import { WIND_LIMIT_KMH } from "@/lib/weather-forecast";
 
 // Coordonnées géographiques de la ferme Doula Agro (Région Ain Oussera / Djelfa)
 const LAT = 35.286281;
@@ -325,9 +326,9 @@ export default function MeteoPage() {
     }, 600);
   };
 
-  // Indicateur d'aptitude à la pulvérisation (Vent < 15 km/h et absence de pluie)
+  // Indicateur d'aptitude à la pulvérisation (Vent < 15 km/h et absence de pluie — aligné avec weather-forecast.ts)
   const windKmh = (meteo?.current?.wind_speed_10m ?? 0) * 3.6;
-  const isSprayConditionOk = windKmh < 15 && (meteo?.current?.precipitation ?? 0) === 0;
+  const isSprayConditionOk = windKmh < WIND_LIMIT_KMH && (meteo?.current?.precipitation ?? 0) === 0;
 
   return (
     <main className="mx-auto max-w-3xl px-4 pb-24 pt-4 space-y-4" dir={isAr ? "rtl" : "ltr"}>
