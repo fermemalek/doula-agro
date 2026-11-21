@@ -640,16 +640,25 @@ export class PhytosanitaryEngine {
 
 /**
  * Résout le chemin absolu / relatif correct pour les images et assets phytosanitaires
- * selon la base Vite ('./' ou '/') pour fonctionner aussi bien en local que sur GitHub Pages.
+ * en utilisant import.meta.env.BASE_URL (compatible local + GitHub Pages /doula-agro/ sur toutes les routes).
  */
 export function resolvePhytoImageUrl(url?: string): string | undefined {
   if (!url) return undefined;
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
     return url;
   }
-  const base = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || './';
-  const cleanBase = base.endsWith('/') ? base : base + '/';
-  const cleanPath = url.startsWith('/') ? url.slice(1) : url;
+  const rawBase =
+    (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.BASE_URL) || '/';
+  let effectiveBase = rawBase;
+  if (rawBase === './' || rawBase === '.') {
+    if (typeof window !== 'undefined' && /^\/doula-agro(\/|$)/.test(window.location.pathname)) {
+      effectiveBase = '/doula-agro/';
+    } else {
+      effectiveBase = '/';
+    }
+  }
+  const cleanBase = effectiveBase.endsWith('/') ? effectiveBase : `${effectiveBase}/`;
+  const cleanPath = url.replace(/^\/+/, '');
   return `${cleanBase}${cleanPath}`;
 }
 

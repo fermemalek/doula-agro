@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import {
   Dialog,
   DialogContent,
@@ -120,6 +121,15 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
 
   const [selectedOrganIndex, setSelectedOrganIndex] = useState<number>(0);
   const [imgError, setImgError] = useState<boolean>(false);
+  const [fallbackFailed, setFallbackFailed] = useState<boolean>(false);
+  const [lightboxOpen, setLightboxOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    setSelectedOrganIndex(0);
+    setImgError(false);
+    setFallbackFailed(false);
+    setLightboxOpen(false);
+  }, [pest?.id, open]);
 
   if (!pest) return null;
 
@@ -271,33 +281,46 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
             </div>
           )}
 
-          {/* NIVEAU 1 : Zone d'affichage visuel (Photo réelle de terrain sans recadrage abusif) */}
+          {/* NIVEAU 1 : Zone d'affichage visuel (Photo réelle de terrain cliquable + Lightbox plein écran) */}
           <div className="rounded-2xl border bg-slate-950 overflow-hidden relative shadow-inner">
-            {currentImageUrl ? (
-              <div className="relative group flex items-center justify-center min-h-[260px] max-h-[380px] bg-slate-950">
+            {currentImageUrl && !fallbackFailed ? (
+              <div
+                onClick={() => setLightboxOpen(true)}
+                className="relative group flex items-center justify-center min-h-[260px] max-h-[380px] bg-slate-950 cursor-pointer"
+                title={isAr ? "انقر لتكبير الصورة" : "Cliquer pour agrandir la photo"}
+              >
                 <img
                   src={currentImageUrl}
                   alt={isAr ? pest.nameAr : pest.nameFr}
                   referrerPolicy="no-referrer"
-                  crossOrigin="anonymous"
                   onError={() => {
-                    if (currentImageUrl !== localDefaultAsset) {
+                    if (!imgError && currentImageUrl !== localDefaultAsset) {
                       setImgError(true);
+                    } else {
+                      setFallbackFailed(true);
                     }
                   }}
-                  className="max-h-[360px] w-auto max-w-full object-contain mx-auto transition-transform duration-300"
+                  className="max-h-[360px] w-auto max-w-full object-contain mx-auto transition-transform duration-300 group-hover:scale-[1.02] cursor-pointer"
                   loading="lazy"
                 />
 
-                {/* Badge d'identification du type d'image (100% Photo réelle de terrain) */}
-                <div className="absolute top-3 left-3 z-10">
-                  <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5 bg-emerald-600/95 text-white border border-emerald-400/50">
+                {/* Badge d'identification cliquable (ouvre l'image en grand) */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setLightboxOpen(true);
+                  }}
+                  className="absolute top-3 left-3 z-10 cursor-pointer"
+                  title={isAr ? "عرض الصورة بالحجم الكامل" : "Afficher la photo en plein écran"}
+                >
+                  <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full shadow-md backdrop-blur-md flex items-center gap-1.5 bg-emerald-600/95 hover:bg-emerald-500 text-white border border-emerald-400/50 transition-colors">
                     <Camera className="h-3.5 w-3.5" />
                     <span>{isAr ? "صورة فوتوغرافية حقيقية" : "Photo réelle de terrain"}</span>
                   </span>
-                </div>
+                </button>
 
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex items-end p-4 z-10">
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent flex items-end p-4 z-10 pointer-events-none">
                   <div className="text-white text-xs font-medium backdrop-blur-xs bg-black/50 p-2.5 rounded-xl border border-white/10 w-full flex items-center justify-between">
                     <div>
                       <p className="font-bold text-white text-sm">{isAr ? activeOrgan.organAr : activeOrgan.organFr}</p>
@@ -325,6 +348,46 @@ export const PestVisualGalleryDialog: React.FC<PestVisualGalleryDialogProps> = (
               </div>
             )}
           </div>
+
+          {/* Lightbox plein écran au clic sur la photo ou le badge */}
+          {lightboxOpen && currentImageUrl && !fallbackFailed && typeof document !== 'undefined' && ReactDOM.createPortal(
+            <div
+              className="fixed inset-0 z-[10050] pointer-events-auto flex flex-col items-center justify-center bg-black/92 p-4 backdrop-blur-sm"
+              onClick={() => setLightboxOpen(false)}
+            >
+              <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+                <a
+                  href={currentImageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-bold text-white transition"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span>{isAr ? "فتح في نافذة جديدة" : "Ouvrir l'image"}</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setLightboxOpen(false)}
+                  className="rounded-full bg-white/15 hover:bg-white/25 p-2 text-white transition cursor-pointer"
+                  aria-label={isAr ? "إغلاق" : "Fermer"}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <img
+                src={currentImageUrl}
+                alt={isAr ? pest.nameAr : pest.nameFr}
+                onClick={(e) => e.stopPropagation()}
+                className="max-h-[85vh] max-w-[94vw] rounded-2xl object-contain shadow-2xl border border-white/10"
+              />
+              <div className="mt-3 text-center text-white">
+                <p className="text-sm font-bold">{isAr ? pest.nameAr : pest.nameFr}</p>
+                <p className="text-xs font-mono italic text-emerald-300">{pest.nameScientific}</p>
+              </div>
+            </div>,
+            document.body
+          )}
 
           {/* Description clinique des dégâts */}
           <div className="rounded-2xl border p-4 bg-background shadow-xs space-y-1.5">

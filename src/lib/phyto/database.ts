@@ -777,13 +777,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_spinosad', 'ing_deltamethrine', 'ing_cypermethrine', 'ing_acetamipride'],
     descriptionFr: 'Piqûres de ponte sur fruits mûrissants, asticots dans la pulpe entraînant une décomposition rapide.',
     descriptionAr: 'وخز الثمار لوضع البيض ودخول اليرقات الدودية إلى اللب مسببة فسادها وسقوطها السريع.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Ceratitis_capitata01.jpg/640px-Ceratitis_capitata01.jpg',
+    primarySampleUrl: 'assets/phyto/photos/nec_ceratite.jpg',
     symptomOrgans: [
       {
         organ: 'fruit',
         organFr: 'Fruits mûrs',
         organAr: 'الثمار الناضجة',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7b/Ceratitis_capitata01.jpg/640px-Ceratitis_capitata01.jpg',
+        imageUrl: 'assets/phyto/photos/nec_ceratite.jpg',
         descriptionFr: 'Point noir de piqûre de ponte entouré d\'un halo ramolli translucide. Pulpe liquéfiée par les asticots.',
         descriptionAr: 'وخزة دقيقة مكان وضع البيض محاطة بهالة طرية رخوة، وانهيار اللب الداخلي مع وجود اليرقات الدودية البيضاء.'
       }
@@ -800,13 +800,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_fenhexamid', 'ing_boscalid_pyraclo', 'ing_tebuconazole', 'ing_fluopyram_tebu'],
     descriptionFr: 'Taches rondes brunes s’étendant rapidement avec coussinets de spores en cercles concentriques. Momification.',
     descriptionAr: 'تعفن دائري بني سريع الانتشار مع حلقات بوغية بيضاء وتحنط الثمار على الشجرة.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Monilinia_fructicola_peach.jpg/640px-Monilinia_fructicola_peach.jpg',
+    primarySampleUrl: 'assets/phyto/photos/nec_monilia.jpg',
     symptomOrgans: [
       {
         organ: 'fruit',
         organFr: 'Fruits en maturation',
         organAr: 'الثمار في مرحلة النضج',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Monilinia_fructicola_peach.jpg/640px-Monilinia_fructicola_peach.jpg',
+        imageUrl: 'assets/phyto/photos/nec_monilia.jpg',
         descriptionFr: 'Pourriture brune circulaire avec coussinets concentriques de spores beiges, momification des fruits restés sur l\'arbre.',
         descriptionAr: 'عفن بني دائري سريع التوسع مع تشكل دوائر متحدة المركز من الحبيبات الفطرية البيضاء/الرمادية وتحنط الحبة.'
       }
@@ -827,13 +827,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_dithianon', 'ing_difenoconazole', 'ing_kresoxim_methyl', 'ing_captane', 'ing_cuivre_bouillie', 'ing_boscalid_pyraclo'],
     descriptionFr: 'Taches vert-olive veloutées sur feuilles puis crevasses, déformations et gale noire sur pommes.',
     descriptionAr: 'بقع زيتونية داكنة مخملية على الأوراق وتشقق وتصلب قشرة الثمار مسببة تشوهات غير قابلة للتسويق.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Venturia_inaequalis_apple_scab.jpg/640px-Venturia_inaequalis_apple_scab.jpg',
+    primarySampleUrl: 'assets/phyto/photos/pom_tavelure.jpg',
     symptomOrgans: [
       {
         organ: 'feuille',
         organFr: 'Feuilles',
         organAr: 'الأوراق',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Venturia_inaequalis_leaf.jpg/640px-Venturia_inaequalis_leaf.jpg',
+        imageUrl: 'assets/phyto/photos/pom_tavelure.jpg',
         descriptionFr: 'Taches veloutées olivâtres puis brun foncé avec déformation et chute prématurée.',
         descriptionAr: 'بقع زيتونية مخملية الملمس تتحول للون البني المسود على نصلي الورقة مع تساقط مبكر.'
       },
@@ -841,7 +841,7 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
         organ: 'fruit',
         organFr: 'Pommes',
         organAr: 'الثمار',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/1/14/Venturia_inaequalis_apple_scab.jpg/640px-Venturia_inaequalis_apple_scab.jpg',
+        imageUrl: 'assets/phyto/photos/pom_tavelure.jpg',
         descriptionFr: 'Croûtes noires liégeuses, crevasses profondes et déformations rendant les pommes invendables.',
         descriptionAr: 'قشور فلينية سوداء وشقوق غائرة وتشوهات حادة في الثمار تفقدها قيمتها التسويقية.'
       }
@@ -858,13 +858,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_fosetyl_al', 'ing_cuivre_bouillie'],
     descriptionFr: 'Inflorescences et pousses noircies prenant l’aspect de brûlures de feu, crosse caractéristique en canne d’évêque.',
     descriptionAr: 'اسوداد مفاجئ للأزهار والأفرع النامية كأنها محترقة بالنار مع انحناء القمم النامية كالعصا.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Erwinia_amylovora_pear.jpg/640px-Erwinia_amylovora_pear.jpg',
+    primarySampleUrl: 'assets/phyto/photos/pom_feu_bacterien.jpg',
     symptomOrgans: [
       {
         organ: 'fleur',
         organFr: 'Fleurs & Bouquets',
         organAr: 'الأزهار والنورات',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Erwinia_amylovora_pear.jpg/640px-Erwinia_amylovora_pear.jpg',
+        imageUrl: 'assets/phyto/photos/pom_feu_bacterien.jpg',
         descriptionFr: 'Flétrissement brusque et noircissement comme brûlé par un coup de feu avec gouttelettes d\'exsudat bactérien.',
         descriptionAr: 'ذبول مفاجئ واسوداد الأزهار كأنها محترقة بنار مع قطرات إفراز بكتيري مائي حليبي.'
       },
@@ -872,7 +872,7 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
         organ: 'rameau',
         organFr: 'Pousses (Crosse)',
         organAr: 'القمم النامية (انحناء العصا)',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Erwinia_amylovora_pear.jpg/640px-Erwinia_amylovora_pear.jpg',
+        imageUrl: 'assets/phyto/photos/pom_feu_bacterien.jpg',
         descriptionFr: 'Courbure typique en canne d\'évêque de la pousse terminale noircie.',
         descriptionAr: 'انحناء رأس الغصن الأسود المحترق على شكل عكاز أو عصا مميزة.'
       }
@@ -889,13 +889,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_chlorantraniliprole', 'ing_emamectine', 'ing_acetamipride', 'ing_bacillus'],
     descriptionFr: 'Galerie creusée jusqu’aux pépins avec déjections brunes rejetées par l’orifice d’entrée. Chute des fruits.',
     descriptionAr: 'حفر أنفاق داخل الثمرة حتى البذور مع خروج فضلات بنية من فتحة الدخول وسقوط الثمار قبل نضجها.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Cydia_pomonella_larva.jpg/640px-Cydia_pomonella_larva.jpg',
+    primarySampleUrl: 'assets/phyto/photos/pom_carpocapse.jpg',
     symptomOrgans: [
       {
         organ: 'fruit',
         organFr: 'Pommes perforées',
         organAr: 'الثمار المصابة',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/Cydia_pomonella_larva.jpg/640px-Cydia_pomonella_larva.jpg',
+        imageUrl: 'assets/phyto/photos/pom_carpocapse.jpg',
         descriptionFr: 'Orifice d\'entrée de la chenille entouré d\'une aréole rougeâtre avec déjections granuleuses brunes rejetées vers l\'extérieur.',
         descriptionAr: 'ثقب دخول محاط بهالة محمرة مع تراكم فضلات بنية حبيبية خارج الثقب وتوجه الدودة لغرفة البذور.'
       }
@@ -964,13 +964,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_oxychlorure_cuivre', 'ing_cuivre_bouillie', 'ing_tebu_trifloxy', 'ing_kresoxim_methyl', 'ing_difenoconazole'],
     descriptionFr: 'Taches circulaires caractéristiques bordées d’un halo jaune sur la face supérieure des feuilles. Forte défoliation.',
     descriptionAr: 'بقع دائرية مميزة تشبه ريش الطاووس تسبب تساقطاً كثيفاً للأوراق وضعف الأشجار وإنتاجها.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Spilocaea_oleaginea.jpg/640px-Spilocaea_oleaginea.jpg',
+    primarySampleUrl: 'assets/phyto/photos/oli_oeil_paon.jpg',
     symptomOrgans: [
       {
         organ: 'feuille',
         organFr: 'Feuillage d\'olivier',
         organAr: 'أوراق الزيتون',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Spilocaea_oleaginea.jpg/640px-Spilocaea_oleaginea.jpg',
+        imageUrl: 'assets/phyto/photos/oli_oeil_paon.jpg',
         descriptionFr: 'Taches circulaires foncées bordées d\'une auréole jaune très caractéristique (œil de paon). Défoliation sévère de l\'arbre.',
         descriptionAr: 'بقع دائرية داكنة محاطة بهالة صفراء تشبه عيون ريش الطاووس، تؤدي لتساقط جماعي للأوراق وتعري الأغصان.'
       },
@@ -978,7 +978,7 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
         organ: 'fruit',
         organFr: 'Olives',
         organAr: 'ثمار الزيتون',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Spilocaea_oleaginea.jpg/640px-Spilocaea_oleaginea.jpg',
+        imageUrl: 'assets/phyto/photos/oli_oeil_paon.jpg',
         descriptionFr: 'Petites taches nécrotiques circulaires sur les fruits en cas de forte humidité automnale.',
         descriptionAr: 'بقع غائرة بنية على حبات الزيتون في الخريف الرطب تؤدي لتلف الحبات.'
       }
@@ -995,13 +995,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_cuivre_bouillie', 'ing_oxychlorure_cuivre'],
     descriptionFr: 'Tumeurs rugueuses et excroissances ligneuses sur rameaux consécutives aux blessures de taille, gel ou récolte mécanique.',
     descriptionAr: 'أورام وعقد خشبية بارزة تتكون في مواقع الجروح بعد التقليم أو الجني بالعصي أو أضرار الصقيع والبرد.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Pseudomonas_savastanoi.jpg/640px-Pseudomonas_savastanoi.jpg',
+    primarySampleUrl: 'assets/phyto/photos/oli_bacteriose.jpg',
     symptomOrgans: [
       {
         organ: 'rameau',
         organFr: 'Rameaux & Branches (Galles)',
         organAr: 'الأغصان والجذع (أورام وثآليل)',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Pseudomonas_savastanoi.jpg/640px-Pseudomonas_savastanoi.jpg',
+        imageUrl: 'assets/phyto/photos/oli_bacteriose.jpg',
         descriptionFr: 'Excroissances ligneuses rugueuses (tubercules/verrues) sur les nœuds et cicatrices de récolte bloquant la sève.',
         descriptionAr: 'أورام وثآليل خشبية خشنة على الأغصان والبراعم وندبات الجني والتقليم تمنع سريان العصارة وتجفف الغصن.'
       }
@@ -1018,7 +1018,7 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_deltamethrine', 'ing_cypermethrine', 'ing_acetamipride'],
     descriptionFr: 'Sécrétions abondantes de filaments cotonneux blancs enveloppant les grappes florales, avortement des fleurs.',
     descriptionAr: 'إفراز خيوط شمعية بيضاء تشبه كتل القطن تغلف النورات الزهرية وتمنع عقد الثمار.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Euphyllura_olivina.jpg/640px-Euphyllura_olivina.jpg',
+    primarySampleUrl: 'assets/phyto/photos/oli_psylle.jpg',
   },
   {
     id: 'oli_teigne',
@@ -1031,7 +1031,7 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_bacillus', 'ing_deltamethrine', 'ing_cyantraniliprole', 'ing_acetamipride'],
     descriptionFr: '3 générations clés : dégâts sur feuilles (anthophage), sur fleurs (fils soyeux) et foration du pédoncule entraînant la chute d’olives.',
     descriptionAr: 'تهاجم الأزهار أولاً ثم تثقب عنق الثمار في الصيف مسببة سقوطاً كبيراً لحبات الزيتون قبل النضج.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/Prays_oleae.jpg/640px-Prays_oleae.jpg',
+    primarySampleUrl: 'assets/phyto/photos/oli_teigne.jpg',
   },
   {
     id: 'oli_mouche',
@@ -1044,13 +1044,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_cyantraniliprole', 'ing_deltamethrine', 'ing_cypermethrine', 'ing_spinosad'],
     descriptionFr: 'Piqûre triangulaire sur l’olive, développement de l’asticot dans la pulpe entraînant pourriture et forte dégradation de l’acidité de l’huile.',
     descriptionAr: 'وخز الثمار الخضراء والناضجة وتلف لب الزيتون مسببة ارتفاع حموضة الزيت وتلف المحصول.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Bactrocera_oleae01.jpg/640px-Bactrocera_oleae01.jpg',
+    primarySampleUrl: 'assets/phyto/photos/oli_mouche.jpg',
     symptomOrgans: [
       {
         organ: 'fruit',
         organFr: 'Olives piquées',
         organAr: 'حبات الزيتون الملسوعة',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Bactrocera_oleae01.jpg/640px-Bactrocera_oleae01.jpg',
+        imageUrl: 'assets/phyto/photos/oli_mouche.jpg',
         descriptionFr: 'Petite piqûre triangulaire caractéristique. Galeries sous-cutanées forées par la larve avec chute prématurée.',
         descriptionAr: 'وخزة مثلثة صغيرة مكان وضع البيض، أنفاق داخلية لليرقة وتعفن الحبات وتساقطها المبكر.'
       }
@@ -1067,13 +1067,13 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_oxychlorure_cuivre', 'ing_cuivre_bouillie', 'ing_tebu_trifloxy'],
     descriptionFr: 'Taches circulaires déprimées brun-chocolat sur fruits mûrs avec écoulement gluant gélatineux (aspect de savon).',
     descriptionAr: 'تعفن غائر دائري بني غامق على ثمار الزيتون الناضجة مع خروج سائل لزج يشبه الصابون يفسد جودة الزيت تماماً.',
-    primarySampleUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/Colletotrichum_acutatum_on_olive.jpg/640px-Colletotrichum_acutatum_on_olive.jpg',
+    primarySampleUrl: 'assets/phyto/photos/oli_anthracnose.jpg',
     symptomOrgans: [
       {
         organ: 'fruit',
         organFr: 'Fruits mûrs (Savonnage)',
         organAr: 'الثمار الناضجة (تصبن الزيتون)',
-        imageUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/77/Colletotrichum_acutatum_on_olive.jpg/640px-Colletotrichum_acutatum_on_olive.jpg',
+        imageUrl: 'assets/phyto/photos/oli_anthracnose.jpg',
         descriptionFr: 'Pourriture molle déprimée couleur chocolat sur olives avec suintement gélatineux orangé riche en toxines.',
         descriptionAr: 'بقع دائرية غائرة بنية مع إفراز سائل هلامي برتقالي لزج يؤدي لحموضة وتلف زيت الزيتون.'
       }
