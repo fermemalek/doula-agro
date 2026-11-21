@@ -42,6 +42,7 @@ import {
   TANK_MIX_ORDER_STEPS,
   TANK_MIX_COMPATIBILITY_RULES,
   getPestVisualAsset,
+  checkProductBlockedForGrowthStage,
   TreatmentActionRule,
   SystemicType,
   ModeOfActionRecommendation,
@@ -50,8 +51,11 @@ import {
   PHENOLOGICAL_STAGES,
   ACTIVE_INGREDIENTS_DATABASE,
   PEST_TARGETS_DATABASE,
-  COMMERCIAL_PRODUCTS_DZ,
 } from '@/lib/phyto/database';
+import {
+  PHYTO_DATABASE,
+  type PhytoCultureKey,
+} from '@/data/phytosanitaires';
 import { useAllModuleRecords } from '@/lib/modules-store';
 import { useRecommendations } from '@/lib/cloud/recommendations';
 import { getRainForecast48h, RainForecast48h } from '@/lib/weather-forecast';
@@ -138,9 +142,10 @@ export function PhytoAdvisorModal({
   const [calcDose100L, setCalcDose100L] = useState<number>(40);
   const [calcUnit, setCalcUnit] = useState<'g' | 'cc'>('cc');
 
-  // Recherche et filtre espèce dans le catalogue commercial (Onglet 3)
+  // Recherche, filtre espèce (pommier / nectarinier / olivier) et masquage des produits bloqués (Onglet 3)
   const [catalogSearch, setCatalogSearch] = useState('');
-  const [catalogCropFilter, setCatalogCropFilter] = useState<'all' | 'olive' | 'pomme' | 'nectarine'>('all');
+  const [catalogCropFilter, setCatalogCropFilter] = useState<'all' | PhytoCultureKey>('all');
+  const [hideBlockedInCatalog, setHideBlockedInCatalog] = useState<boolean>(false);
 
   // Traitements historiques passés pour détecter les résistances
   const { data: recos = [] } = useRecommendations();
@@ -294,21 +299,32 @@ export function PhytoAdvisorModal({
     });
   }, [tankVolume, calcDose100L, calcUnit]);
 
-  // Filtrage du catalogue des spécialités commerciales (par espèce + recherche textuelle)
+  // Filtrage du catalogue officiel (165 spécialités PHYTO_DATABASE) par espèce, recherche & blocage stade phénologique
   const filteredCatalog = useMemo(() => {
-    return COMMERCIAL_PRODUCTS_DZ.filter(p => {
-      const matchCrop = catalogCropFilter === 'all' ? true : p.crops.includes(catalogCropFilter);
-      if (!catalogSearch.trim()) return matchCrop;
-      const q = catalogSearch.toLowerCase();
-      return (
-        matchCrop &&
-        (p.tradeName.toLowerCase().includes(q) ||
-          p.activeIngredient.toLowerCase().includes(q) ||
-          p.groupCode.toLowerCase().includes(q) ||
-          p.targetPests.some(t => t.toLowerCase().includes(q)))
-      );
-    });
-  }, [catalogCropFilter, catalogSearch]);
+    return PHYTO_DATABASE
+      .map((prod) => ({
+        prod,
+        stageCheck: checkProductBlockedForGrowthStage(prod, selectedStage),
+      }))
+      .filter(({ prod, stageCheck }) => {
+        if (hideBlockedInCatalog && stageCheck.blocked) return false;
+        const matchCrop =
+          catalogCropFilter === 'all'
+            ? true
+            : !prod.cultures || prod.cultures.length === 0 || prod.cultures.includes(catalogCropFilter);
+        if (!matchCrop) return false;
+        if (!catalogSearch.trim()) return true;
+        const q = catalogSearch.toLowerCase();
+        return (
+          prod.name.toLowerCase().includes(q) ||
+          (prod.matiereActive || '').toLowerCase().includes(q) ||
+          (prod.matiereActiveAr || '').toLowerCase().includes(q) ||
+          (prod.codeGroup || '').toLowerCase().includes(q) ||
+          (prod.homologation || '').toLowerCase().includes(q) ||
+          prod.cible.toLowerCase().includes(q)
+        );
+      });
+  }, [catalogCropFilter, catalogSearch, selectedStage, hideBlockedInCatalog]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -830,7 +846,7 @@ export function PhytoAdvisorModal({
                   </div>
 
                   <div className="space-y-2.5">
-                    {evaluatedOptions.map(({ ingredient, isAllowed, isMultiSite, blockReason, beeBlock, beeWarning, currentSeasonUsageCount, isSituationallyRecommended }) => {
+                    {evaluatedOptions.map(({ ingredient, isAllowed, isMultiSite, blockReason, beeBlock, beeWarning, stageBlocked, currentSeasonUsageCount, isSituationallyRecommended }) => {
                       const isFrac = ingredient.type === 'FRAC';
                       const badgeColor = isFrac
                         ? 'bg-indigo-500/10 text-indigo-700 border-indigo-500/30'
@@ -910,9 +926,13 @@ export function PhytoAdvisorModal({
                                       ? isAr
                                         ? "ممنوع وقت التزهير — خطر على النحل"
                                         : "Interdit en floraison — Danger Abeilles"
-                                      : isAr
-                                        ? "ممنوع لتفادي المقاومة"
-                                        : "Exclu Anti-Résistance"}
+                                      : stageBlocked
+                                        ? isAr
+                                          ? "ممنوع في هذا الطور الفينولوجي"
+                                          : "Bloqué à ce stade phénologique"
+                                        : isAr
+                                          ? "ممنوع لتفادي المقاومة"
+                                          : "Exclu Anti-Résistance"}
                                   </span>
                                 </div>
                               )}
@@ -1118,32 +1138,56 @@ export function PhytoAdvisorModal({
           )}
 
           {/* ========================================================= */}
-          {/* ONGLET 3 : RÉPERTOIRE DES SPÉCIALITÉS COMMERCIALES EN ALGÉRIE */}
+          {/* ONGLET 3 : RÉPERTOIRE DES SPÉCIALITÉS COMMERCIALES EN ALGÉRIE (165 FITO INPV) */}
           {/* ========================================================= */}
           {activeTab === 'catalog' && (
             <div className="space-y-4">
-              {/* Filtre par espèce (الكل / زيتون / تفاح / نكتارين) */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                {([
-                  { id: 'all' as const, icon: '🌿', fr: 'Toutes', ar: 'الكل' },
-                  { id: 'olive' as const, icon: '🫒', fr: 'Olivier', ar: 'زيتون' },
-                  { id: 'pomme' as const, icon: '🍎', fr: 'Pommier', ar: 'تفاح' },
-                  { id: 'nectarine' as const, icon: '🍑', fr: 'Nectarinier', ar: 'نكتارين' },
-                ]).map((sp) => (
-                  <button
-                    key={sp.id}
-                    type="button"
-                    onClick={() => setCatalogCropFilter(sp.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
-                      catalogCropFilter === sp.id
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                        : 'bg-background text-muted-foreground border-input hover:bg-muted'
-                    }`}
-                  >
-                    <span>{sp.icon}</span>
-                    <span>{isAr ? sp.ar : sp.fr}</span>
-                  </button>
-                ))}
+              {/* Filtre par espèce (الكل / زيتون / تفاح / نكتارين) + contrôle du stade sélectionné */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl border bg-muted/20">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {([
+                    { id: 'all' as const, icon: '🌿', fr: 'Toutes', ar: 'الكل' },
+                    { id: 'olivier' as const, icon: '🫒', fr: 'Olivier', ar: 'زيتون' },
+                    { id: 'pommier' as const, icon: '🍎', fr: 'Pommier', ar: 'تفاح' },
+                    { id: 'nectarinier' as const, icon: '🍑', fr: 'Nectarinier', ar: 'نكتارين' },
+                  ]).map((sp) => (
+                    <button
+                      key={sp.id}
+                      type="button"
+                      onClick={() => setCatalogCropFilter(sp.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                        catalogCropFilter === sp.id
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-background text-muted-foreground border-input hover:bg-muted'
+                      }`}
+                    >
+                      <span>{sp.icon}</span>
+                      <span>{isAr ? sp.ar : sp.fr}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Bascule masquer/afficher les produits bloqués au stade phénologique de l'étape 1 */}
+                <button
+                  type="button"
+                  onClick={() => setHideBlockedInCatalog((v) => !v)}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5 cursor-pointer ${
+                    hideBlockedInCatalog
+                      ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                      : 'bg-background text-muted-foreground border-input hover:bg-muted'
+                  }`}
+                >
+                  <ShieldAlert className="h-3.5 w-3.5" />
+                  <span>
+                    {hideBlockedInCatalog
+                      ? isAr
+                        ? `الممنوعة مخفية (${PHENOLOGICAL_STAGES.find((s) => s.id === selectedStage)?.labelAr || selectedStage})`
+                        : `Bloqués masqués (${PHENOLOGICAL_STAGES.find((s) => s.id === selectedStage)?.labelFr || selectedStage})`
+                      : isAr
+                        ? `إخفاء الممنوعة في طور: ${PHENOLOGICAL_STAGES.find((s) => s.id === selectedStage)?.labelAr || selectedStage}`
+                        : `Masquer les bloqués (${PHENOLOGICAL_STAGES.find((s) => s.id === selectedStage)?.labelFr || selectedStage})`}
+                  </span>
+                </button>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1153,44 +1197,94 @@ export function PhytoAdvisorModal({
                     type="text"
                     value={catalogSearch}
                     onChange={(e) => setCatalogSearch(e.target.value)}
-                    placeholder={isAr ? "ابحث باسم الدواء التجاري أو المادة الفعالة..." : "Rechercher une spécialité commerciale, matière active, cible..."}
+                    placeholder={isAr ? "ابحث باسم الدواء التجاري، المادة الفعالة، رقم التسجيل أو الآفة..." : "Rechercher une spécialité, matière active, n° homologation, cible..."}
                     className="w-full rounded-xl border border-input bg-background pl-9 pr-3 py-2 text-xs font-bold"
                   />
                 </div>
                 <span className="text-[11px] text-muted-foreground font-bold shrink-0">
-                  <span dir="ltr" className="inline-block font-mono">{filteredCatalog.length}</span> {isAr ? "دواء" : "spécialité(s)"}
+                  <span dir="ltr" className="inline-block font-mono">{filteredCatalog.length}</span> / <span dir="ltr" className="inline-block font-mono">{PHYTO_DATABASE.length}</span> {isAr ? "دواء" : "spécialité(s)"}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {filteredCatalog.map((prod, idx) => (
-                  <div key={idx} className="p-3.5 rounded-2xl border bg-card hover:border-primary/50 transition-all space-y-2 shadow-xs">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h4 className="font-black text-xs text-foreground">{prod.tradeName}</h4>
-                        <p className="text-[11px] text-muted-foreground font-medium">{prod.activeIngredient}</p>
+                {filteredCatalog.map(({ prod, stageCheck }, idx) => {
+                  const isValidated = prod.validationStatus === 'validated';
+                  return (
+                    <div
+                      key={`${prod.name}-${idx}`}
+                      className={`p-3.5 rounded-2xl border transition-all space-y-2 shadow-xs ${
+                        stageCheck.blocked
+                          ? 'bg-destructive/[0.04] border-destructive/40 opacity-90'
+                          : 'bg-card hover:border-primary/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <h4 className="font-black text-xs text-foreground">{prod.name}</h4>
+                            {prod.formulation && (
+                              <span dir="ltr" className="inline-block font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-muted text-muted-foreground border">
+                                {prod.formulation}
+                              </span>
+                            )}
+                            <span
+                              className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${
+                                isValidated
+                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                                  : 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30'
+                              }`}
+                            >
+                              {isValidated
+                                ? isAr ? '✓ معتمد FITO' : '✓ Validé FITO'
+                                : isAr ? 'إرشادي' : 'Indicatif'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground font-medium mt-0.5">
+                            {isAr && prod.matiereActiveAr
+                              ? `${prod.matiereActiveAr} (${prod.matiereActive || ''})`
+                              : prod.matiereActive || '—'}
+                          </p>
+                        </div>
+                        {prod.codeGroup && (
+                          <span dir="ltr" className="inline-block whitespace-nowrap text-[9px] font-black px-2 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20 shrink-0">
+                            {prod.codeGroup}
+                          </span>
+                        )}
                       </div>
-                      <span dir="ltr" className="inline-block whitespace-nowrap text-[9px] font-black px-2 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20">
-                        {prod.groupCode}
-                      </span>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-2 text-[10px] pt-1.5 border-t text-muted-foreground">
-                      <div>
-                        <strong>{isAr ? "الجرعة :" : "Dose :"}</strong>{" "}
-                        <span dir="ltr" className="inline-block font-mono">{prod.standardDose}</span>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-[10px] pt-1.5 border-t text-muted-foreground">
+                        <div>
+                          <strong>{isAr ? "الجرعة :" : "Dose :"}</strong>{" "}
+                          <span dir="ltr" className="inline-block font-mono">{prod.dosage}</span>
+                        </div>
+                        <div>
+                          <strong>DAR :</strong>{" "}
+                          <span dir="ltr" className="inline-block font-mono">{prod.dar}</span>
+                        </div>
+                        {prod.homologation && (
+                          <div>
+                            <strong>INPV :</strong>{" "}
+                            <span dir="ltr" className="inline-block font-mono">{prod.homologation}</span>
+                          </div>
+                        )}
                       </div>
-                      <div>
-                        <strong>DAR (PHI) :</strong>{" "}
-                        <span dir="ltr" className="inline-block font-mono">{prod.phiDays}</span> {isAr ? "يوم" : "jours"}
-                      </div>
-                    </div>
 
-                    <p className="text-[10px] text-muted-foreground italic leading-relaxed">
-                      {isAr ? prod.remarksAr : prod.remarksFr}
-                    </p>
-                  </div>
-                ))}
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        <strong className="text-foreground/80">{isAr ? "الهدف :" : "Cible :"}</strong> {prod.cible}
+                      </p>
+
+                      {stageCheck.blocked && (
+                        <div className="p-2 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive flex items-start gap-1.5 text-[10px] font-bold leading-snug">
+                          <XCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                          <span>
+                            {isAr ? "ممنوع في هذا الطور : " : "Bloqué à ce stade : "}
+                            {stageCheck.reason || prod.blockedReason || (isAr ? "غير مسموح في المرحلة الحالية" : "Non autorisé au stade sélectionné")}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

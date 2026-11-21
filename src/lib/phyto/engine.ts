@@ -4,13 +4,45 @@
  * Architecture : Compatible SQLite / Supabase / Zustand / Offline-First
  */
 
+import {
+  PHYTO_DATABASE,
+  isProductBlockedAtStage,
+  type BlockedStageKey,
+  type PhytoProductInfo,
+} from '@/data/phytosanitaires';
+
 // ==========================================
 // 1. TYPES & STRUCTURES DE DONNÉES
 // ==========================================
 
+export function mapGrowthStageToBlockedKey(stage?: GrowthStage): BlockedStageKey | null {
+  if (stage === 'floraison') return 'floraison';
+  if (stage === 'chute_petales_nouaison') return 'chute_petales';
+  if (stage === 'grossissement_fruit') return 'grossissement';
+  if (stage === 'maturation') return 'maturation';
+  return null;
+}
+
+export function checkProductBlockedForGrowthStage(
+  product: PhytoProductInfo,
+  stage?: GrowthStage
+): { blocked: boolean; reason?: string } {
+  if (!product.blockedStages || product.blockedStages.length === 0) {
+    return { blocked: false };
+  }
+  const mapped = mapGrowthStageToBlockedKey(stage);
+  if (mapped) {
+    return isProductBlockedAtStage(product, mapped);
+  }
+  if (product.blockedStages.includes('foliaire_interdit')) {
+    return { blocked: true, reason: product.blockedReason };
+  }
+  return { blocked: false };
+}
+
 export type CropType = 'peche' | 'nectarine' | 'pomme' | 'olive';
 
-export type GrowthStage = 
+export type GrowthStage =
   | 'dormance'
   | 'gonflement_bourgeons'
   | 'floraison'
@@ -413,9 +445,10 @@ export class PhytosanitaryEngine {
         priorityScore = 0;
       }
 
-      // 4. SÉCURITÉ ABEILLES EN FLORAISON (التزهير)
+      // 4. SÉCURITÉ ABEILLES EN FLORAISON (التزهير) + CONTRÔLE STADE PHÉNOLOGIQUE (PHYTO_DATABASE)
       let beeBlock = false;
       let beeWarning = '';
+      let stageBlocked = false;
       if (growthStage === 'floraison') {
         const isPyrethroid3A = ingredientCodes.includes('3A');
         const isNeonic4A = ingredientCodes.includes('4A');
@@ -430,7 +463,28 @@ export class PhytosanitaryEngine {
         }
       }
 
-      const isSituationallyRecommended = modeRecommendation 
+      // Vérification complémentaire via PHYTO_DATABASE & isProductBlockedAtStage()
+      if (isAllowed && growthStage) {
+        const ingNameNorm = ingredient.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const matchingDbProducts = PHYTO_DATABASE.filter((p) => {
+          const pAct = (p.matiereActive || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          const pCode = (p.codeGroup || '').toUpperCase().trim();
+          const ingCode = (ingredient.codeGroup || '').toUpperCase().trim();
+          return (pAct && (pAct.includes(ingNameNorm) || ingNameNorm.includes(pAct.split('·')[0].trim()))) || (pCode && pCode === ingCode);
+        });
+        if (matchingDbProducts.length > 0) {
+          const blockedChecks = matchingDbProducts.map((p) => checkProductBlockedForGrowthStage(p, growthStage));
+          if (blockedChecks.every((c) => c.blocked)) {
+            const firstReason = blockedChecks.find((c) => c.reason)?.reason;
+            isAllowed = false;
+            stageBlocked = true;
+            blockReason = firstReason || `Produit bloqué au stade phénologique sélectionné (${growthStage}).`;
+            priorityScore = 0;
+          }
+        }
+      }
+
+      const isSituationallyRecommended = modeRecommendation
         ? modeRecommendation.recommendedType.includes(ingredient.systemicType)
         : true;
 
@@ -454,6 +508,7 @@ export class PhytosanitaryEngine {
         blockReason,
         beeBlock,
         beeWarning,
+        stageBlocked,
         priorityScore,
         currentSeasonUsageCount: groupApplicationsCount,
         lastUsedDate: hasDirectCodeConflict ? lastApplication?.date : null,
