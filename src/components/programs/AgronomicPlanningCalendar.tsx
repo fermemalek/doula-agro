@@ -607,7 +607,18 @@ export function AgronomicPlanningCalendar({
 
         // RÈGLE 3 : Tri physique des sous-programmes selon les bacs cochés (Bac B en premier, sans Bac B en second)
         // sans dépendre du nom de chaîne "A1" ou "A2".
+        const getProgOrderRank = (r: Recommendation): number => {
+          const txt = `${(r.payload as any)?.program?.label || ""} ${r.title || ""}`.toLowerCase();
+          if (txt.includes("a1") || txt.includes("programme 1")) return 1;
+          if (txt.includes("a2") || txt.includes("programme 2")) return 2;
+          if (txt.includes("a3") || txt.includes("programme 3")) return 3;
+          return 9;
+        };
+
         const sortedSubRecos = [...dateRecos].sort((a, b) => {
+          const rankA = getProgOrderRank(a);
+          const rankB = getProgOrderRank(b);
+          if (rankA !== rankB) return rankA - rankB;
           const bA = getUsedBacsFromProgram((a.payload as any)?.program || {});
           const bB = getUsedBacsFromProgram((b.payload as any)?.program || {});
           if (bA.usesBacB && !bB.usesBacB) return -1;
@@ -842,17 +853,18 @@ export function AgronomicPlanningCalendar({
               const d3 = pickFreeDay(3);
               if (d3) pushFertigationEvent(d3, subA3);
             }
-          } else {
-            // 2 programmes par semaine répartis équitablement avec décalage de 3 à 4 jours (hors Vendredi)
-            const firstIdx = crop.id === "redix25" && sortedSubRecos.length >= 2 ? 1 : 0;
-            const secondIdx = sortedSubRecos.length >= 2 ? (firstIdx === 0 ? 1 : 0) : 0;
-
+          } else if (activeRecosForWeeks.length === 1 && a1Freq <= 1) {
+            // Garde-fou : 1 seul sous-programme à fréquence 1x/semaine -> jamais dupliqué sur J5
             const d1 = scheduleSafeDate(cycleStart);
-            if (d1) pushFertigationEvent(d1, sortedSubRecos[firstIdx]);
+            if (d1) pushFertigationEvent(d1, subA1);
+          } else {
+            // 2 programmes par semaine : Prog. A1 à J1 (ex: Mardi) et Prog. A2 à J5 (+4j, ex: Samedi) pour toutes les parcelles de l'espèce
+            const d1 = scheduleSafeDate(cycleStart);
+            if (d1) pushFertigationEvent(d1, subA1);
 
-            const d2 = scheduleSafeDate(addDays(cycleStart, 3));
+            const d2 = scheduleSafeDate(addDays(cycleStart, 4));
             if (d2 && d2 !== d1) {
-              pushFertigationEvent(d2, sortedSubRecos[secondIdx]);
+              pushFertigationEvent(d2, subA2 || subA1);
             }
           }
         });
@@ -942,7 +954,9 @@ export function AgronomicPlanningCalendar({
             titleLower.includes("pulverisation 2") ||
             prevCount >= 1;
 
-          let dateStr = isPulv2 ? addDays(baseDateStr, 5) : addDays(baseDateStr, 2);
+          // Pulvérisation 1 -> dès J+1 (ex: Mardi 10 Mars, en parallèle de la fertigation)
+          // Pulvérisation 2 -> J+6 (ex: Dimanche 15 Mars, écart 5 jours >= 3j, journée sans Phyto)
+          let dateStr = isPulv2 ? addDays(baseDateStr, 6) : addDays(baseDateStr, 1);
 
           // Garantie stricte d'un espacement minimum de 3 jours calendaires entre pulvérisations foliaires
           let safetyPulv = 0;
@@ -1170,26 +1184,36 @@ export function AgronomicPlanningCalendar({
     });
 
     const farmPhytoFamilyByDate: Record<string, string> = {};
-    rawEvents.forEach((ev) => {
-      if (ev.type === "phyto") {
-        const fam = getSpeciesFamily(ev.speciesId);
-        let d = avoidFriday(ev.date);
-        let guard = 0;
-        while (
-          guard < 14 &&
-          (isFridayDate(d) ||
-            farmFoliarDatesSet.has(d) ||
-            (farmPhytoFamilyByDate[d] && farmPhytoFamilyByDate[d] !== fam))
-        ) {
-          d = addDays(d, 1);
-          guard++;
-        }
-        farmPhytoFamilyByDate[d] = fam;
-        ev.date = d;
-        const dObj = new Date(`${d}T12:00:00Z`);
-        ev.dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getUTCDay();
-        ev.dayName = DAY_NAMES_FR[ev.dayOfWeek];
+    const phytoPriority = (spId: string): number => {
+      if (spId === "nablara" || spId === "redix25") return 1; // Nectarines en 1er (Jeudi J3)
+      if (spId === "pommiers") return 2;                      // Pommiers en 2e (Samedi J5)
+      return 3;                                               // Oliviers en 3e
+    };
+    const phytoEventsSorted = rawEvents
+      .filter((ev) => ev.type === "phyto")
+      .sort((a, b) => {
+        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        return phytoPriority(a.speciesId) - phytoPriority(b.speciesId);
+      });
+
+    phytoEventsSorted.forEach((ev) => {
+      const fam = getSpeciesFamily(ev.speciesId);
+      let d = avoidFriday(ev.date);
+      let guard = 0;
+      while (
+        guard < 14 &&
+        (isFridayDate(d) ||
+          farmFoliarDatesSet.has(d) ||
+          (farmPhytoFamilyByDate[d] && farmPhytoFamilyByDate[d] !== fam))
+      ) {
+        d = addDays(d, 1);
+        guard++;
       }
+      farmPhytoFamilyByDate[d] = fam;
+      ev.date = d;
+      const dObj = new Date(`${d}T12:00:00Z`);
+      ev.dayOfWeek = isNaN(dObj.getTime()) ? 1 : dObj.getUTCDay();
+      ev.dayName = DAY_NAMES_FR[ev.dayOfWeek];
     });
 
     // 3. Calcul séquentiel des horaires (Station Fertigation 5 Phases, Pulvérisation 07h00-09h00, Phyto 15h00-17h00)
@@ -2041,171 +2065,266 @@ export function AgronomicPlanningCalendar({
       </div>
 
       {/* ======================================================== */}
-      {/* VUE 1 : GRILLE CALENDRIER TYPE TABLEUR EXCEL (IMAGE 5)    */}
+      {/* VUE 1 : TABLEAU CHRONOLOGIQUE EXCEL PAR CYCLES (OFFICIEL) */}
       {/* ======================================================== */}
       {activeView === "grid" && (
         <div className="space-y-3">
-          <div className="rounded-xl border bg-card p-3 text-xs flex items-center justify-between">
+          <div className="rounded-xl border bg-card p-3 text-xs flex flex-wrap items-center justify-between gap-2">
             <span className="font-bold text-foreground flex items-center gap-2">
               <CalendarDays className="h-4 w-4 text-primary" />
-              <span>Grille de Distribution Hebdomadaire (Cycle de Printemps)</span>
+              <span>Planning Officiel par Cycles Hebdomadaires (Format Excel)</span>
             </span>
             <span className="text-[11px] font-bold text-muted-foreground">
-              Colonnes : Samedi ➔ Vendredi · Lignes : Dates chronologiques
+              Cycle 7 jours (J1 ➔ J7) · Vendredi Repos · 1 seul pulvérisateur
             </span>
           </div>
 
           <div className="border rounded-2xl bg-card overflow-hidden shadow-xs">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[780px] table-fixed text-xs text-left border-collapse">
-                <thead className="bg-muted/70 text-[11px] font-black uppercase text-foreground border-b text-center">
-                  <tr>
-                    <th className="p-2.5 border-r w-28 text-left bg-muted/90 shrink-0">Date</th>
-                    <th className="p-2.5 border-r">Samedi</th>
-                    <th className="p-2.5 border-r">Dimanche</th>
-                    <th className="p-2.5 border-r">Lundi</th>
-                    <th className="p-2.5 border-r">Mardi</th>
-                    <th className="p-2.5 border-r">Mercredi</th>
-                    <th className="p-2.5 border-r">Jeudi</th>
-                    <th className="p-2.5">Vendredi</th>
+              <table className="w-full min-w-[760px] text-xs text-left border-collapse">
+                <thead>
+                  <tr className="bg-[#14453d] text-white text-[11px] font-black tracking-wide text-center">
+                    <th className="py-2.5 px-3 border-r border-white/15 w-28">Date</th>
+                    <th className="py-2.5 px-3 border-r border-white/15 w-32">Jour</th>
+                    <th className="py-2.5 px-3 border-r border-white/15 w-32">Créneau Horaire</th>
+                    <th className="py-2.5 px-3 border-r border-white/15 w-36">Catégorie</th>
+                    <th className="py-2.5 px-3 border-r border-white/15 w-36">Libellé Officiel</th>
+                    <th className="py-2.5 px-3 border-r border-white/15">Espèce / Groupe</th>
+                    <th className="py-2.5 px-3 w-36">Parcelles</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y font-medium">
+                <tbody className="font-medium">
                   {calendarGridRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                      <td colSpan={7} className="p-8 text-center text-muted-foreground">
                         <div className="max-w-md mx-auto space-y-2">
                           <p className="font-bold text-sm text-foreground">🌱 Aucun programme validé à afficher</p>
                           <p className="text-xs">
-                            Tous les programmes précédents et achats ont été réinitialisés. Rendez-vous dans l'onglet <strong>Recommandations</strong> pour valider la 1ère recommandation (09 Mars 2026).
+                            Tous les programmes précédents et achats ont été réinitialisés. Rendez-vous dans l&apos;onglet <strong>Recommandations</strong> pour valider la 1ère recommandation (09 Mars 2026).
                           </p>
                         </div>
                       </td>
                     </tr>
                   ) : (
-                    calendarGridRows.map((row, idx) => {
-                      const daysOfWeekCols = [6, 0, 1, 2, 3, 4, 5]; // samedi (6), Dimanche (0), lundi (1), mardi (2), mercredi (3), jeudi (4), vendredi (5)
+                    (() => {
+                      const firstCycleDate = calendarGridRows[0]?.date || "2026-03-10";
+                      const getParcelLabel = (spId: string, isSpray: boolean): string => {
+                        if (spId === "nablara") return "P5";
+                        if (spId === "redix25") return "P6";
+                        if (spId === "pommiers") return isSpray ? "P7 puis P8" : "P7 + P8";
+                        if (spId === "oliviers_s1") return isSpray ? "P1 puis P2" : "P1 + P2";
+                        if (spId === "oliviers_s2") return isSpray ? "P3 puis P4" : "P3 + P4";
+                        return "P1 à P8";
+                      };
 
-                      return (
-                        <tr
-                          key={row.date}
-                          className={`transition ${
-                            row.isPassageDay
-                              ? "bg-amber-400/15 dark:bg-amber-500/10 hover:bg-amber-400/25"
-                              : row.isNewRecoDay
-                              ? "bg-indigo-500/10 hover:bg-indigo-500/15 font-bold"
-                              : idx % 2 === 0
-                              ? "bg-background"
-                              : "bg-muted/10"
-                          }`}
-                        >
-                        <td className="p-2.5 border-r font-bold text-foreground bg-muted/30">
-                          <div className="flex flex-col items-start gap-1">
-                            <span className="text-xs font-bold leading-tight whitespace-nowrap">
-                              {formatDateFr(row.date)}
-                            </span>
-                            {row.isNewRecoDay && (
-                              <span className="text-[9px] bg-indigo-600 text-white font-extrabold px-1.5 py-0.5 rounded leading-none">
-                                New Reco
-                              </span>
-                            )}
-                          </div>
-                        </td>
+                      const formatCycleRangeFr = (startIso: string, endIso: string): string => {
+                        const months = [
+                          "JANVIER", "FÉVRIER", "MARS", "AVRIL", "MAI", "JUIN",
+                          "JUILLET", "AOÛT", "SEPTEMBRE", "OCTOBRE", "NOVEMBRE", "DÉCEMBRE",
+                        ];
+                        const [y1, m1, d1] = startIso.split("-").map(Number);
+                        const [y2, m2, d2] = endIso.split("-").map(Number);
+                        if (m1 === m2 && y1 === y2) {
+                          return `DU ${String(d1).padStart(2, "0")} AU ${String(d2).padStart(2, "0")} ${months[(m1 || 1) - 1]} ${y1}`;
+                        }
+                        return `DU ${String(d1).padStart(2, "0")} ${months[(m1 || 1) - 1]} AU ${String(d2).padStart(2, "0")} ${months[(m2 || 1) - 1]} ${y2}`;
+                      };
 
-                        {daysOfWeekCols.map((colDay) => {
-                          const isCurrentDayCol = row.dayOfWeek === colDay;
-                          if (!isCurrentDayCol) {
-                            return <td key={colDay} className="p-2 border-r bg-muted/5 text-center text-muted-foreground/30">—</td>;
-                          }
+                      // Regrouper les lignes par Cycle de 7 jours (J1..J7)
+                      const cyclesMap = new Map<number, typeof calendarGridRows>();
+                      calendarGridRows.forEach((row) => {
+                        const diff = Math.max(0, diffDaysDate(firstCycleDate, row.date));
+                        const cycleNum = Math.floor(diff / 7) + 1;
+                        if (!cyclesMap.has(cycleNum)) cyclesMap.set(cycleNum, []);
+                        cyclesMap.get(cycleNum)!.push(row);
+                      });
 
-                          if (row.isPassageDay) {
-                            return (
-                              <td
-                                key={colDay}
-                                className="p-2 border-r bg-muted/20 text-center font-medium"
-                              >
-                                <div className="space-y-1.5">
-                                  {/* Badges de types d'interventions aux couleurs requises */}
-                                  <div className="flex flex-wrap justify-center gap-1">
-                                    {Array.from(new Set(row.events.map((e) => e.type))).map((t) => {
-                                      if (t === "fertigation" || t === "pure_irrigation") {
-                                        return (
-                                          <span
-                                            key={t}
-                                            className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
-                                          >
-                                            💧 Fert
-                                          </span>
-                                        );
-                                      }
-                                      if (t === "pulverisation") {
-                                        return (
-                                          <span
-                                            key={t}
-                                            className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30"
-                                          >
-                                            🌿 Foliaire
-                                          </span>
-                                        );
-                                      }
-                                      return (
-                                        <span
-                                          key={t}
-                                          className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-800 dark:text-amber-200 border border-amber-500/30"
-                                        >
-                                          🛡️ Phyto
-                                        </span>
-                                      );
-                                    })}
-                                  </div>
+                      const hasOliviersActive = calendarGridRows.some((r) =>
+                        r.events.some((e) => e.speciesId.startsWith("oliviers"))
+                      );
 
-                                  {/* Détail par espèce, horaires séquentiels et mention exacte du programme */}
-                                  <div className="space-y-1">
-                                    {row.events.map((ev, evIdx) => {
-                                      const badge = getEventBadgeInfo(ev);
-                                      return (
-                                        <div
-                                          key={evIdx}
-                                          className="bg-background/95 px-2 py-1 rounded border shadow-2xs font-mono font-bold text-[9px] flex flex-col gap-0.5 text-left"
-                                        >
-                                          <div className="flex items-center justify-between gap-1">
-                                            <span className="flex items-center gap-0.5">
-                                              <span>{ev.cropConfig.icon}</span>
-                                              <span className="font-extrabold text-[9.5px]">
-                                                {ev.speciesId === "pommiers"
-                                                  ? "Pom"
-                                                  : ev.speciesId === "nablara"
-                                                  ? "Nab"
-                                                  : ev.speciesId === "redix25"
-                                                  ? "Red"
-                                                  : "Oli"}
-                                              </span>
-                                            </span>
-                                            <span className="text-muted-foreground text-[8.5px] whitespace-nowrap">{ev.hours}</span>
-                                          </div>
-                                          <div className="flex items-center justify-start mt-0.5">
-                                            <span className={`text-[8.5px] font-black px-1.5 py-0.5 rounded border leading-none ${badge.tone}`}>
-                                              {badge.text}
-                                            </span>
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              </td>
-                            );
-                          }
+                      const renderedElements: JSX.Element[] = [];
 
-                          return (
-                            <td key={colDay} className="p-2.5 border-r text-center text-muted-foreground/60 text-[11px]">
-                              Repos
+                      Array.from(cyclesMap.entries()).forEach(([cycleNum, cycleRows]) => {
+                        const cycleStartIso = cycleRows[0].date;
+                        const cycleEndIso = cycleRows[cycleRows.length - 1].date;
+                        const rangeLabel = formatCycleRangeFr(cycleStartIso, cycleEndIso);
+
+                        renderedElements.push(
+                          <tr key={`cycle-hdr-${cycleNum}`} className="bg-[#dce6e4] dark:bg-slate-800 border-y-2 border-slate-500/40">
+                            <td colSpan={7} className="py-2 px-3 font-black text-xs text-[#14453d] dark:text-emerald-300 tracking-wide">
+                              CYCLE {cycleNum} — SEMAINE {rangeLabel} (Vendredi Repos)
                             </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  }))}
+                          </tr>
+                        );
+
+                        cycleRows.forEach((row) => {
+                          const dayInCycle = (Math.max(0, diffDaysDate(firstCycleDate, row.date)) % 7) + 1;
+                          const dayLabel = `${row.dayName} (J${dayInCycle})`;
+                          const isFri = row.dayOfWeek === 5;
+
+                          if (!row.isPassageDay || row.events.length === 0) {
+                            if (isFri) {
+                              renderedElements.push(
+                                <tr
+                                  key={`fri-${row.date}`}
+                                  className="bg-rose-50/80 dark:bg-rose-950/25 border-b border-slate-300 dark:border-slate-700 text-[#8b1a1a] dark:text-rose-300 italic font-bold text-center"
+                                >
+                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">{row.date}</td>
+                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">{dayLabel}</td>
+                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">—</td>
+                                  <td className="py-2 px-2 border-r border-slate-200 dark:border-slate-700 bg-[#9b1c1c] text-white not-italic font-black text-[10.5px] uppercase tracking-wide">
+                                    VENDREDI REPOS
+                                  </td>
+                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Jour de Repos</td>
+                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Toute la Ferme</td>
+                                  <td className="py-2 px-2.5">P1 à P8</td>
+                                </tr>
+                              );
+                            } else {
+                              renderedElements.push(
+                                <tr
+                                  key={`rest-${row.date}`}
+                                  className="bg-slate-50/70 dark:bg-slate-900/30 border-b border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 italic text-center"
+                                >
+                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">{row.date}</td>
+                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">{dayLabel}</td>
+                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">—</td>
+                                  <td className="py-2 px-2 border-r border-slate-200 dark:border-slate-700 bg-[#5a6b7c] text-white not-italic font-black text-[10.5px] uppercase tracking-wide">
+                                    REPOS
+                                  </td>
+                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Eau claire / Repos</td>
+                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Toutes Parcelles</td>
+                                  <td className="py-2 px-2.5">{hasOliviersActive ? "P1 à P8" : "P5, P6, P7, P8"}</td>
+                                </tr>
+                              );
+                            }
+                            return;
+                          }
+
+                          // Construire les lignes du jour (fusionner Nablara + Redix 25 sur Foliaire / Phyto identique)
+                          type ExcelLine = {
+                            key: string;
+                            hours: string;
+                            category: "FERTIGATION" | "FOLIAIRE" | "PHYTO";
+                            officialLabel: string;
+                            speciesLabel: string;
+                            parcelsLabel: string;
+                          };
+
+                          const lines: ExcelLine[] = [];
+                          const fertDayEvs = row.events.filter((e) => e.type === "fertigation" || e.type === "pure_irrigation");
+                          const sprayDayEvs = row.events.filter((e) => e.type === "pulverisation" || e.type === "phyto");
+
+                          fertDayEvs.forEach((ev, idx) => {
+                            const badge = getEventBadgeInfo(ev);
+                            lines.push({
+                              key: `f-${row.date}-${idx}-${ev.speciesId}`,
+                              hours: ev.hours,
+                              category: "FERTIGATION",
+                              officialLabel: badge.text,
+                              speciesLabel: ev.speciesName,
+                              parcelsLabel: getParcelLabel(ev.speciesId, false),
+                            });
+                          });
+
+                          // Fusionner Nablara + Redix 25 (ou Oliviers S1 + S2) si même type + même libellé le même jour
+                          const mergedSprayMap = new Map<string, ScheduledDayEvent[]>();
+                          sprayDayEvs.forEach((ev) => {
+                            const badge = getEventBadgeInfo(ev);
+                            const fam =
+                              ev.speciesId === "nablara" || ev.speciesId === "redix25"
+                                ? "nectarines"
+                                : ev.speciesId.startsWith("oliviers")
+                                  ? "oliviers"
+                                  : ev.speciesId;
+                            const mKey = `${ev.type}::${badge.text}::${fam}`;
+                            if (!mergedSprayMap.has(mKey)) mergedSprayMap.set(mKey, []);
+                            mergedSprayMap.get(mKey)!.push(ev);
+                          });
+
+                          Array.from(mergedSprayMap.entries()).forEach(([mKey, groupEvs]) => {
+                            const firstEv = groupEvs[0];
+                            const badge = getEventBadgeInfo(firstEv);
+                            const isNectPair =
+                              groupEvs.some((e) => e.speciesId === "nablara") &&
+                              groupEvs.some((e) => e.speciesId === "redix25");
+                            const isOlivPair =
+                              groupEvs.some((e) => e.speciesId === "oliviers_s1") &&
+                              groupEvs.some((e) => e.speciesId === "oliviers_s2");
+
+                            lines.push({
+                              key: `s-${row.date}-${mKey}`,
+                              hours: firstEv.hours,
+                              category: firstEv.type === "pulverisation" ? "FOLIAIRE" : "PHYTO",
+                              officialLabel: badge.text,
+                              speciesLabel: isNectPair
+                                ? "Nectarines (P5, P6)"
+                                : isOlivPair
+                                  ? "Oliviers (P1 à P4)"
+                                  : firstEv.speciesName,
+                              parcelsLabel: isNectPair
+                                ? "P5 puis P6"
+                                : isOlivPair
+                                  ? "P1-P2 puis P3-P4"
+                                  : getParcelLabel(firstEv.speciesId, true),
+                            });
+                          });
+
+                          lines.forEach((line, lIdx) => {
+                            const isLastOfDay = lIdx === lines.length - 1;
+                            const rowBg =
+                              line.category === "FERTIGATION"
+                                ? "bg-[#eef7ee]/70 dark:bg-emerald-950/20"
+                                : line.category === "FOLIAIRE"
+                                  ? "bg-[#edf4fc]/80 dark:bg-blue-950/20"
+                                  : "bg-[#fef2eb]/80 dark:bg-orange-950/20";
+                            const catBg =
+                              line.category === "FERTIGATION"
+                                ? "bg-[#226b2c] text-white"
+                                : line.category === "FOLIAIRE"
+                                  ? "bg-[#1164b4] text-white"
+                                  : "bg-[#c83e0b] text-white";
+
+                            renderedElements.push(
+                              <tr
+                                key={line.key}
+                                className={`${rowBg} ${
+                                  isLastOfDay
+                                    ? "border-b-2 border-slate-700/50 dark:border-slate-500"
+                                    : "border-b border-slate-200/80 dark:border-slate-800"
+                                } text-center hover:brightness-95 transition`}
+                              >
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 font-black text-foreground whitespace-nowrap">
+                                  {row.date}
+                                </td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 text-foreground/90 whitespace-nowrap">
+                                  {dayLabel}
+                                </td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 font-mono text-foreground/90 whitespace-nowrap">
+                                  {line.hours}
+                                </td>
+                                <td className={`py-2 px-2 border-r border-slate-200 dark:border-slate-700 font-black text-[10.5px] uppercase tracking-wide ${catBg}`}>
+                                  {line.category}
+                                </td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 font-black text-foreground">
+                                  {line.officialLabel}
+                                </td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 text-left font-semibold text-foreground">
+                                  {line.speciesLabel}
+                                </td>
+                                <td className="py-2 px-2.5 font-semibold text-foreground/90 whitespace-nowrap">
+                                  {line.parcelsLabel}
+                                </td>
+                              </tr>
+                            );
+                          });
+                        });
+                      });
+
+                      return renderedElements;
+                    })()
+                  )}
                 </tbody>
               </table>
             </div>
