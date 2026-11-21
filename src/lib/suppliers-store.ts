@@ -91,6 +91,17 @@ function cleanBuggyPurchases(sourceList: SupplierPurchase[]): { clean: SupplierP
       return false;
     }
 
+    const sNorm = (p.supplierName || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+    // Purge automatique des anciens résidus obsolètes "Achat Validé (Historique Ingénieur)" (avant bascule Agrimax)
+    if (!p.id.startsWith("agrimax-") && (sNorm.includes("achat valide") || sNorm.includes("historique ingenieur"))) {
+      removed.push(p);
+      return false;
+    }
+
     const isRecoPurchase = p.supplierName.includes("Achat Validé") || (p.id && p.id.startsWith("p-reco-"));
     const isAbnormalVolume = p.quantity >= 500;
     if (isRecoPurchase && isAbnormalVolume) {

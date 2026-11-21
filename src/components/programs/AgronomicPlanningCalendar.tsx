@@ -2557,7 +2557,15 @@ export function AgronomicPlanningCalendar({
             })}
           </div>
 
-          {cropsWithRealSurfaces
+          {Object.values(periodsBySpecies).every((arr) => arr.length === 0) ? (
+            <div className="rounded-2xl border bg-card p-10 text-center space-y-2 shadow-xs">
+              <p className="text-sm font-black text-foreground">🌱 Aucun palier validé à afficher</p>
+              <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                Tous les paliers précédents ont été réinitialisés. Rendez-vous dans l&apos;onglet <b>Recommandations</b> pour valider la 1ère ordonnance, ou activez <b>« Toutes les prescriptions (inclus prévisions) »</b> ci-dessus.
+              </p>
+            </div>
+          ) : (
+          cropsWithRealSurfaces
             .filter((c) => selectedSpecies === "all" || c.id === selectedSpecies)
             .map((crop) => {
               const cropPeriodsRaw = periodsBySpecies[crop.id] || [];
@@ -2823,7 +2831,7 @@ export function AgronomicPlanningCalendar({
                   )}
                 </div>
               );
-            })}
+            }))}
         </div>
       )}
 
@@ -2995,7 +3003,15 @@ export function AgronomicPlanningCalendar({
           {/* ======================================================== */}
           {consolidationGrouping === "by_species" && (
             <div className="space-y-4">
-              {speciesConsolidation.map((item) => (
+              {consolidatedProductsFiltered.length === 0 ? (
+                <div className="rounded-2xl border bg-card p-10 text-center space-y-2 shadow-xs">
+                  <p className="text-sm font-black text-foreground">🧪 Aucun intrant validé à afficher</p>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                    Tous les programmes précédents ont été réinitialisés. Validez une recommandation dans l&apos;onglet <b>Recommandations</b> ou basculez sur <b>« Toutes les prescriptions (inclus prévisions) »</b> pour prévisualiser les besoins.
+                  </p>
+                </div>
+              ) : (
+              speciesConsolidation.map((item) => (
                 <div key={item.crop.id} className="border rounded-2xl bg-card overflow-hidden shadow-xs">
                   {/* En-tête de l'Espèce */}
                   <div className="bg-muted/40 px-4 py-3 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
@@ -3100,7 +3116,7 @@ export function AgronomicPlanningCalendar({
                     </div>
                   )}
                 </div>
-              ))}
+              )))}
             </div>
           )}
 
