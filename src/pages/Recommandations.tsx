@@ -264,7 +264,7 @@ function RecommandationsPageContent() {
         missingSet.add(`${it.name} (manque ${Math.round(it.missing * 100) / 100} ${it.unit})`);
       });
       report.lowStockItems.forEach((it) => {
-        const rem = Math.max(0, Math.round((it.available - it.totalNeeded) * 100) / 100);
+        const rem = Math.max(0, Math.round((it.available - it.needed) * 100) / 100);
         lowSet.add(`${it.name} (reste ${rem} ${it.unit})`);
       });
     }
@@ -1053,7 +1053,7 @@ function RecommandationsPageContent() {
                     )}
                     {stockReport && stockReport.stockStatus === "low" && (
                       <span
-                        title={`Stock au minimum après application : ${stockReport.lowStockItems.map((i) => `${i.name} (reste ${Math.max(0, Math.round((i.available - i.totalNeeded) * 100) / 100)} ${i.unit})`).join(", ")}`}
+                        title={`Stock au minimum après application : ${stockReport.lowStockItems.map((i) => `${i.name} (reste ${Math.max(0, Math.round((i.available - i.needed) * 100) / 100)} ${i.unit})`).join(", ")}`}
                         className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
                       >
                         <AlertTriangle className="h-2.5 w-2.5" /> Dispo (Stock min.)
@@ -1087,6 +1087,22 @@ function RecommandationsPageContent() {
                       </span>
                     )}
                   </p>
+                  {stockReport && stockReport.stockStatus === "missing" && stockReport.missingItems.length > 0 && (
+                    <p className="mt-1 text-[10px] font-semibold text-rose-600 dark:text-rose-400 leading-snug">
+                      Manque :{" "}
+                      {stockReport.missingItems
+                        .map((i) => `${i.name.split("/")[0].trim()} (-${Math.round(i.missing * 100) / 100} ${i.unit})`)
+                        .join(" · ")}
+                    </p>
+                  )}
+                  {stockReport && stockReport.stockStatus === "low" && stockReport.lowStockItems.length > 0 && (
+                    <p className="mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300 leading-snug">
+                      Stock min. :{" "}
+                      {stockReport.lowStockItems
+                        .map((i) => `${i.name.split("/")[0].trim()} (reste ${Math.max(0, Math.round((i.available - i.needed) * 100) / 100)} ${i.unit})`)
+                        .join(" · ")}
+                    </p>
+                  )}
                 </div>
 
                 {/* Colonne latérale droite : Statut et Actions */}

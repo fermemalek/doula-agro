@@ -526,14 +526,22 @@ export function checkRecoStock(
       }
     }
 
-    // Stock net disponible par produit (déduit aussi le retour physique Agrimax du 04/08/2026)
+    // Date de l'ordonnance pour ne déduire le retour physique (04/08/2026) qu'à partir de sa date effective
+    const recoDate = String(
+      program?.date ||
+      payload?.date ||
+      (reco.title || "").match(/(\d{4}-\d{2}-\d{2})/)?.[1] ||
+      ""
+    ).slice(0, 10);
+
+    // Stock net disponible par produit (le retour physique Agrimax du 04/08/2026 ne s'applique qu'aux ordonnances >= 2026-08-04)
     const getProductStock = (prodName: string): number => {
       const grossAvailable = safeSuppliers
         .filter((p) => p && matchProductName(p.productName, prodName))
         .reduce((sum, p) => sum + Math.max(0, (p.quantity || 0) - (p.consumed || 0)), 0);
 
       const returnedQty = AGRIMAX_PHYSICAL_RETURNS
-        .filter((ret) => matchProductName(ret.productName, prodName))
+        .filter((ret) => (!recoDate || recoDate >= ret.date) && matchProductName(ret.productName, prodName))
         .reduce((sum, ret) => sum + ret.returnedQuantity, 0);
 
       return Math.max(0, grossAvailable - returnedQty);
