@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock, Droplets, Droplet, CheckCircle2, Calendar, X, AlertTriangle, PackageCheck } from "lucide-react";
+import { Clock, Droplets, Droplet, CheckCircle2, Calendar, X, AlertTriangle, PackageCheck, Sunrise, Sunset } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { RecoStockStatus } from "@/lib/stock-alerts";
@@ -33,6 +33,9 @@ interface ValidateOrderScheduleDialogProps {
   defaultStartHour: string;
   defaultFertIrrigationTime: string;
   defaultPureIrrigationTime: string;
+  sunriseStr?: string;
+  sunsetStr?: string;
+  solarDateLabel?: string;
   loading?: boolean;
   onConfirm: (values: OrderScheduleConfirmation) => void | Promise<void>;
 }
@@ -52,6 +55,9 @@ export function ValidateOrderScheduleDialog({
   defaultStartHour,
   defaultFertIrrigationTime,
   defaultPureIrrigationTime,
+  sunriseStr,
+  sunsetStr,
+  solarDateLabel,
   loading = false,
   onConfirm,
 }: ValidateOrderScheduleDialogProps) {
@@ -178,15 +184,46 @@ export function ValidateOrderScheduleDialog({
               <Clock className="h-3.5 w-3.5 text-emerald-600" />
               <span>Heure de commencement du planning</span>
             </label>
-            <input
-              type="time"
-              required
-              value={startHour}
-              onChange={(e) => setStartHour(e.target.value)}
-              className="w-full rounded-xl border bg-background px-3 py-2 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-primary"
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="time"
+                required
+                value={startHour}
+                onChange={(e) => setStartHour(e.target.value)}
+                className="flex-1 min-w-[120px] rounded-xl border bg-background px-3 py-2 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              {(sunriseStr || sunsetStr) && (
+                <div
+                  className="flex items-center gap-1.5"
+                  title={solarDateLabel ? `Horaires solaires Benhar (${solarDateLabel})` : "Horaires solaires Benhar"}
+                >
+                  {sunriseStr && (
+                    <button
+                      type="button"
+                      onClick={() => setStartHour(sunriseStr.replace("h", ":"))}
+                      title="Cliquer pour démarrer au lever du soleil"
+                      className="inline-flex items-center gap-1 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-2 text-[11px] font-bold text-amber-800 dark:text-amber-300 transition cursor-pointer"
+                    >
+                      <Sunrise className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                      <span>Lever {sunriseStr}</span>
+                    </button>
+                  )}
+                  {sunsetStr && (
+                    <button
+                      type="button"
+                      onClick={() => setStartHour(sunsetStr.replace("h", ":"))}
+                      title="Heure du coucher du soleil à Benhar"
+                      className="inline-flex items-center gap-1 rounded-xl border border-orange-500/40 bg-orange-500/10 hover:bg-orange-500/20 px-2.5 py-2 text-[11px] font-bold text-orange-800 dark:text-orange-300 transition cursor-pointer"
+                    >
+                      <Sunset className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+                      <span>Coucher {sunsetStr}</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <p className="text-[11px] text-muted-foreground">
-              Applicable à cette ordonnance (Fertigation, Pulvérisation foliaire ou Traitement phytosanitaire).
+              Applicable à cette ordonnance (Fertigation, Pulvérisation foliaire ou Traitement phytosanitaire){solarDateLabel ? ` · Soleil Benhar (${solarDateLabel})` : ""}.
             </p>
           </div>
 

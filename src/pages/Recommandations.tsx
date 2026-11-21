@@ -243,6 +243,9 @@ function RecommandationsPageContent() {
     defaultStartHour: string;
     defaultFertIrrigationTime: string;
     defaultPureIrrigationTime: string;
+    sunriseStr: string;
+    sunsetStr: string;
+    solarDateLabel: string;
     stockSummary: OrderStockSummary;
     bacDetails: OrderBacDetail[];
   } | null>(null);
@@ -255,6 +258,14 @@ function RecommandationsPageContent() {
   ) => {
     const first = recosToRun[0];
     const firstDate = first ? getRecoDate(first) : "2026-03-09";
+    // Démarrage à J+1 pour le calcul exact du lever/coucher du soleil à Benhar
+    const startSolarDate = (() => {
+      const [y, m, d] = firstDate.split("-").map(Number);
+      const dt = new Date(y, (m || 1) - 1, (d || 1) + 1);
+      if (isNaN(dt.getTime())) return firstDate;
+      return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+    })();
+    const solar = getSolarTimesForDate(startSolarDate);
     const phase = getHydraulicPhaseForDate(firstDate);
     const pType = first ? getPrescriptionType(first) : "fert_irrigation";
     const prog = (first?.payload as any)?.program || {};
@@ -267,7 +278,6 @@ function RecommandationsPageContent() {
     } else if (phase.morningStartMinutes !== null) {
       defaultStartHour = "06:00";
     } else {
-      const solar = getSolarTimesForDate(firstDate);
       defaultStartHour = solar.sunriseStr.replace("h", ":");
     }
 
@@ -337,6 +347,9 @@ function RecommandationsPageContent() {
       defaultStartHour,
       defaultFertIrrigationTime,
       defaultPureIrrigationTime,
+      sunriseStr: solar.sunriseStr,
+      sunsetStr: solar.sunsetStr,
+      solarDateLabel: startSolarDate,
       stockSummary,
       bacDetails,
     });
@@ -1311,6 +1324,9 @@ function RecommandationsPageContent() {
           defaultStartHour={scheduleConfirmState.defaultStartHour}
           defaultFertIrrigationTime={scheduleConfirmState.defaultFertIrrigationTime}
           defaultPureIrrigationTime={scheduleConfirmState.defaultPureIrrigationTime}
+          sunriseStr={scheduleConfirmState.sunriseStr}
+          sunsetStr={scheduleConfirmState.sunsetStr}
+          solarDateLabel={scheduleConfirmState.solarDateLabel}
           stockSummary={scheduleConfirmState.stockSummary}
           bacDetails={scheduleConfirmState.bacDetails}
           loading={isBatchValidating}
