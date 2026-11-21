@@ -407,8 +407,23 @@ export class PhytosanitaryEngine {
         return ingredientCodes.some(c => logCodes.includes(c));
       }).length;
 
-      // 1. RÈGLE CRITIQUE ANTI-RÉSISTANCE (avec immunité des multi-sites & fenêtre de rémanence 45j)
-      if (hasDirectCodeConflict) {
+      // 1. PRIORITÉ ABSOLUE — QUOTA ANNUEL SAISONNIER (évalué AVANT la fenêtre glissante de 45 jours)
+      // Les acaricides spécifiques IRAC 10A, 10B, 20B, 21A, 25A sont strictement plafonnés à 1 passage/saison
+      const SINGLE_USE_ACARICIDE_CODES = ['10A', '10B', '20B', '21A', '25A'];
+      const effectiveMaxPerSeason = ingredientCodes.some((c) => SINGLE_USE_ACARICIDE_CODES.includes(c))
+        ? Math.min(1, ingredient.maxApplicationsPerSeason || 1)
+        : ingredient.maxApplicationsPerSeason;
+
+      let quotaBlocked = false;
+      if (groupApplicationsCount >= effectiveMaxPerSeason) {
+        isAllowed = false;
+        quotaBlocked = true;
+        blockReason = `Quota annuel atteint (${groupApplicationsCount}/${effectiveMaxPerSeason}) — bloqué pour éviter la résistance | تم بلوغ الحد الأقصى السنوي (${groupApplicationsCount}/${effectiveMaxPerSeason}) — ممنوع لتفادي المقاومة`;
+        priorityScore = 0;
+      }
+
+      // 2. RÈGLE CRITIQUE ANTI-RÉSISTANCE (fenêtre glissante 45j, uniquement si le quota annuel n'est pas atteint)
+      if (isAllowed && hasDirectCodeConflict) {
         if (isMultiSite) {
           // Statut d'immunité : Les multi-sites (Cuivre, Soufre, Captane) ne sont jamais bloqués
           isAllowed = true;
@@ -419,16 +434,9 @@ export class PhytosanitaryEngine {
           blockReason = `Blocage Anti-Résistance : Le dernier traitement (il y a ${daysSinceLastApp} jours) utilisait déjà le groupe [${ingredient.codeGroup}]. L'alternance vers un autre mode d'action (FRAC/IRAC) est obligatoire pour briser la résistance.`;
           priorityScore = 0;
         } else {
-          // Plus de 45 jours écoulés : ré-autorisation possible avec avertissement
+          // Plus de 45 jours écoulés (et quota annuel non atteint) : ré-autorisation possible avec avertissement
           priorityScore -= 20;
         }
-      }
-
-      // 2. RÈGLE DE QUOTA : Dépassement du nombre maximal d'applications par saison
-      if (groupApplicationsCount >= ingredient.maxApplicationsPerSeason) {
-        isAllowed = false;
-        blockReason = `Plafond Saison Atteint : ${groupApplicationsCount}/${ingredient.maxApplicationsPerSeason} pulvérisations déjà effectuées pour le groupe [${ingredient.codeGroup}].`;
-        priorityScore = 0;
       }
 
       // 3. RÈGLE CRITIQUE DE SANTÉ PUBLIQUE : Délai Avant Récolte (DAR Standard ou Huile d'olive)
@@ -509,6 +517,8 @@ export class PhytosanitaryEngine {
         beeBlock,
         beeWarning,
         stageBlocked,
+        quotaBlocked,
+        effectiveMaxPerSeason,
         priorityScore,
         currentSeasonUsageCount: groupApplicationsCount,
         lastUsedDate: hasDirectCodeConflict ? lastApplication?.date : null,

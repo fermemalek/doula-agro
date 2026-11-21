@@ -25,6 +25,148 @@ import { offlineDB } from "@/lib/offline/db";
 import { getSolarTimesForDate, formatMinutesToHHMM } from "@/lib/astronomy";
 import { checkDARCompliance, checkFRACIRACRotation, checkWeatherSuitabilityForDate } from "@/lib/safety-checks";
 import { cleanRecoTitle } from "@/lib/cloud/recommendations";
+import { getIracFracCode } from "@/data/phytosanitaires";
+
+export interface TankRinseAlert {
+  level: "herbicide" | "incompatible";
+  messageFr: string;
+  messageAr: string;
+  previousProduct: string;
+  previousDate: string;
+  currentProduct: string;
+}
+
+function classifySprayProduct(rawName: string): {
+  isHerbicide: boolean;
+  isHuile: boolean;
+  isSoufre: boolean;
+  isCaptane: boolean;
+  isCuivre: boolean;
+  isFosetyl: boolean;
+  isTriazole: boolean;
+  isBt: boolean;
+} {
+  const n = (rawName || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const code = (getIracFracCode(rawName) || "").toUpperCase();
+  return {
+    isHerbicide: code.includes("HRAC") || n.includes("alion") || n.includes("glyphos") || n.includes("indaziflam") || n.includes("herbicide") || n.includes("desherb"),
+    isHuile: code.includes("HUILE") || n.includes("huile") || n.includes("agroil") || n.includes("oil"),
+    isSoufre: code.includes("M02") || n.includes("soufre") || n.includes("thiovit") || n.includes("kumulus") || n.includes("microthiol"),
+    isCaptane: code.includes("M04") || n.includes("captan") || n.includes("criptan") || n.includes("capitan") || n.includes("phytocap"),
+    isCuivre: code.includes("M01") || n.includes("cuivre") || n.includes("bouillie") || n.includes("nucop") || n.includes("curenox") || n.includes("champ flo") || n.includes("comac"),
+    isFosetyl: code.includes("P07") || code.includes("FRAC 33") || n.includes("fosetyl") || n.includes("aliette"),
+    isTriazole: /\bFRAC\s*3\b/.test(code) || n.includes("score") || n.includes("folicur") || n.includes("topas") || n.includes("topaze") || n.includes("tebucon") || n.includes("difenocon") || n.includes("penconaz"),
+    isBt: code.includes("11A") || n.includes("bacillus") || n.includes("dipel") || n.includes("delfin") || n.includes("bactospeine"),
+  };
+}
+
+function extractProductNamesFromRecord(rec: any): string[] {
+  const names: string[] = [];
+  const payload = rec?.payload || rec || {};
+  const prog = payload?.program || payload;
+  if (Array.isArray(prog?.products)) {
+    prog.products.forEach((p: any) => {
+      const nm = (p?.product || p?.name || "").trim();
+      if (nm) names.push(nm);
+    });
+  }
+  if (Array.isArray(prog?.items)) {
+    prog.items.forEach((it: any) => {
+      const nm = (it?.name || it?.product || "").trim();
+      if (nm) names.push(nm);
+    });
+  }
+  if (typeof rec?.product_name === "string" && rec.product_name.trim()) {
+    names.push(rec.product_name.trim());
+  }
+  if (names.length === 0 && typeof (rec?.label || rec?.title) === "string") {
+    names.push(String(rec.label || rec.title));
+  }
+  return names;
+}
+
+/**
+ * GARDE-FOU 3 — Contrainte « 1 seul pulvérisateur » :
+ * Vérifie le dernier traitement pulvérisé sur la ferme (toutes espèces confondues)
+ * pour détecter un besoin de rinçage cuve 3× obligatoire avant la pulvérisation courante.
+ */
+export function checkTankRinseRequirement(
+  reco: Recommendation,
+  existingSprayRecords?: any[]
+): TankRinseAlert | null {
+  if (!reco) return null;
+  const payload = (reco.payload || {}) as any;
+  const isSpray =
+    reco.kind === "phytosanitaire" ||
+    (reco.kind === "fertilisation" && (payload.method === "pulverisation" || payload.program?.kind === "pulverisation"));
+  if (!isSpray) return null;
+
+  const currentProducts = extractProductNamesFromRecord(reco);
+  if (currentProducts.length === 0) return null;
+
+  const allSprays = existingSprayRecords ?? [
+    ...getAllModuleRecordsSnapshot("pulverisation"),
+    ...getAllModuleRecordsSnapshot("phytosanitaire"),
+  ];
+
+  const recoDate = String(
+    payload?.program?.date ||
+      payload?.date ||
+      (reco.title || "").match(/(\d{4}-\d{2}-\d{2})/)?.[1] ||
+      "9999-12-31"
+  ).slice(0, 10);
+
+  // Trouver la dernière pulvérisation ferme entière (toutes espèces confondues) antérieure ou la plus récente
+  const previousSprays = allSprays
+    .filter((r: any) => r && r.reco_id !== reco.id && typeof r.date === "string" && r.date.slice(0, 10) <= recoDate)
+    .sort((a: any, b: any) => String(b.date || "").localeCompare(String(a.date || "")));
+
+  if (previousSprays.length === 0) return null;
+
+  const lastDate = String(previousSprays[0].date).slice(0, 10);
+  // Prendre tous les produits de cette dernière journée de pulvérisation
+  const lastDaySprays = previousSprays.filter((r: any) => String(r.date).slice(0, 10) === lastDate);
+  const prevProducts = Array.from(new Set(lastDaySprays.flatMap(extractProductNamesFromRecord)));
+
+  for (const prevName of prevProducts) {
+    const prevCls = classifySprayProduct(prevName);
+    // a) Résidu herbicide (HRAC) -> Alerte rouge obligatoire
+    if (prevCls.isHerbicide) {
+      return {
+        level: "herbicide",
+        messageFr: "⛔ Rinçage cuve 3× + nettoyant obligatoire (résidu herbicide)",
+        messageAr: "⛔ غسل الصهريج 3 مرات إجباري (بقايا مبيد أعشاب)",
+        previousProduct: prevName,
+        previousDate: lastDate,
+        currentProduct: currentProducts[0],
+      };
+    }
+
+    for (const currName of currentProducts) {
+      const currCls = classifySprayProduct(currName);
+      // b) Transition incompatible (Huile <-> Soufre/Captane, ou Cuivre <-> Fosétyl-Al/Triazole/Bt)
+      const huileVsSoufreCaptane =
+        (prevCls.isHuile && (currCls.isSoufre || currCls.isCaptane)) ||
+        ((prevCls.isSoufre || prevCls.isCaptane) && currCls.isHuile);
+      const cuivreVsIncompat =
+        (prevCls.isCuivre && (currCls.isFosetyl || currCls.isTriazole || currCls.isBt)) ||
+        ((prevCls.isFosetyl || prevCls.isTriazole || prevCls.isBt) && currCls.isCuivre);
+
+      if (huileVsSoufreCaptane || cuivreVsIncompat) {
+        return {
+          level: "incompatible",
+          messageFr: "⚠️ Rinçage cuve 3× obligatoire (résidu incompatible)",
+          messageAr: "⚠️ غسل الصهريج 3 مرات إجباري (بقايا غير متوافقة)",
+          previousProduct: prevName,
+          previousDate: lastDate,
+          currentProduct: currName,
+        };
+      }
+    }
+  }
+
+  return null;
+}
 
 export function parseDurationToMinutes(durationStr: string): number {
   if (!durationStr) return 90;
@@ -913,6 +1055,7 @@ export async function validateRecommendationAndPurchases({
 
       // Heure de commencement confirmée par l'utilisateur (ou 07:00 par défaut pour Foliaire)
       const foliarStartHour = options.customStartHour || "07:00";
+      const foliarRinseAlert = checkTankRinseRequirement(reco);
 
       for (const parcel of targetParcels) {
         const surface = safeParseFloat(parcel.info?.surface) || 1;
@@ -940,6 +1083,7 @@ export async function validateRecommendationAndPurchases({
           dateStartHour: foliarStartHour,
           hoursSlot: "07h00 - 09h00",
           sprayVolumeL: sprayVolL,
+          ...(foliarRinseAlert ? { tankRinseAlert: foliarRinseAlert } : {}),
           status: options.markAsExecutedIfPast ? "execute" : "planifie",
           ...(options.markAsExecutedIfPast
             ? {
@@ -981,6 +1125,7 @@ export async function validateRecommendationAndPurchases({
 
       // Heure de commencement confirmée par l'utilisateur (ou 15:00 par défaut pour Phytosanitaire)
       const phytoStartHour = options.customStartHour || "15:00";
+      const phytoRinseAlert = checkTankRinseRequirement(reco);
 
       for (const parcel of targetParcels) {
         const surface = safeParseFloat(parcel.info?.surface) || 1;
@@ -1002,6 +1147,7 @@ export async function validateRecommendationAndPurchases({
           reco_id: reco.id,
           date: scheduledPhytoDate,
           dateStartHour: phytoStartHour,
+          ...(phytoRinseAlert ? { tankRinseAlert: phytoRinseAlert } : {}),
           status: options.markAsExecutedIfPast ? "execute" : "planifie",
           ...(options.markAsExecutedIfPast
             ? {

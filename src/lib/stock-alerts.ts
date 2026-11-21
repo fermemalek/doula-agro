@@ -2,8 +2,15 @@ import type { Recommendation } from "@/lib/cloud/recommendations";
 import type { SupplierPurchase } from "@/lib/suppliers-store";
 import type { Parcel } from "@/data/parcels";
 import { FERTILIZER_DATABASE } from "@/data/fertilizers";
-import { PHYTO_DATABASE } from "@/data/phytosanitaires";
+import { PHYTO_DATABASE, getMatiereActive } from "@/data/phytosanitaires";
 import { AGRIMAX_PHYSICAL_RETURNS } from "@/data/agrimax-purchases";
+
+export interface StockEquivalentMatch {
+  productName: string;
+  activeIngredient: string;
+  available: number;
+  unit: string;
+}
 
 export interface RecoProductStockItem {
   name: string;
@@ -14,17 +21,20 @@ export interface RecoProductStockItem {
   price: number;
   cost: number;
   isMissing: boolean;
+  equivalentInStock?: StockEquivalentMatch;
 }
 
-export type RecoStockStatus = "available" | "low" | "missing";
+export type RecoStockStatus = "available" | "low" | "equivalent" | "missing";
 
 export interface RecoStockReport {
   hasMissingStock: boolean;
   isLowStock: boolean;
+  hasEquivalentStock: boolean;
   stockStatus: RecoStockStatus;
   items: RecoProductStockItem[];
   missingItems: RecoProductStockItem[];
   lowStockItems: RecoProductStockItem[];
+  equivalentItems: RecoProductStockItem[];
   totalEstimatedMissingCost: number;
 }
 
@@ -414,10 +424,12 @@ export function checkRecoStock(
   const emptyReport: RecoStockReport = {
     hasMissingStock: false,
     isLowStock: false,
+    hasEquivalentStock: false,
     stockStatus: "available",
     items: [],
     missingItems: [],
     lowStockItems: [],
+    equivalentItems: [],
     totalEstimatedMissingCost: 0,
   };
 
@@ -547,9 +559,58 @@ export function checkRecoStock(
       return Math.max(0, grossAvailable - returnedQty);
     };
 
+    // Repli sur la matière active exacte dans le stock Agrimax (si le nom commercial est en rupture)
+    const findActiveIngredientEquivalent = (prodName: string): StockEquivalentMatch | undefined => {
+      const targetActive = getMatiereActive(prodName);
+      if (!targetActive) return undefined;
+      const normTarget = targetActive
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!normTarget || normTarget.includes("divers")) return undefined;
+
+      // Regrouper le stock disponible par nom commercial partageant exactement la même matière active
+      const stockByCommercial = new Map<string, { available: number; unit: string }>();
+      for (const s of safeSuppliers) {
+        if (!s || !s.productName) continue;
+        if (matchProductName(s.productName, prodName)) continue; // Déjà compté dans le stock direct
+        const sActive = getMatiereActive(s.productName);
+        if (!sActive) continue;
+        const normS = sActive
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (normS !== normTarget) continue;
+
+        const avail = Math.max(0, (s.quantity || 0) - (s.consumed || 0));
+        if (avail <= 0) continue;
+        const cur = stockByCommercial.get(s.productName) || { available: 0, unit: s.unit || "litres" };
+        cur.available += avail;
+        stockByCommercial.set(s.productName, cur);
+      }
+
+      let best: StockEquivalentMatch | undefined;
+      for (const [commercialName, info] of stockByCommercial.entries()) {
+        if (!best || info.available > best.available) {
+          best = {
+            productName: commercialName,
+            activeIngredient: targetActive,
+            available: parseFloat(info.available.toFixed(2)),
+            unit: info.unit,
+          };
+        }
+      }
+      return best;
+    };
+
     const items: RecoProductStockItem[] = [];
     const missingItems: RecoProductStockItem[] = [];
     const lowStockItems: RecoProductStockItem[] = [];
+    const equivalentItems: RecoProductStockItem[] = [];
     let totalEstimatedMissingCost = 0;
 
     for (const key of Object.keys(sumsMap)) {
@@ -559,23 +620,31 @@ export function checkRecoStock(
       const missing = parseFloat(Math.max(0, totalNeeded - available).toFixed(2));
       const remainingAfter = parseFloat(Math.max(0, available - totalNeeded).toFixed(2));
       const cost = parseFloat((missing * raw.price).toFixed(2));
-      const isMissing = missing > 0;
+
+      // Si rupture sur le nom commercial exact, rechercher un équivalent de même matière active en stock
+      const equivalentInStock = missing > 0 ? findActiveIngredientEquivalent(raw.name) : undefined;
+      const coveredByEquivalent = Boolean(equivalentInStock && equivalentInStock.available >= missing);
+
+      const isMissing = missing > 0 && !coveredByEquivalent;
       // Stock minimum (Orange) : disponible pour ce passage, mais réserve restante <= 1 passage ou <= 2 unités
-      const isLow = !isMissing && totalNeeded > 0 && (remainingAfter <= totalNeeded || remainingAfter <= 2);
+      const isLow = !isMissing && !coveredByEquivalent && totalNeeded > 0 && (remainingAfter <= totalNeeded || remainingAfter <= 2);
 
       const item: RecoProductStockItem = {
         name: raw.name,
         needed: totalNeeded,
         available,
-        missing,
+        missing: coveredByEquivalent ? 0 : missing,
         unit: raw.unit,
         price: raw.price,
-        cost,
+        cost: coveredByEquivalent ? 0 : cost,
         isMissing,
+        equivalentInStock,
       };
 
       items.push(item);
-      if (isMissing) {
+      if (coveredByEquivalent) {
+        equivalentItems.push(item);
+      } else if (isMissing) {
         missingItems.push(item);
         totalEstimatedMissingCost += cost;
       } else if (isLow) {
@@ -584,15 +653,23 @@ export function checkRecoStock(
     }
 
     const stockStatus: RecoStockStatus =
-      missingItems.length > 0 ? "missing" : lowStockItems.length > 0 ? "low" : "available";
+      missingItems.length > 0
+        ? "missing"
+        : equivalentItems.length > 0
+          ? "equivalent"
+          : lowStockItems.length > 0
+            ? "low"
+            : "available";
 
     return {
       hasMissingStock: missingItems.length > 0,
       isLowStock: lowStockItems.length > 0,
+      hasEquivalentStock: equivalentItems.length > 0,
       stockStatus,
       items,
       missingItems,
       lowStockItems,
+      equivalentItems,
       totalEstimatedMissingCost: parseFloat(totalEstimatedMissingCost.toFixed(2)),
     };
   } catch (err) {

@@ -3,6 +3,7 @@ import { Clock, Droplets, Droplet, CheckCircle2, Calendar, X, AlertTriangle, Pac
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import type { RecoStockStatus } from "@/lib/stock-alerts";
+import type { TankRinseAlert } from "@/lib/reco-validation";
 
 export interface OrderScheduleConfirmation {
   customStartHour: string;          // HH:MM (ex: "06:30", "07:00", "15:00")
@@ -14,6 +15,7 @@ export interface OrderStockSummary {
   status: RecoStockStatus;
   missingLabels: string[];
   lowLabels: string[];
+  equivalentLabels?: string[];
 }
 
 export interface OrderBacDetail {
@@ -29,6 +31,7 @@ interface ValidateOrderScheduleDialogProps {
   operationLabel?: string;
   stockSummary?: OrderStockSummary;
   bacDetails?: OrderBacDetail[];
+  tankRinseAlert?: TankRinseAlert | null;
   mode: "execute" | "plan";
   defaultStartHour: string;
   defaultFertIrrigationTime: string;
@@ -51,6 +54,7 @@ export function ValidateOrderScheduleDialog({
   operationLabel,
   stockSummary,
   bacDetails,
+  tankRinseAlert,
   mode,
   defaultStartHour,
   defaultFertIrrigationTime,
@@ -136,15 +140,37 @@ export function ValidateOrderScheduleDialog({
             </div>
           )}
 
-          {/* Indicateur d'approvisionnement (Rouge = Achat requis | Orange = Stock min. | Vert = Dispo) */}
+          {/* Alerte Rinçage cuve 3× obligatoire (contrainte 1 seul pulvérisateur) */}
+          {tankRinseAlert && (
+            <div
+              className={`rounded-xl border-2 px-3 py-2.5 text-xs space-y-1 ${
+                tankRinseAlert.level === "herbicide"
+                  ? "bg-rose-600/15 border-rose-600/60 text-rose-800 dark:text-rose-200"
+                  : "bg-amber-500/15 border-amber-500/60 text-amber-900 dark:text-amber-200"
+              }`}
+            >
+              <p className="font-black leading-snug">{tankRinseAlert.messageFr}</p>
+              <p className="font-bold text-[11px] leading-snug" dir="rtl">
+                {tankRinseAlert.messageAr}
+              </p>
+              <p className="text-[10.5px] opacity-85">
+                Passage précédent (<span dir="ltr" className="font-mono">{tankRinseAlert.previousDate}</span>) :{" "}
+                <strong>{tankRinseAlert.previousProduct}</strong> → Actuel : <strong>{tankRinseAlert.currentProduct}</strong>
+              </p>
+            </div>
+          )}
+
+          {/* Indicateur d'approvisionnement (Rouge = Achat requis | Bleu = Équivalent | Orange = Stock min. | Vert = Dispo) */}
           {stockSummary && (
             <div
               className={`rounded-xl border px-3 py-2 text-xs space-y-1 ${
                 stockSummary.status === "missing"
                   ? "bg-rose-500/10 border-rose-500/40 text-rose-700 dark:text-rose-300"
-                  : stockSummary.status === "low"
-                    ? "bg-amber-500/10 border-amber-500/40 text-amber-800 dark:text-amber-300"
-                    : "bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300"
+                  : stockSummary.status === "equivalent"
+                    ? "bg-sky-500/10 border-sky-500/40 text-sky-800 dark:text-sky-300"
+                    : stockSummary.status === "low"
+                      ? "bg-amber-500/10 border-amber-500/40 text-amber-800 dark:text-amber-300"
+                      : "bg-emerald-500/10 border-emerald-500/40 text-emerald-700 dark:text-emerald-300"
               }`}
             >
               <div className="font-black flex items-center gap-1.5">
@@ -152,6 +178,11 @@ export function ValidateOrderScheduleDialog({
                   <>
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                     <span>Achat requis — Approvisionnement nécessaire</span>
+                  </>
+                ) : stockSummary.status === "equivalent" ? (
+                  <>
+                    <PackageCheck className="h-3.5 w-3.5 shrink-0" />
+                    <span>🔄 Équivalent disponible en stock (vérifier concentration)</span>
                   </>
                 ) : stockSummary.status === "low" ? (
                   <>
@@ -168,6 +199,11 @@ export function ValidateOrderScheduleDialog({
               {stockSummary.missingLabels.length > 0 && (
                 <p className="text-[11px] font-medium leading-snug">
                   Manquant : {stockSummary.missingLabels.join(", ")}
+                </p>
+              )}
+              {stockSummary.equivalentLabels && stockSummary.equivalentLabels.length > 0 && (
+                <p className="text-[11px] font-semibold leading-snug">
+                  {stockSummary.equivalentLabels.join(" · ")}
                 </p>
               )}
               {stockSummary.missingLabels.length === 0 && stockSummary.lowLabels.length > 0 && (

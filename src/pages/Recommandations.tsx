@@ -33,7 +33,14 @@ import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useParcels, useParcelActions } from "@/lib/parcel-store";
 import { checkRecoStock, getTargetParcelsForReco } from "@/lib/stock-alerts";
-import { validateRecommendationAndPurchases, resetAllAppliedRecoHistory, syncPurchasesForAcceptedRecos, getHydraulicPhaseForDate } from "@/lib/reco-validation";
+import {
+  validateRecommendationAndPurchases,
+  resetAllAppliedRecoHistory,
+  syncPurchasesForAcceptedRecos,
+  getHydraulicPhaseForDate,
+  checkTankRinseRequirement,
+  type TankRinseAlert,
+} from "@/lib/reco-validation";
 import { ValidateOrderScheduleDialog, type OrderScheduleConfirmation, type OrderStockSummary, type OrderBacDetail } from "@/components/ValidateOrderScheduleDialog";
 import { getSolarTimesForDate, formatMinutesToTimeInput } from "@/lib/astronomy";
 
@@ -223,7 +230,7 @@ function RecommandationsPageContent() {
   const [detail, setDetail] = useState<Recommendation | null>(null);
   const [editingReco, setEditingReco] = useState<Recommendation | null>(null);
   const [isDuplicate, setIsDuplicate] = useState(false);
-  const { create, remove, accept } = useRecommendationActions();
+  const { create, update, remove, accept } = useRecommendationActions();
   const { addPurchase } = useSupplierActions();
   const { add: addModuleRecord } = useModuleActions();
   const { setStatus: setParcelStatus } = useParcelActions();
@@ -248,6 +255,7 @@ function RecommandationsPageContent() {
     solarDateLabel: string;
     stockSummary: OrderStockSummary;
     bacDetails: OrderBacDetail[];
+    tankRinseAlert: TankRinseAlert | null;
   } | null>(null);
 
   const openScheduleConfirm = (
@@ -299,6 +307,8 @@ function RecommandationsPageContent() {
 
     const missingSet = new Set<string>();
     const lowSet = new Set<string>();
+    const equivSet = new Set<string>();
+    let tankRinseAlert: TankRinseAlert | null = null;
     for (const r of recosToRun) {
       const report = checkRecoStock(r, suppliers, parcels);
       report.missingItems.forEach((it) => {
@@ -308,13 +318,31 @@ function RecommandationsPageContent() {
         const rem = Math.max(0, Math.round((it.available - it.needed) * 100) / 100);
         lowSet.add(`${it.name} (reste ${rem} ${it.unit})`);
       });
+      report.equivalentItems.forEach((it) => {
+        if (it.equivalentInStock) {
+          equivSet.add(`🔄 Équivalent en stock pour ${it.name} : ${it.equivalentInStock.productName} (${it.equivalentInStock.available} ${it.equivalentInStock.unit} — vérifier concentration)`);
+        }
+      });
+      const rinse = checkTankRinseRequirement(r);
+      if (rinse && (!tankRinseAlert || rinse.level === "herbicide")) {
+        tankRinseAlert = rinse;
+      }
     }
     const missingLabels = Array.from(missingSet);
     const lowLabels = Array.from(lowSet);
+    const equivalentLabels = Array.from(equivSet);
     const stockSummary: OrderStockSummary = {
-      status: missingLabels.length > 0 ? "missing" : lowLabels.length > 0 ? "low" : "available",
+      status:
+        missingLabels.length > 0
+          ? "missing"
+          : equivalentLabels.length > 0
+            ? "equivalent"
+            : lowLabels.length > 0
+              ? "low"
+              : "available",
       missingLabels,
       lowLabels,
+      equivalentLabels,
     };
 
     const bacAggMap = new Map<string, Set<string>>();
@@ -349,6 +377,7 @@ function RecommandationsPageContent() {
       solarDateLabel: startSolarDate,
       stockSummary,
       bacDetails,
+      tankRinseAlert,
     });
   };
 
@@ -1133,6 +1162,14 @@ function RecommandationsPageContent() {
                         <AlertTriangle className="h-2.5 w-2.5" /> Dispo (Stock min.)
                       </span>
                     )}
+                    {stockReport && stockReport.stockStatus === "equivalent" && (
+                      <span
+                        title={`Équivalent même matière active en stock : ${stockReport.equivalentItems.map((i) => `${i.name} → ${i.equivalentInStock?.productName}`).join(", ")}`}
+                        className="shrink-0 rounded-full border border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
+                      >
+                        🔄 Équivalent en stock
+                      </span>
+                    )}
                     {stockReport && stockReport.stockStatus === "available" && (
                       <span
                         title="Tous les produits sont disponibles en stock"
@@ -1169,6 +1206,53 @@ function RecommandationsPageContent() {
                           <span className="text-muted-foreground">({b.products.join(", ")})</span>
                         </span>
                       ))}
+                    </div>
+                  )}
+                  {stockReport && stockReport.equivalentItems.length > 0 && (
+                    <div className="mt-1 space-y-1">
+                      {stockReport.equivalentItems.map((eqItem) => {
+                        const eq = eqItem.equivalentInStock!;
+                        return (
+                          <div key={eqItem.name} className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300 leading-snug">
+                            <span>
+                              🔄 Équivalent en stock : <strong>{eq.productName}</strong> ({eq.available} {eq.unit} · {eq.activeIngredient} — vérifier concentration)
+                            </span>
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                if (!window.confirm(`Substituer "${eqItem.name}" par l'équivalent en stock "${eq.productName}" (vérifier la concentration) ?`)) return;
+                                try {
+                                  const nextPayload = JSON.parse(JSON.stringify(r.payload || {}));
+                                  const prog = nextPayload.program || {};
+                                  if (Array.isArray(prog.products)) {
+                                    prog.products = prog.products.map((p: any) =>
+                                      (p.product || p.name)?.trim() === eqItem.name
+                                        ? { ...p, product: eq.productName, name: eq.productName }
+                                        : p
+                                    );
+                                  }
+                                  if (Array.isArray(prog.items)) {
+                                    prog.items = prog.items.map((it: any) =>
+                                      (it.name || it.product)?.trim() === eqItem.name
+                                        ? { ...it, name: eq.productName }
+                                        : it
+                                    );
+                                  }
+                                  nextPayload.program = prog;
+                                  await update.mutateAsync({ id: r.id, patch: { payload: nextPayload } });
+                                  toast.success(`Produit substitué par "${eq.productName}" (pensez à vérifier la concentration).`);
+                                } catch {
+                                  toast.error("Erreur lors de la substitution du produit.");
+                                }
+                              }}
+                              className="rounded-md border border-sky-500/40 bg-sky-500/15 hover:bg-sky-500/25 px-1.5 py-0.5 text-[9.5px] font-black text-sky-800 dark:text-sky-200 cursor-pointer"
+                            >
+                              Substituer
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                   {stockReport && stockReport.stockStatus === "missing" && stockReport.missingItems.length > 0 && (
@@ -1326,6 +1410,7 @@ function RecommandationsPageContent() {
           solarDateLabel={scheduleConfirmState.solarDateLabel}
           stockSummary={scheduleConfirmState.stockSummary}
           bacDetails={scheduleConfirmState.bacDetails}
+          tankRinseAlert={scheduleConfirmState.tankRinseAlert}
           loading={isBatchValidating}
           onConfirm={executeConfirmedValidation}
         />

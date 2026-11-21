@@ -8,6 +8,7 @@
  */
 
 import { FERTILIZER_DATABASE } from "@/data/fertilizers";
+import { getIracFracCode } from "@/data/phytosanitaires";
 import type { Parcel } from "@/data/parcels";
 import type { Recommendation } from "@/lib/cloud/recommendations";
 
@@ -35,21 +36,71 @@ export interface WeatherSafetyResult {
 }
 
 /**
- * Dates de récolte réelles 2026 pour la Ferme Malek (Référentiel Campagne 2026) :
- * - Nectarines (P5, P6) : Fin Juin 2026 (2026-06-30)
- * - Pommiers (P7, P8)   : 1er Août 2026 (2026-08-01)
- * - Oliviers (P1 à P4)  : Novembre 2026 (2026-11-15)
+ * Dates de récolte prévisionnelles centralisées par espèce (Campagne 2026 — configurables par année) :
+ * - Nectarinier (P5, P6) : 25 Juin (2026-06-25)
+ * - Pommier (P7, P8)     : 1er Août (2026-08-01)
+ * - Olivier (P1 à P4)    : 15 Novembre (2026-11-15)
  */
+export type HarvestSpeciesKey = "nectarinier" | "pommier" | "olivier";
+
+export const DEFAULT_HARVEST_DATES_BY_SPECIES: Record<
+  HarvestSpeciesKey,
+  { month: number; day: number; labelFr: string; labelAr: string }
+> = {
+  nectarinier: { month: 6, day: 25, labelFr: "Nectarinier", labelAr: "النكتارين" },
+  pommier: { month: 8, day: 1, labelFr: "Pommier", labelAr: "التفاح" },
+  olivier: { month: 11, day: 15, labelFr: "Olivier", labelAr: "الزيتون" },
+};
+
+export function resolveHarvestSpeciesKey(parcelIdOrSpecies: string, parcelType = ""): HarvestSpeciesKey {
+  const s = `${parcelIdOrSpecies || ""} ${parcelType || ""}`.toLowerCase();
+  if (s.includes("nablara") || s.includes("p5") || s.includes("redix") || s.includes("p6") || s.includes("nectar") || s.includes("pech")) {
+    return "nectarinier";
+  }
+  if (s.includes("pomm") || s.includes("p7") || s.includes("p8") || s.includes("apple")) {
+    return "pommier";
+  }
+  return "olivier";
+}
+
+export function getEstimatedHarvestDateISO(
+  parcelIdOrSpecies: string,
+  parcelType = "",
+  year = new Date().getFullYear(),
+  customOverrides?: Partial<Record<HarvestSpeciesKey, string>>
+): string {
+  const key = resolveHarvestSpeciesKey(parcelIdOrSpecies, parcelType);
+  if (customOverrides && customOverrides[key]) {
+    return customOverrides[key]!;
+  }
+  const cfg = DEFAULT_HARVEST_DATES_BY_SPECIES[key];
+  return `${year}-${String(cfg.month).padStart(2, "0")}-${String(cfg.day).padStart(2, "0")}`;
+}
+
 export function getEstimatedHarvestDate(parcelId: string, parcelType: string, year = new Date().getFullYear()): Date {
-  const pId = parcelId.toLowerCase();
-  if (pId === "nablara" || pId === "p5" || pId === "redix25" || pId === "p6" || parcelType === "nectarine") {
-    return new Date(`${year}-06-30T00:00:00`);
-  }
-  if (pId.startsWith("pommier") || pId === "p7" || pId === "p8" || parcelType === "pommier") {
-    return new Date(`${year}-08-01T00:00:00`);
-  }
-  // Oliviers P1..P4 : Novembre
-  return new Date(`${year}-11-15T00:00:00`);
+  const iso = getEstimatedHarvestDateISO(parcelId, parcelType, year);
+  return new Date(`${iso}T00:00:00`);
+}
+
+/**
+ * Calcule automatiquement joursAvantRecolte = diffInDays(harvestDate, treatmentDate)
+ */
+export function computeDaysBeforeHarvest(
+  parcelIdOrSpecies: string,
+  treatmentDate: string | Date = new Date(),
+  customHarvestDateISO?: string,
+  parcelType = ""
+): number {
+  const tDate = typeof treatmentDate === "string"
+    ? new Date(`${treatmentDate.slice(0, 10)}T00:00:00`)
+    : new Date(treatmentDate.getFullYear(), treatmentDate.getMonth(), treatmentDate.getDate());
+  const year = isNaN(tDate.getTime()) ? new Date().getFullYear() : tDate.getFullYear();
+  const harvestIso = customHarvestDateISO && customHarvestDateISO.length >= 10
+    ? customHarvestDateISO.slice(0, 10)
+    : getEstimatedHarvestDateISO(parcelIdOrSpecies, parcelType, year);
+  const hDate = new Date(`${harvestIso}T00:00:00`);
+  if (isNaN(hDate.getTime()) || isNaN(tDate.getTime())) return 45;
+  return Math.round((hDate.getTime() - tDate.getTime()) / 86400000);
 }
 
 /**
@@ -99,23 +150,33 @@ export function checkDARCompliance(
 
   for (const parcel of targetParcels) {
     const harvestDate = getEstimatedHarvestDate(parcel.id, parcel.type, year);
-    
+    const daysBeforeHarvest = computeDaysBeforeHarvest(parcel.id, plannedDate, undefined, parcel.type);
+    const isOlivier = resolveHarvestSpeciesKey(parcel.id, parcel.type) === "olivier";
+
     for (const prod of products) {
       const pName = prod.product || prod.name || "";
-      const darDays = getProductDAR(pName);
-      
+      let darDays = getProductDAR(pName);
+      const codeGroup = getIracFracCode(pName).toUpperCase();
+      // DAR spécial Huile d'Olive (28 j) sur pyréthrinoïdes IRAC 3A lipophiles
+      const isOliveOilLipophile = isOlivier && codeGroup.includes("3A");
+      if (isOliveOilLipophile && darDays < 28) {
+        darDays = 28;
+      }
+
       const safeHarvestDate = new Date(plannedDate);
       safeHarvestDate.setDate(safeHarvestDate.getDate() + darDays);
 
       // Ne bloquer le DAR que pour les traitements AVANT récolte (un traitement post-récolte est autorisé)
-      if (plannedDate <= harvestDate && safeHarvestDate > harvestDate) {
+      if (daysBeforeHarvest >= 0 && darDays > daysBeforeHarvest) {
         result.isCompliant = false;
-        const msg = `[DAR BLOQUANT] Sur ${parcel.name} : le produit "${pName}" a un DAR de ${darDays} jours. Traitement prévu le ${plannedDateStr.slice(0, 10)}, récolte estimée le ${harvestDate.toISOString().slice(0, 10)}. Fin du délai DAR le ${safeHarvestDate.toISOString().slice(0, 10)}.`;
+        const msg = isOliveOilLipophile
+          ? `[DAR HUILE D'OLIVE BLOQUANT] Sur ${parcel.name} : "${pName}" (IRAC 3A lipophile) exige un DAR de 28 jours pour huile d'olive, or la récolte estimée (${harvestDate.toISOString().slice(0, 10)}) est dans ${daysBeforeHarvest} jour(s).`
+          : `[DAR BLOQUANT] Sur ${parcel.name} : le produit "${pName}" a un DAR de ${darDays} jours. Traitement prévu le ${plannedDateStr.slice(0, 10)}, récolte estimée le ${harvestDate.toISOString().slice(0, 10)} (${daysBeforeHarvest} j restants). Fin du délai DAR le ${safeHarvestDate.toISOString().slice(0, 10)}.`;
         result.blockingErrors.push(msg);
-      } else if (plannedDate <= harvestDate) {
-        const daysRemaining = Math.round((harvestDate.getTime() - safeHarvestDate.getTime()) / 86400000);
+      } else if (daysBeforeHarvest >= 0) {
+        const daysRemaining = daysBeforeHarvest - darDays;
         if (daysRemaining <= 7) {
-          result.warnings.push(`[ATTENTION DAR] Sur ${parcel.name} : "${pName}" fin de DAR seulement ${daysRemaining} jour(s) avant la récolte.`);
+          result.warnings.push(`[ATTENTION DAR] Sur ${parcel.name} : "${pName}" fin de DAR seulement ${daysRemaining} jour(s) avant la récolte (${harvestDate.toISOString().slice(0, 10)}).`);
         }
       }
     }

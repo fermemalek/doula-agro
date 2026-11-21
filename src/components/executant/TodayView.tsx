@@ -545,6 +545,20 @@ export function TodayView() {
                         <span>{fmtDate(p.scheduled_at)}</span>
                         <span>· {parcelName(p.parcel_id) || p.parcel_id}</span>
                       </div>
+                      {(p.kind === "pulverisation" || p.kind === "phytosanitaire") && (p.payload as any)?.tankRinseAlert && (
+                        <div
+                          className={`mt-2 rounded-xl border px-2.5 py-1.5 text-[11px] font-bold leading-snug ${
+                            (p.payload as any).tankRinseAlert.level === "herbicide"
+                              ? "border-rose-600/50 bg-rose-600/15 text-rose-800 dark:text-rose-200"
+                              : "border-amber-500/50 bg-amber-500/15 text-amber-900 dark:text-amber-200"
+                          }`}
+                        >
+                          <p>{(p.payload as any).tankRinseAlert.messageFr}</p>
+                          <p className="text-[10px] opacity-85" dir="rtl">
+                            {(p.payload as any).tankRinseAlert.messageAr}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     {isAdmin && (
                     <button

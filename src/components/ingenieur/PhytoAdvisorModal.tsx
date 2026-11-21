@@ -57,6 +57,7 @@ import {
 import { useAllModuleRecords } from '@/lib/modules-store';
 import { useRecommendations } from '@/lib/cloud/recommendations';
 import { getRainForecast48h, RainForecast48h } from '@/lib/weather-forecast';
+import { getEstimatedHarvestDateISO, computeDaysBeforeHarvest } from '@/lib/safety-checks';
 
 interface PhytoAdvisorModalProps {
   open: boolean;
@@ -131,9 +132,18 @@ export function PhytoAdvisorModal({
   const [isRapidShootsGrowth, setIsRapidShootsGrowth] = useState<boolean>(
     selectedStage === 'gonflement_bourgeons' || selectedStage === 'floraison' || selectedStage === 'chute_petales_nouaison' || selectedStage === 'grossissement_fruit'
   );
-  const [daysBeforeHarvest, setDaysBeforeHarvest] = useState<number>(
-    selectedStage === 'maturation' ? 10 : 45
+  // Date de récolte prévisionnelle calculée automatiquement selon l'espèce (modifiable par l'utilisateur)
+  const [customHarvestDate, setCustomHarvestDate] = useState<string>(() =>
+    getEstimatedHarvestDateISO(initialCrop)
   );
+  useEffect(() => {
+    setCustomHarvestDate(getEstimatedHarvestDateISO(currentCrop));
+  }, [currentCrop]);
+
+  const daysBeforeHarvest = useMemo(() => {
+    const computed = computeDaysBeforeHarvest(currentCrop, new Date(), customHarvestDate);
+    return Math.max(0, computed);
+  }, [currentCrop, customHarvestDate]);
 
   // État du calculateur de cuve
   const [tankVolume, setTankVolume] = useState<number>(1000);
@@ -262,13 +272,14 @@ export function PhytoAdvisorModal({
     return eligiblePests.find(p => p.id === selectedPestId) || eligiblePests[0] || null;
   }, [selectedPestId, eligiblePests]);
 
-  // Conditions terrain pour l'arbre de décision Contact vs Systémique
+  // Conditions terrain pour l'arbre de décision Contact vs Systémique + DAR automatique (y compris Huile d'Olive 28j)
   const actionConditions: TreatmentActionRule = useMemo(() => ({
     isRainExpectedSoon,
     hasVisibleSymptoms,
     isRapidShootsGrowth,
     daysBeforeHarvest,
-  }), [isRainExpectedSoon, hasVisibleSymptoms, isRapidShootsGrowth, daysBeforeHarvest]);
+    oliveDestination: currentCrop === 'olive' ? 'huile' : undefined,
+  }), [isRainExpectedSoon, hasVisibleSymptoms, isRapidShootsGrowth, daysBeforeHarvest, currentCrop]);
 
   const modeRecommendation: ModeOfActionRecommendation = useMemo(() => {
     return PhytosanitaryEngine.recommendModeOfAction(actionConditions);
@@ -803,26 +814,37 @@ export function PhytoAdvisorModal({
                       </div>
                     </button>
 
-                    {/* Bascule 4 : Cueillette imminente */}
-                    <button
-                      type="button"
-                      onClick={() => setDaysBeforeHarvest(daysBeforeHarvest < 15 ? 40 : 10)}
-                      className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2.5 ${
+                    {/* Bascule 4 : Cueillette imminente (calculée automatiquement selon date de récolte de l'espèce, ajustable) */}
+                    <div
+                      className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-1.5 ${
                         daysBeforeHarvest < 15
                           ? 'bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500'
-                          : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
+                          : 'bg-background border-input text-muted-foreground'
                       }`}
                     >
-                      <Clock className={`h-4 w-4 shrink-0 mt-0.5 ${daysBeforeHarvest < 15 ? 'text-amber-600' : 'text-muted-foreground'}`} />
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-bold leading-tight">
-                          {isAr ? "اقتراب الجني (< 15 يوم)" : "Récolte proche (< 15 j)"}
-                        </p>
-                        <p className="text-[9px] opacity-80 mt-0.5">
-                          {isAr ? "احترام فترة الأمان DAR" : "Sécurité résidus & DAR court"}
-                        </p>
+                      <div className="flex items-start gap-2">
+                        <Clock className={`h-4 w-4 shrink-0 mt-0.5 ${daysBeforeHarvest < 15 ? 'text-amber-600' : 'text-muted-foreground'}`} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold leading-tight">
+                            {isAr ? "تاريخ الجني المتوقع" : "Récolte estimée"}
+                          </p>
+                          <p className="text-[9.5px] font-bold mt-0.5">
+                            <span dir="ltr" className="inline-block font-mono">{daysBeforeHarvest} j</span>{" "}
+                            {daysBeforeHarvest < 15
+                              ? isAr ? "(< 15 يوم — حرج)" : "(< 15 j — critique)"
+                              : isAr ? "قبل الجني" : "avant récolte"}
+                          </p>
+                        </div>
                       </div>
-                    </button>
+                      <input
+                        type="date"
+                        dir="ltr"
+                        value={customHarvestDate}
+                        onChange={(e) => setCustomHarvestDate(e.target.value)}
+                        className="w-full rounded-lg border bg-background/80 px-2 py-1 text-[10px] font-mono font-bold text-foreground"
+                        title={isAr ? "تعديل تاريخ الجني المتوقع لحساب فترة الأمان DAR" : "Ajuster la date de récolte prévisionnelle"}
+                      />
+                    </div>
                   </div>
 
                   {/* Synthèse agronomique & Stratégie Tank Mix */}
@@ -873,7 +895,7 @@ export function PhytoAdvisorModal({
                   </div>
 
                   <div className="space-y-2.5">
-                    {evaluatedOptions.map(({ ingredient, isAllowed, isMultiSite, blockReason, beeBlock, beeWarning, stageBlocked, currentSeasonUsageCount, isSituationallyRecommended }) => {
+                    {evaluatedOptions.map(({ ingredient, isAllowed, isMultiSite, blockReason, beeBlock, beeWarning, stageBlocked, quotaBlocked, effectiveMaxPerSeason, currentSeasonUsageCount, isSituationallyRecommended }) => {
                       const isFrac = ingredient.type === 'FRAC';
                       const badgeColor = isFrac
                         ? 'bg-indigo-500/10 text-indigo-700 border-indigo-500/30'
@@ -949,17 +971,21 @@ export function PhytoAdvisorModal({
                                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-bold">
                                   <XCircle className="h-4 w-4 shrink-0" />
                                   <span>
-                                    {beeBlock
+                                    {quotaBlocked
                                       ? isAr
-                                        ? "ممنوع وقت التزهير — خطر على النحل"
-                                        : "Interdit en floraison — Danger Abeilles"
-                                      : stageBlocked
+                                        ? `تم بلوغ الحد الأقصى السنوي (${currentSeasonUsageCount}/${effectiveMaxPerSeason || ingredient.maxApplicationsPerSeason})`
+                                        : `Quota annuel atteint (${currentSeasonUsageCount}/${effectiveMaxPerSeason || ingredient.maxApplicationsPerSeason})`
+                                      : beeBlock
                                         ? isAr
-                                          ? "ممنوع في هذا الطور الفينولوجي"
-                                          : "Bloqué à ce stade phénologique"
-                                        : isAr
-                                          ? "ممنوع لتفادي المقاومة"
-                                          : "Exclu Anti-Résistance"}
+                                          ? "ممنوع وقت التزهير — خطر على النحل"
+                                          : "Interdit en floraison — Danger Abeilles"
+                                        : stageBlocked
+                                          ? isAr
+                                            ? "ممنوع في هذا الطور الفينولوجي"
+                                            : "Bloqué à ce stade phénologique"
+                                          : isAr
+                                            ? "ممنوع لتفادي المقاومة"
+                                            : "Exclu Anti-Résistance"}
                                   </span>
                                 </div>
                               )}
