@@ -35,7 +35,7 @@ import { useParcels, useParcelActions } from "@/lib/parcel-store";
 import { checkRecoStock, getTargetParcelsForReco } from "@/lib/stock-alerts";
 import { validateRecommendationAndPurchases, resetAllAppliedRecoHistory, syncPurchasesForAcceptedRecos, getHydraulicPhaseForDate } from "@/lib/reco-validation";
 import { ValidateOrderScheduleDialog, type OrderScheduleConfirmation, type OrderStockSummary, type OrderBacDetail } from "@/components/ValidateOrderScheduleDialog";
-import { getSolarTimesForDate } from "@/lib/astronomy";
+import { getSolarTimesForDate, formatMinutesToTimeInput } from "@/lib/astronomy";
 
 type PrescriptionType = "all" | "fert_irrigation" | "fert_foliaire" | "phytosanitaire";
 
@@ -270,15 +270,12 @@ function RecommandationsPageContent() {
     const pType = first ? getPrescriptionType(first) : "fert_irrigation";
     const prog = (first?.payload as any)?.program || {};
 
-    let defaultStartHour = "06:30";
+    // Par défaut :
+    // - Fertigation & Pulvérisation foliaire => Heure du lever du soleil (Benhar)
+    // - Traitement phytosanitaire => Heure du coucher du soleil - 2 heures (Benhar)
+    let defaultStartHour = solar.sunriseStr.replace("h", ":");
     if (pType === "phytosanitaire") {
-      defaultStartHour = "15:00";
-    } else if (pType === "fert_foliaire") {
-      defaultStartHour = "07:00";
-    } else if (phase.morningStartMinutes !== null) {
-      defaultStartHour = "06:00";
-    } else {
-      defaultStartHour = solar.sunriseStr.replace("h", ":");
+      defaultStartHour = formatMinutesToTimeInput(solar.sunsetMinutes - 120);
     }
 
     const defaultFertIrrigationTime =
