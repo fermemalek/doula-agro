@@ -973,6 +973,7 @@ export function RecommendationForm({
   const currentBacEntry = fertEntries.find(e => e.bac === fertBac) || { bac: fertBac, items: [] };
 
   const handleSafeClose = (newOpen: boolean) => {
+    if (phytoAdvisorOpen) return;
     if (!newOpen) {
       const hasData =
         cropGroups.length > 0 ||
@@ -998,7 +999,7 @@ export function RecommendationForm({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={handleSafeClose} modal={!phytoAdvisorOpen}>
+      <Dialog open={open && !phytoAdvisorOpen} onOpenChange={handleSafeClose}>
         <DialogContent
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
@@ -1017,8 +1018,8 @@ export function RecommendationForm({
                   {duplicateMode
                     ? t("reco.form.duplicate")
                     : recoToEdit
-                    ? t("reco.form.edit")
-                    : t("reco.form.new")}
+                      ? t("reco.form.edit")
+                      : t("reco.form.new")}
                 </span>
               </div>
               {duplicateMode && (
@@ -1907,10 +1908,10 @@ export function RecommendationForm({
                                           )}
                                           {iracFrac && (
                                             <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 border shadow-xs ${isMultiSite
-                                                ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                                                : isFrac
-                                                  ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30"
-                                                  : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                                              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                                              : isFrac
+                                                ? "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30"
+                                                : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
                                               }`}>
                                               <span>🛡️</span>
                                               <span>{isAr ? `تصنيف المقاومة : ${iracFrac}` : `Groupe : ${iracFrac}`}</span>
@@ -2003,13 +2004,12 @@ export function RecommendationForm({
 
                             {tankMixCheck && (
                               <div
-                                className={`rounded-2xl border-2 p-3.5 space-y-2.5 shadow-xs transition-all ${
-                                  tankMixCheck.status === "compatible"
+                                className={`rounded-2xl border-2 p-3.5 space-y-2.5 shadow-xs transition-all ${tankMixCheck.status === "compatible"
                                     ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-950 dark:text-emerald-100"
                                     : tankMixCheck.status === "incompatible"
-                                    ? "bg-rose-500/15 border-rose-500/50 text-rose-950 dark:text-rose-100 ring-2 ring-rose-500/20"
-                                    : "bg-amber-500/15 border-amber-500/50 text-amber-950 dark:text-amber-100"
-                                }`}
+                                      ? "bg-rose-500/15 border-rose-500/50 text-rose-950 dark:text-rose-100 ring-2 ring-rose-500/20"
+                                      : "bg-amber-500/15 border-amber-500/50 text-amber-950 dark:text-amber-100"
+                                  }`}
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex items-start gap-2.5">
@@ -2026,31 +2026,29 @@ export function RecommendationForm({
                                     </div>
                                   </div>
                                   <span
-                                    className={`shrink-0 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border shadow-xs ${
-                                      tankMixCheck.status === "compatible"
+                                    className={`shrink-0 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border shadow-xs ${tankMixCheck.status === "compatible"
                                         ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/30"
                                         : tankMixCheck.status === "incompatible"
-                                        ? "bg-rose-500/20 text-rose-800 dark:text-rose-200 border-rose-500/40 animate-pulse"
-                                        : "bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/40"
-                                    }`}
+                                          ? "bg-rose-500/20 text-rose-800 dark:text-rose-200 border-rose-500/40 animate-pulse"
+                                          : "bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/40"
+                                      }`}
                                   >
                                     {tankMixCheck.status === "compatible"
                                       ? (isAr ? "خلط متوافق" : "Compatible")
                                       : tankMixCheck.status === "incompatible"
-                                      ? (isAr ? "تعارض كيميائي خطير" : "Incompatible")
-                                      : (isAr ? "انتباه / تكرار" : "Attention")}
+                                        ? (isAr ? "تعارض كيميائي خطير" : "Incompatible")
+                                        : (isAr ? "انتباه / تكرار" : "Attention")}
                                   </span>
                                 </div>
 
                                 {tankMixCheck.advice && (
                                   <div
-                                    className={`flex items-start gap-2 rounded-xl p-2.5 text-xs font-semibold ${
-                                      tankMixCheck.status === "compatible"
+                                    className={`flex items-start gap-2 rounded-xl p-2.5 text-xs font-semibold ${tankMixCheck.status === "compatible"
                                         ? "bg-emerald-500/15 text-emerald-900 dark:text-emerald-200"
                                         : tankMixCheck.status === "incompatible"
-                                        ? "bg-rose-500/20 text-rose-900 dark:text-rose-200 font-bold"
-                                        : "bg-amber-500/20 text-amber-900 dark:text-amber-200"
-                                    }`}
+                                          ? "bg-rose-500/20 text-rose-900 dark:text-rose-200 font-bold"
+                                          : "bg-amber-500/20 text-amber-900 dark:text-amber-200"
+                                      }`}
                                   >
                                     <span className="shrink-0 text-base">{tankMixCheck.status === "compatible" ? "📋" : "💡"}</span>
                                     <div className="space-y-0.5">
@@ -2166,8 +2164,8 @@ export function RecommendationForm({
                   {submitting
                     ? "Validation en cours..."
                     : duplicateMode
-                    ? (isAr ? "تفعيل التوصية المنسوخة مع الشراء" : "Valider la copie & ses Achats")
-                    : "Valider Recommandation & Achats (Mois précédent)"}
+                      ? (isAr ? "تفعيل التوصية المنسوخة مع الشراء" : "Valider la copie & ses Achats")
+                      : "Valider Recommandation & Achats (Mois précédent)"}
                 </span>
               </button>
 
@@ -2182,10 +2180,10 @@ export function RecommendationForm({
                   {submitting
                     ? t("gen.sending")
                     : duplicateMode
-                    ? (isAr ? "حفظ التوصية المنسوخة (قيد الانتظار)" : "Créer la recommandation dupliquée (En attente)")
-                    : recoToEdit
-                    ? t("reco.form.saveChanges")
-                    : `${t("reco.form.submit")} (En attente)`}
+                      ? (isAr ? "حفظ التوصية المنسوخة (قيد الانتظار)" : "Créer la recommandation dupliquée (En attente)")
+                      : recoToEdit
+                        ? t("reco.form.saveChanges")
+                        : `${t("reco.form.submit")} (En attente)`}
                 </span>
               </button>
 
