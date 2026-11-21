@@ -343,8 +343,9 @@ export class PhytosanitaryEngine {
     currentDate?: Date;
     conditions?: TreatmentActionRule;
     growthStage?: GrowthStage;
+    crop?: CropType;
   }) {
-    const { targetPest, parcelHistory, allIngredients, currentSeasonYear, currentDate = new Date(), conditions, growthStage } = params;
+    const { targetPest, parcelHistory, allIngredients, currentSeasonYear, currentDate = new Date(), conditions, growthStage, crop } = params;
 
     const modeRecommendation = conditions ? PhytosanitaryEngine.recommendModeOfAction(conditions) : null;
 
@@ -439,17 +440,38 @@ export class PhytosanitaryEngine {
         }
       }
 
-      // 3. RÈGLE CRITIQUE DE SANTÉ PUBLIQUE : Délai Avant Récolte (DAR Standard ou Huile d'olive)
-      const isOliveOil = (conditions?.oliveDestination as string) === 'huile' || (params.targetPest.crops.includes('olive') && (conditions?.oliveDestination as string) === 'huile');
-      const effectivePhiDays = (isOliveOil && ingredient.phiDaysOil) ? ingredient.phiDaysOil : ingredient.phiDays;
+      // 3. RÈGLE CRITIQUE DE SANTÉ PUBLIQUE : Délai Avant Récolte (DAR Standard ou Spécial Huile d'Olive 28 j sur IRAC 3A)
+      const PYRETHROID_3A_REGEX = /deltam[eé]thrin|cyperm[eé]thrin|lambda-?cyhalothrin|alpha-?cyperm[eé]thrin|esfenval[eé]rat|bifenthrin/i;
+      const isOliveCrop =
+        crop === 'olive' ||
+        conditions?.oliveDestination === 'huile' ||
+        (crop === undefined && targetPest.crops.includes('olive'));
+      const isPyrethroid3ALipophilic =
+        ingredientCodes.includes('3A') ||
+        PYRETHROID_3A_REGEX.test(ingredient.name || '') ||
+        PYRETHROID_3A_REGEX.test(ingredient.commonNameFr || '');
 
-      if (conditions?.daysBeforeHarvest !== undefined && conditions.daysBeforeHarvest > 0 && effectivePhiDays > conditions.daysBeforeHarvest) {
+      const baseDar = Number(ingredient.phiDays ?? 0);
+      const isOliveOilPyrethroidDar = isOliveCrop && isPyrethroid3ALipophilic;
+      const effectiveDar = isOliveOilPyrethroidDar
+        ? Math.max(baseDar, ingredient.phiDaysOil ?? 0, 28)
+        : (isOliveCrop && ingredient.phiDaysOil ? Math.max(baseDar, ingredient.phiDaysOil) : baseDar);
+
+      const darLabelFr = isOliveOilPyrethroidDar
+        ? `${effectiveDar} j (DAR spécial Huile d'Olive)`
+        : `${effectiveDar} jours`;
+      const darLabelAr = isOliveOilPyrethroidDar
+        ? `${effectiveDar} يوم (DAR خاص بزيت الزيتون)`
+        : `${effectiveDar} يوم`;
+
+      let darBlocked = false;
+      const daysToHarvest = conditions?.daysBeforeHarvest;
+      if (daysToHarvest !== undefined && Number.isFinite(daysToHarvest) && effectiveDar > daysToHarvest) {
         isAllowed = false;
-        if (isOliveOil && ingredient.phiDaysOil && ingredient.phiDaysOil > ingredient.phiDays) {
-          blockReason = `Interdit - DAR Spécial Huile d'Olive non respecté (Lipophilie) : Pour les olives destinées à l'huile (trituration), cette matière lipophile exige un DAR de ${ingredient.phiDaysOil} jours (contre ${ingredient.phiDays}j pour olive de table) car elle s'accumule dans la matière grasse. La récolte prévue dans ${conditions.daysBeforeHarvest} jours entraînerait une contamination chimique de l'huile.`;
-        } else {
-          blockReason = `Interdit - Délai Avant Récolte (DAR) insuffisant : Cette matière exige un DAR de ${effectivePhiDays} jours, or la récolte est prévue dans ${conditions.daysBeforeHarvest} jours (risque avéré de résidus chimiques non dégradés sur les fruits).`;
-        }
+        darBlocked = true;
+        const frMsg = `⛔ DAR dépassé (DAR ${effectiveDar} j > ${daysToHarvest} j avant récolte)`;
+        const arMsg = `⛔ ممنوع — فترة الأمان (${effectiveDar} يوم) أطول من المدة المتبقية للجني (${daysToHarvest} يوم)`;
+        blockReason = `${frMsg} | ${arMsg}`;
         priorityScore = 0;
       }
 
@@ -510,6 +532,7 @@ export class PhytosanitaryEngine {
       return {
         ingredient,
         isAllowed,
+        isBlocked: !isAllowed,
         isMultiSite,
         systemicType: ingredient.systemicType,
         isSituationallyRecommended,
@@ -518,6 +541,11 @@ export class PhytosanitaryEngine {
         beeWarning,
         stageBlocked,
         quotaBlocked,
+        darBlocked,
+        effectiveDar,
+        isOliveOilPyrethroidDar,
+        darLabelFr,
+        darLabelAr,
         effectiveMaxPerSeason,
         priorityScore,
         currentSeasonUsageCount: groupApplicationsCount,

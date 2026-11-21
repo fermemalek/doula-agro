@@ -296,8 +296,9 @@ export function PhytoAdvisorModal({
       currentDate: new Date(),
       conditions: actionConditions,
       growthStage: selectedStage,
+      crop: currentCrop,
     });
-  }, [activePest, historyLogs, actionConditions, selectedStage]);
+  }, [activePest, historyLogs, actionConditions, selectedStage, currentCrop]);
 
   // Calcul du dosage pour la cuve
   const tankCalculation = useMemo(() => {
@@ -465,8 +466,8 @@ export function PhytoAdvisorModal({
                           setSelectedPestId(null);
                         }}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${currentCrop === sp.id
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                            : 'bg-background text-muted-foreground border-input hover:bg-muted'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-background text-muted-foreground border-input hover:bg-muted'
                           }`}
                       >
                         <span>{sp.icon}</span>
@@ -502,8 +503,8 @@ export function PhytoAdvisorModal({
                             setSelectedPestId(null);
                           }}
                           className={`flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-all min-h-[72px] ${isSelected
-                              ? "border-primary bg-primary/10 text-primary font-black shadow-xs ring-2 ring-primary/20 scale-102"
-                              : "border-input bg-background hover:bg-muted/60 text-muted-foreground"
+                            ? "border-primary bg-primary/10 text-primary font-black shadow-xs ring-2 ring-primary/20 scale-102"
+                            : "border-input bg-background hover:bg-muted/60 text-muted-foreground"
                             }`}
                         >
                           <span className="text-xl">{st.icon}</span>
@@ -532,8 +533,8 @@ export function PhytoAdvisorModal({
                         type="button"
                         onClick={() => setPestCategoryFilter('all')}
                         className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${pestCategoryFilter === 'all'
-                            ? 'bg-emerald-600 text-white shadow-xs'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                           }`}
                       >
                         {isAr ? `الكل ${eligiblePests.length}` : `Tout ${eligiblePests.length}`}
@@ -542,8 +543,8 @@ export function PhytoAdvisorModal({
                         type="button"
                         onClick={() => setPestCategoryFilter('insectes')}
                         className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${pestCategoryFilter === 'insectes'
-                            ? 'bg-rose-600 text-white shadow-xs'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                           }`}
                       >
                         {isAr ? `حشرات ${countInsectes}` : `Insectes ${countInsectes}`}
@@ -552,8 +553,8 @@ export function PhytoAdvisorModal({
                         type="button"
                         onClick={() => setPestCategoryFilter('maladies')}
                         className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${pestCategoryFilter === 'maladies'
-                            ? 'bg-amber-600 text-white shadow-xs'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
                           }`}
                       >
                         {isAr ? `أمراض ${countMaladies}` : `Maladies ${countMaladies}`}
@@ -578,8 +579,8 @@ export function PhytoAdvisorModal({
                             key={pest.id}
                             onClick={() => setSelectedPestId(pest.id)}
                             className={`group cursor-pointer rounded-2xl border overflow-hidden transition-all duration-200 bg-card hover:shadow-md flex flex-col justify-between ${isSelected
-                                ? "border-primary ring-2 ring-primary/40 shadow-md scale-101 bg-primary/5"
-                                : "border-input hover:border-primary/50 hover:bg-muted/30"
+                              ? "border-primary ring-2 ring-primary/40 shadow-md scale-101 bg-primary/5"
+                              : "border-input hover:border-primary/50 hover:bg-muted/30"
                               }`}
                           >
                             {/* Image réelle de terrain (avec repli propre sans icône cassée) */}
@@ -700,10 +701,10 @@ export function PhytoAdvisorModal({
                           <span
                             key={t}
                             className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-xl shadow-xs border ${t === 'contact'
-                                ? 'bg-sky-500 text-white border-sky-600'
-                                : t === 'systemique'
-                                  ? 'bg-purple-600 text-white border-purple-700'
-                                  : 'bg-teal-600 text-white border-teal-700'
+                              ? 'bg-sky-500 text-white border-sky-600'
+                              : t === 'systemique'
+                                ? 'bg-purple-600 text-white border-purple-700'
+                                : 'bg-teal-600 text-white border-teal-700'
                               }`}
                           >
                             {t === 'contact' ? (isAr ? '🛡️ ملامسة' : '🛡️ Contact') : t === 'systemique' ? (isAr ? '🔄 جهازي' : '🔄 Systémique') : (isAr ? '🍃 عابر للصفائح' : '🍃 Translaminaire')}
@@ -719,8 +720,8 @@ export function PhytoAdvisorModal({
                         type="button"
                         onClick={() => setIsRainExpectedSoon(!isRainExpectedSoon)}
                         className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2.5 relative group ${isRainExpectedSoon
-                            ? 'bg-sky-500/15 border-sky-500 text-sky-900 dark:text-sky-200 ring-1 ring-sky-500'
-                            : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
+                          ? 'bg-sky-500/15 border-sky-500 text-sky-900 dark:text-sky-200 ring-1 ring-sky-500'
+                          : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
                           }`}
                         title={isAr ? "انقر للتبديل يدوياً إذا رغبت في تجربة سيناريو آخر" : "Cliquer pour forcer ou modifier manuellement"}
                       >
@@ -733,8 +734,8 @@ export function PhytoAdvisorModal({
                             {/* Badge de précipitation 48h */}
                             {rainForecast !== null && (
                               <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-mono font-bold leading-none ${rainForecast.isContaminatingRain
-                                  ? 'bg-sky-500 text-white'
-                                  : 'bg-muted text-muted-foreground'
+                                ? 'bg-sky-500 text-white'
+                                : 'bg-muted text-muted-foreground'
                                 }`}>
                                 {rainForecast.totalMm} mm
                               </span>
@@ -767,8 +768,8 @@ export function PhytoAdvisorModal({
                         type="button"
                         onClick={() => setHasVisibleSymptoms(!hasVisibleSymptoms)}
                         className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2.5 ${hasVisibleSymptoms
-                            ? 'bg-rose-500/15 border-rose-500 text-rose-900 dark:text-rose-200 ring-1 ring-rose-500'
-                            : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
+                          ? 'bg-rose-500/15 border-rose-500 text-rose-900 dark:text-rose-200 ring-1 ring-rose-500'
+                          : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
                           }`}
                       >
                         <Activity className={`h-4 w-4 shrink-0 mt-0.5 ${hasVisibleSymptoms ? 'text-rose-600' : 'text-muted-foreground'}`} />
@@ -787,8 +788,8 @@ export function PhytoAdvisorModal({
                         type="button"
                         onClick={() => setIsRapidShootsGrowth(!isRapidShootsGrowth)}
                         className={`p-2.5 rounded-xl border text-left transition-all flex items-start gap-2.5 ${isRapidShootsGrowth
-                            ? 'bg-emerald-500/15 border-emerald-500 text-emerald-900 dark:text-emerald-200 ring-1 ring-emerald-500'
-                            : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
+                          ? 'bg-emerald-500/15 border-emerald-500 text-emerald-900 dark:text-emerald-200 ring-1 ring-emerald-500'
+                          : 'bg-background border-input hover:bg-muted/50 text-muted-foreground'
                           }`}
                       >
                         <Layers className={`h-4 w-4 shrink-0 mt-0.5 ${isRapidShootsGrowth ? 'text-emerald-600' : 'text-muted-foreground'}`} />
@@ -805,8 +806,8 @@ export function PhytoAdvisorModal({
                       {/* Bascule 4 : Cueillette imminente (calculée automatiquement selon date de récolte de l'espèce, ajustable) */}
                       <div
                         className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-1.5 ${daysBeforeHarvest < 15
-                            ? 'bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500'
-                            : 'bg-background border-input text-muted-foreground'
+                          ? 'bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500'
+                          : 'bg-background border-input text-muted-foreground'
                           }`}
                       >
                         <div className="flex items-start gap-2">
@@ -882,21 +883,21 @@ export function PhytoAdvisorModal({
                     </div>
 
                     <div className="space-y-2.5">
-                      {evaluatedOptions.map(({ ingredient, isAllowed, isMultiSite, blockReason, beeBlock, beeWarning, stageBlocked, quotaBlocked, effectiveMaxPerSeason, currentSeasonUsageCount, isSituationallyRecommended }) => {
+                      {evaluatedOptions.map(({ ingredient, isAllowed, isBlocked, isMultiSite, blockReason, beeBlock, beeWarning, stageBlocked, quotaBlocked, darBlocked, effectiveDar, isOliveOilPyrethroidDar, darLabelFr, darLabelAr, effectiveMaxPerSeason, currentSeasonUsageCount, isSituationallyRecommended }) => {
                         const isFrac = ingredient.type === 'FRAC';
                         const badgeColor = isFrac
                           ? 'bg-indigo-500/10 text-indigo-700 border-indigo-500/30'
                           : 'bg-emerald-500/10 text-emerald-700 border-emerald-500/30';
 
-                        // Date de récolte sécurisée
-                        const harvestSafety = PhytosanitaryEngine.calculateHarvestSafetyDate(new Date(), ingredient.phiDays);
+                        // Date de récolte sécurisée basée sur le DAR effectif (incluant DAR spécial Huile d'Olive 28 j)
+                        const harvestSafety = PhytosanitaryEngine.calculateHarvestSafetyDate(new Date(), effectiveDar);
 
                         return (
                           <div
                             key={ingredient.id}
                             className={`rounded-2xl border p-4 transition-all ${isAllowed
-                                ? "bg-card border-input hover:border-primary/50 shadow-xs"
-                                : "bg-destructive/[0.04] border-destructive/30 opacity-85"
+                              ? "bg-card border-input hover:border-primary/50 shadow-xs"
+                              : "bg-destructive/[0.04] border-destructive/30 opacity-85"
                               }`}
                           >
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -917,10 +918,10 @@ export function PhytoAdvisorModal({
                                     ({ingredient.familyChemical})
                                   </span>
                                   <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${ingredient.systemicType === 'contact'
-                                      ? 'bg-sky-500/10 text-sky-700 border-sky-500/30'
-                                      : ingredient.systemicType === 'systemique'
-                                        ? 'bg-purple-500/10 text-purple-700 border-purple-500/30'
-                                        : 'bg-teal-500/10 text-teal-700 border-teal-500/30'
+                                    ? 'bg-sky-500/10 text-sky-700 border-sky-500/30'
+                                    : ingredient.systemicType === 'systemique'
+                                      ? 'bg-purple-500/10 text-purple-700 border-purple-500/30'
+                                      : 'bg-teal-500/10 text-teal-700 border-teal-500/30'
                                     }`}>
                                     {ingredient.systemicType === 'contact' ? '🛡️ Contact' : ingredient.systemicType === 'systemique' ? '🔄 Systémique' : '🍃 Translaminaire'}
                                   </span>
@@ -960,17 +961,21 @@ export function PhytoAdvisorModal({
                                         ? isAr
                                           ? `تم بلوغ الحد الأقصى السنوي (${currentSeasonUsageCount}/${effectiveMaxPerSeason || ingredient.maxApplicationsPerSeason})`
                                           : `Quota annuel atteint (${currentSeasonUsageCount}/${effectiveMaxPerSeason || ingredient.maxApplicationsPerSeason})`
-                                        : beeBlock
+                                        : darBlocked
                                           ? isAr
-                                            ? "ممنوع وقت التزهير — خطر على النحل"
-                                            : "Interdit en floraison — Danger Abeilles"
-                                          : stageBlocked
+                                            ? `⛔ ممنوع — فترة الأمان (${effectiveDar} يوم > ${daysBeforeHarvest} يوم)`
+                                            : `⛔ DAR dépassé (${effectiveDar} j > ${daysBeforeHarvest} j)`
+                                          : beeBlock
                                             ? isAr
-                                              ? "ممنوع في هذا الطور الفينولوجي"
-                                              : "Bloqué à ce stade phénologique"
-                                            : isAr
-                                              ? "ممنوع لتفادي المقاومة"
-                                              : "Exclu Anti-Résistance"}
+                                              ? "ممنوع وقت التزهير — خطر على النحل"
+                                              : "Interdit en floraison — Danger Abeilles"
+                                            : stageBlocked
+                                              ? isAr
+                                                ? "ممنوع في هذا الطور الفينولوجي"
+                                                : "Bloqué à ce stade phénologique"
+                                              : isAr
+                                                ? "ممنوع لتفادي المقاومة"
+                                                : "Exclu Anti-Résistance"}
                                     </span>
                                   </div>
                                 )}
@@ -979,11 +984,11 @@ export function PhytoAdvisorModal({
 
                             {/* Indicateurs techniques : DAR, DRE, Dose, Quota saison */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-2.5 border-t text-[11px]">
-                              <div className="flex items-center gap-1.5 text-muted-foreground">
-                                <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                              <div className={`flex items-center gap-1.5 ${darBlocked ? "text-destructive font-bold" : isOliveOilPyrethroidDar ? "text-amber-700 dark:text-amber-300 font-semibold" : "text-muted-foreground"}`}>
+                                <Clock className={`h-3.5 w-3.5 shrink-0 ${darBlocked ? "text-destructive" : "text-amber-600"}`} />
                                 <span>
                                   <strong>DAR (PHI) :</strong>{" "}
-                                  <span dir="ltr" className="inline-block font-mono">{ingredient.phiDays}</span> {isAr ? "يوم" : "jours"}{" "}
+                                  <span>{isAr ? darLabelAr : darLabelFr}</span>{" "}
                                   (<span dir="ltr" className="inline-block font-mono">{harvestSafety.safeHarvestDate}</span>)
                                 </span>
                               </div>
@@ -1194,8 +1199,8 @@ export function PhytoAdvisorModal({
                         type="button"
                         onClick={() => setCatalogCropFilter(sp.id)}
                         className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${catalogCropFilter === sp.id
-                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
-                            : 'bg-background text-muted-foreground border-input hover:bg-muted'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-background text-muted-foreground border-input hover:bg-muted'
                           }`}
                       >
                         <span>{sp.icon}</span>
@@ -1209,8 +1214,8 @@ export function PhytoAdvisorModal({
                     type="button"
                     onClick={() => setHideBlockedInCatalog((v) => !v)}
                     className={`px-3 py-1.5 rounded-xl text-[11px] font-bold border transition flex items-center gap-1.5 cursor-pointer ${hideBlockedInCatalog
-                        ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
-                        : 'bg-background text-muted-foreground border-input hover:bg-muted'
+                      ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                      : 'bg-background text-muted-foreground border-input hover:bg-muted'
                       }`}
                   >
                     <ShieldAlert className="h-3.5 w-3.5" />
@@ -1249,8 +1254,8 @@ export function PhytoAdvisorModal({
                       <div
                         key={`${prod.name}-${idx}`}
                         className={`p-3.5 rounded-2xl border transition-all space-y-2 shadow-xs ${stageCheck.blocked
-                            ? 'bg-destructive/[0.04] border-destructive/40 opacity-90'
-                            : 'bg-card hover:border-primary/50'
+                          ? 'bg-destructive/[0.04] border-destructive/40 opacity-90'
+                          : 'bg-card hover:border-primary/50'
                           }`}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -1264,8 +1269,8 @@ export function PhytoAdvisorModal({
                               )}
                               <span
                                 className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${isValidated
-                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
-                                    : 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30'
+                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                                  : 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/30'
                                   }`}
                               >
                                 {isValidated
