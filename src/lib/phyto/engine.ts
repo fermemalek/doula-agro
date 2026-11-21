@@ -190,13 +190,14 @@ export const TANK_MIX_COMPATIBILITY_RULES: CompatibilityRule[] = [
 // ==========================================
 
 export const TANK_MIX_ORDER_STEPS = [
-  { step: 1, type: 'WSB', labelFr: 'Sachets hydrosolubles (WSB)', labelAr: 'الأكياس القابلة للذوبان في الماء' },
-  { step: 2, type: 'WG/WDG', labelFr: 'Granulés dispersibles dans l’eau (WG / WDG)', labelAr: 'الحبيبات القابلة للانتشار' },
-  { step: 3, type: 'WP', labelFr: 'Poudres mouillables (WP)', labelAr: 'المساحيق القابلة للبلل' },
-  { step: 4, type: 'SC/FL', labelFr: 'Suspensions concentrées (SC / FL)', labelAr: 'المعلقات المركزة' },
-  { step: 5, type: 'EC/EW', labelFr: 'Concentrés émulsionnables (EC / EW)', labelAr: 'المستحلبات المركزة' },
-  { step: 6, type: 'SL/SP', labelFr: 'Solutions et poudres solubles (SL / SP)', labelAr: 'المحاليل السائلة القابلة للذوبان' },
-  { step: 7, type: 'ADJ', labelFr: 'Mouillants, Adjuvants et Engrais foliaires', labelAr: 'المواد الناشرة والمبللة والأسمدة الورقية في الأخير' },
+  { step: 1, type: 'WSB', labelFr: 'Sachets hydrosolubles (WSB)', labelAr: 'الأكياس القابلة للذوبان في الماء (WSB)' },
+  { step: 2, type: 'WG/WDG', labelFr: 'Granulés dispersibles dans l’eau (WG / WDG)', labelAr: 'الحبيبات القابلة للانتشار (WG / WDG)' },
+  { step: 3, type: 'WP', labelFr: 'Poudres mouillables (WP)', labelAr: 'المساحيق القابلة للبلل (WP)' },
+  { step: 4, type: 'SC/FL', labelFr: 'Suspensions concentrées (SC / FL)', labelAr: 'المعلقات المركزة (SC / FL)' },
+  { step: 5, type: 'SP', labelFr: 'Poudres solubles (SP) — avant les huiles/EC', labelAr: 'المساحيق القابلة للذوبان (SP) — قبل المستحلبات' },
+  { step: 6, type: 'EC/EW', labelFr: 'Concentrés émulsionnables (EC / EW)', labelAr: 'المستحلبات المركزة (EC / EW)' },
+  { step: 7, type: 'SL', labelFr: 'Solutions liquides solubles (SL)', labelAr: 'المحاليل السائلة القابلة للذوبان (SL)' },
+  { step: 8, type: 'ADJ', labelFr: 'Mouillants, Adjuvants et Engrais foliaires', labelAr: 'المواد الناشرة والمبللة والأسمدة الورقية في الأخير' },
 ];
 
 // ==========================================
@@ -309,8 +310,9 @@ export class PhytosanitaryEngine {
     currentSeasonYear: number;
     currentDate?: Date;
     conditions?: TreatmentActionRule;
+    growthStage?: GrowthStage;
   }) {
-    const { targetPest, parcelHistory, allIngredients, currentSeasonYear, currentDate = new Date(), conditions } = params;
+    const { targetPest, parcelHistory, allIngredients, currentSeasonYear, currentDate = new Date(), conditions, growthStage } = params;
 
     const modeRecommendation = conditions ? PhytosanitaryEngine.recommendModeOfAction(conditions) : null;
 
@@ -411,6 +413,23 @@ export class PhytosanitaryEngine {
         priorityScore = 0;
       }
 
+      // 4. SÉCURITÉ ABEILLES EN FLORAISON (التزهير)
+      let beeBlock = false;
+      let beeWarning = '';
+      if (growthStage === 'floraison') {
+        const isPyrethroid3A = ingredientCodes.includes('3A');
+        const isNeonic4A = ingredientCodes.includes('4A');
+        if (isPyrethroid3A) {
+          isAllowed = false;
+          beeBlock = true;
+          blockReason = 'ممنوع وقت التزهير — خطر على النحل | Interdit en floraison : Pyréthrinoïde (IRAC 3A) hautement toxique pour les abeilles et pollinisateurs.';
+          priorityScore = 0;
+        } else if (isNeonic4A) {
+          beeWarning = 'تحذير نحل (IRAC 4A) : مادة حساسة وقت التزهير — تجنب الرش نهاراً أثناء نشاط النحل (رش ليلاً فقط أو استبدلها بمبيد انتقائي).';
+          priorityScore = Math.max(10, priorityScore - 25);
+        }
+      }
+
       const isSituationallyRecommended = modeRecommendation 
         ? modeRecommendation.recommendedType.includes(ingredient.systemicType)
         : true;
@@ -433,6 +452,8 @@ export class PhytosanitaryEngine {
         systemicType: ingredient.systemicType,
         isSituationallyRecommended,
         blockReason,
+        beeBlock,
+        beeWarning,
         priorityScore,
         currentSeasonUsageCount: groupApplicationsCount,
         lastUsedDate: hasDirectCodeConflict ? lastApplication?.date : null,
@@ -589,15 +610,15 @@ export const REAL_PEST_PHOTOS_MAP: Record<string, string> = {
 };
 
 export function getPestVisualAsset(pest: { id: string; category?: string; primarySampleUrl?: string }): string {
-  // 1. Si une URL locale spécifique existe et n'est pas un SVG
-  if (pest.primarySampleUrl && !pest.primarySampleUrl.endsWith('.svg') && !pest.primarySampleUrl.startsWith('data:image/svg')) {
-    const resolved = resolvePhytoImageUrl(pest.primarySampleUrl);
-    if (resolved) return resolved;
-  }
-  // 2. Priorité absolue aux vraies photographies de terrain
+  // 1. Priorité absolue aux vraies photographies locales embarquées (fonctionne hors-ligne & sans liens externes cassés)
   const realPhoto = REAL_PEST_PHOTOS_MAP[pest.id];
   if (realPhoto) {
     const resolved = resolvePhytoImageUrl(realPhoto);
+    if (resolved) return resolved;
+  }
+  // 2. Sinon URL spécifique si définie et non SVG
+  if (pest.primarySampleUrl && !pest.primarySampleUrl.endsWith('.svg') && !pest.primarySampleUrl.startsWith('data:image/svg')) {
+    const resolved = resolvePhytoImageUrl(pest.primarySampleUrl);
     if (resolved) return resolved;
   }
   // 3. Fallback photographique propre

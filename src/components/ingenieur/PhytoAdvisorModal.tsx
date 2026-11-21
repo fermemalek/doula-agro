@@ -40,6 +40,7 @@ import {
   SprayApplicationRecord,
   CommercialProductDZ,
   TANK_MIX_ORDER_STEPS,
+  TANK_MIX_COMPATIBILITY_RULES,
   getPestVisualAsset,
   TreatmentActionRule,
   SystemicType,
@@ -74,14 +75,22 @@ export function PhytoAdvisorModal({
   // Navigation par onglets
   const [activeTab, setActiveTab] = useState<'advisor' | 'calculator' | 'catalog'>('advisor');
 
-  // Mapper le groupe de culture de Doula vers CropType
-  const currentCrop: CropType = useMemo(() => {
+  // Mapper le groupe de culture de Doula vers CropType + permettre le basculement direct dans l'onglet 1
+  const initialCrop: CropType = useMemo(() => {
     const c = (cropGroup || '').toLowerCase();
     if (c.includes('oliv')) return 'olive';
     if (c.includes('pomm')) return 'pomme';
     if (c.includes('nectar') || c.includes('pech') || c.includes('redix')) return 'nectarine';
     return 'nectarine';
   }, [cropGroup]);
+
+  const [currentCrop, setCurrentCrop] = useState<CropType>(initialCrop);
+  useEffect(() => {
+    setCurrentCrop(initialCrop);
+  }, [initialCrop, open]);
+
+  // Suivi des images en erreur pour basculer proprement sur un visuel de secours
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   // Étapes de l'assistant
   const [selectedStage, setSelectedStage] = useState<GrowthStage>('floraison');
@@ -129,8 +138,9 @@ export function PhytoAdvisorModal({
   const [calcDose100L, setCalcDose100L] = useState<number>(40);
   const [calcUnit, setCalcUnit] = useState<'g' | 'cc'>('cc');
 
-  // Recherche dans le catalogue commercial
+  // Recherche et filtre espèce dans le catalogue commercial (Onglet 3)
   const [catalogSearch, setCatalogSearch] = useState('');
+  const [catalogCropFilter, setCatalogCropFilter] = useState<'all' | 'olive' | 'pomme' | 'nectarine'>('all');
 
   // Traitements historiques passés pour détecter les résistances
   const { data: recos = [] } = useRecommendations();
@@ -261,7 +271,7 @@ export function PhytoAdvisorModal({
     return PhytosanitaryEngine.recommendModeOfAction(actionConditions);
   }, [actionConditions]);
 
-  // Évaluation scientifique des matières actives (IRAC / FRAC) avec recommandation situationnelle
+  // Évaluation scientifique des matières actives (IRAC / FRAC) avec recommandation situationnelle & sécurité abeilles
   const evaluatedOptions = useMemo(() => {
     if (!activePest) return [];
     return PhytosanitaryEngine.evaluateTreatmentOptions({
@@ -271,8 +281,9 @@ export function PhytoAdvisorModal({
       currentSeasonYear: new Date().getFullYear(),
       currentDate: new Date(),
       conditions: actionConditions,
+      growthStage: selectedStage,
     });
-  }, [activePest, historyLogs, actionConditions]);
+  }, [activePest, historyLogs, actionConditions, selectedStage]);
 
   // Calcul du dosage pour la cuve
   const tankCalculation = useMemo(() => {
@@ -283,10 +294,10 @@ export function PhytoAdvisorModal({
     });
   }, [tankVolume, calcDose100L, calcUnit]);
 
-  // Filtrage du catalogue des spécialités commerciales
+  // Filtrage du catalogue des spécialités commerciales (par espèce + recherche textuelle)
   const filteredCatalog = useMemo(() => {
     return COMMERCIAL_PRODUCTS_DZ.filter(p => {
-      const matchCrop = p.crops.includes(currentCrop);
+      const matchCrop = catalogCropFilter === 'all' ? true : p.crops.includes(catalogCropFilter);
       if (!catalogSearch.trim()) return matchCrop;
       const q = catalogSearch.toLowerCase();
       return (
@@ -297,11 +308,14 @@ export function PhytoAdvisorModal({
           p.targetPests.some(t => t.toLowerCase().includes(q)))
       );
     });
-  }, [currentCrop, catalogSearch]);
+  }, [catalogCropFilter, catalogSearch]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-4xl bg-card text-card-foreground p-0 rounded-3xl shadow-2xl border">
+      <DialogContent
+        overlayClassName="z-[90]"
+        className="z-[100] max-h-[94vh] overflow-y-auto sm:max-w-4xl bg-card text-card-foreground p-0 rounded-3xl shadow-2xl border"
+      >
         {/* En-tête avec bannière scientifique */}
         <div className="bg-gradient-to-r from-emerald-600 via-teal-700 to-sky-700 text-white p-5 rounded-t-3xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -310,9 +324,12 @@ export function PhytoAdvisorModal({
                 <Sparkles className="h-6 w-6 text-amber-300" />
               </div>
               <div>
-                <h3 className="text-base font-black tracking-wide flex items-center gap-2">
-                  <span>{isAr ? "دليل الحماية النباتية وإدارة المقاومة (IRAC / FRAC)" : "Moteur Phytosanitaire & Gestion de la Résistance"}</span>
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/20 border border-white/30">
+                <h3 className="text-base font-black tracking-wide flex flex-wrap items-center gap-2">
+                  <span>
+                    {isAr ? "دليل الحماية النباتية وإدارة المقاومة" : "Moteur Phytosanitaire & Gestion de la Résistance"}{" "}
+                    <span dir="ltr" className="inline-block whitespace-nowrap">(IRAC / FRAC)</span>
+                  </span>
+                  <span dir="ltr" className="inline-block whitespace-nowrap text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/20 border border-white/30">
                     FRAC • IRAC
                   </span>
                 </h3>
@@ -366,6 +383,46 @@ export function PhytoAdvisorModal({
           {/* ========================================================= */}
           {activeTab === 'advisor' && (
             <div className="space-y-5">
+              {/* SÉLECTEUR D'ESPÈCE ACTIVE (Olivier / Pommier / Nectarinier) */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl border bg-muted/25">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                    {isAr ? "🌳 المحصول النشط :" : "🌳 Espèce active :"}
+                  </span>
+                  <span className="text-xs font-black text-emerald-700 dark:text-emerald-400">
+                    {currentCrop === 'olive'
+                      ? isAr ? "الزيتون (Olivier)" : "Olivier"
+                      : currentCrop === 'pomme'
+                        ? isAr ? "التفاح (Pommier)" : "Pommier"
+                        : isAr ? "النكتارين / الخوخ (Nectarinier)" : "Nectarinier / Pêcher"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {([
+                    { id: 'olive' as const, icon: '🫒', fr: 'Olivier', ar: 'زيتون' },
+                    { id: 'pomme' as const, icon: '🍎', fr: 'Pommier', ar: 'تفاح' },
+                    { id: 'nectarine' as const, icon: '🍑', fr: 'Nectarinier', ar: 'نكتارين' },
+                  ]).map((sp) => (
+                    <button
+                      key={sp.id}
+                      type="button"
+                      onClick={() => {
+                        setCurrentCrop(sp.id);
+                        setSelectedPestId(null);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                        currentCrop === sp.id
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-background text-muted-foreground border-input hover:bg-muted'
+                      }`}
+                    >
+                      <span>{sp.icon}</span>
+                      <span>{isAr ? sp.ar : sp.fr}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* ÉTAPE 1 : CHOIX DU STADE PHÉNOLOGIQUE */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -477,14 +534,24 @@ export function PhytoAdvisorModal({
                               : "border-input hover:border-primary/50 hover:bg-muted/30"
                           }`}
                         >
-                          {/* Image réelle de terrain */}
-                          <div className="relative aspect-[16/10] w-full bg-slate-900/10 overflow-hidden flex items-center justify-center">
-                            <img
-                              src={getPestVisualAsset(pest)}
-                              alt={pest.nameScientific}
-                              className="w-full h-full object-cover object-center group-hover:scale-102 transition-transform duration-300"
-                              loading="lazy"
-                            />
+                          {/* Image réelle de terrain (avec repli propre sans icône cassée) */}
+                          <div className="relative aspect-[16/10] w-full bg-gradient-to-br from-emerald-900/15 via-slate-900/10 to-amber-900/15 overflow-hidden flex items-center justify-center">
+                            {!failedImages[pest.id] ? (
+                              <img
+                                src={getPestVisualAsset(pest)}
+                                alt={pest.nameScientific}
+                                onError={() => setFailedImages((prev) => ({ ...prev, [pest.id]: true }))}
+                                className="w-full h-full object-cover object-center group-hover:scale-102 transition-transform duration-300"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="flex flex-col items-center justify-center p-3 text-center gap-1">
+                                <span className="text-2xl">{isInsect ? '🐛' : '🍄'}</span>
+                                <span dir="ltr" className="text-[10px] font-semibold italic text-muted-foreground truncate max-w-full">
+                                  {pest.nameScientific}
+                                </span>
+                              </div>
+                            )}
 
                             {/* Badge catégorie (Insecte en rouge, Maladie en orange) */}
                             <span className={`absolute top-2 left-2 text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-sm backdrop-blur-xs text-white ${
@@ -763,7 +830,7 @@ export function PhytoAdvisorModal({
                   </div>
 
                   <div className="space-y-2.5">
-                    {evaluatedOptions.map(({ ingredient, isAllowed, isMultiSite, blockReason, currentSeasonUsageCount, isSituationallyRecommended }) => {
+                    {evaluatedOptions.map(({ ingredient, isAllowed, isMultiSite, blockReason, beeBlock, beeWarning, currentSeasonUsageCount, isSituationallyRecommended }) => {
                       const isFrac = ingredient.type === 'FRAC';
                       const badgeColor = isFrac
                         ? 'bg-indigo-500/10 text-indigo-700 border-indigo-500/30'
@@ -778,7 +845,7 @@ export function PhytoAdvisorModal({
                           className={`rounded-2xl border p-4 transition-all ${
                             isAllowed
                               ? "bg-card border-input hover:border-primary/50 shadow-xs"
-                              : "bg-destructive/[0.04] border-destructive/30 opacity-75"
+                              : "bg-destructive/[0.04] border-destructive/30 opacity-85"
                           }`}
                         >
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -787,7 +854,7 @@ export function PhytoAdvisorModal({
                                 <span className="text-sm font-black text-foreground">
                                   {ingredient.name}
                                 </span>
-                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${badgeColor}`}>
+                                <span dir="ltr" className={`inline-block whitespace-nowrap text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${badgeColor}`}>
                                   {ingredient.codeGroup}
                                 </span>
                                 {isMultiSite && (
@@ -838,7 +905,15 @@ export function PhytoAdvisorModal({
                               ) : (
                                 <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-bold">
                                   <XCircle className="h-4 w-4 shrink-0" />
-                                  <span>{isAr ? "ممنوع لتفادي المقاومة" : "Exclu Anti-Résistance"}</span>
+                                  <span>
+                                    {beeBlock
+                                      ? isAr
+                                        ? "ممنوع وقت التزهير — خطر على النحل"
+                                        : "Interdit en floraison — Danger Abeilles"
+                                      : isAr
+                                        ? "ممنوع لتفادي المقاومة"
+                                        : "Exclu Anti-Résistance"}
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -847,20 +922,33 @@ export function PhytoAdvisorModal({
                           {/* Indicateurs techniques : DAR, DRE, Dose, Quota saison */}
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-2.5 border-t text-[11px]">
                             <div className="flex items-center gap-1.5 text-muted-foreground">
-                              <Clock className="h-3.5 w-3.5 text-amber-600" />
-                              <span><strong>DAR (PHI) :</strong> {ingredient.phiDays} {isAr ? "يوم" : "jours"} (Récolte dès {harvestSafety.safeHarvestDate})</span>
+                              <Clock className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                              <span>
+                                <strong>DAR (PHI) :</strong>{" "}
+                                <span dir="ltr" className="inline-block font-mono">{ingredient.phiDays}</span> {isAr ? "يوم" : "jours"}{" "}
+                                (<span dir="ltr" className="inline-block font-mono">{harvestSafety.safeHarvestDate}</span>)
+                              </span>
                             </div>
                             <div className="flex items-center gap-1.5 text-muted-foreground">
-                              <ShieldAlert className="h-3.5 w-3.5 text-blue-600" />
-                              <span><strong>DRE (REI) :</strong> {ingredient.reiHours}h</span>
+                              <ShieldAlert className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                              <span>
+                                <strong>DRE (REI) :</strong>{" "}
+                                <span dir="ltr" className="inline-block font-mono">{ingredient.reiHours}h</span>
+                              </span>
                             </div>
                             <div className="flex items-center gap-1.5 text-muted-foreground">
-                              <Beaker className="h-3.5 w-3.5 text-emerald-600" />
-                              <span><strong>Dose :</strong> {ingredient.standardDose}</span>
+                              <Beaker className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                              <span>
+                                <strong>{isAr ? "الجرعة :" : "Dose :"}</strong>{" "}
+                                <span dir="ltr" className="inline-block font-mono">{ingredient.standardDose}</span>
+                              </span>
                             </div>
                             <div className="flex items-center gap-1.5 text-muted-foreground">
-                              <Layers className="h-3.5 w-3.5 text-violet-600" />
-                              <span><strong>Passages saison :</strong> {currentSeasonUsageCount}/{ingredient.maxApplicationsPerSeason}</span>
+                              <Layers className="h-3.5 w-3.5 text-violet-600 shrink-0" />
+                              <span>
+                                <strong>{isAr ? "مرات الرش :" : "Passages saison :"}</strong>{" "}
+                                <span dir="ltr" className="inline-block font-mono">{currentSeasonUsageCount}/{ingredient.maxApplicationsPerSeason}</span>
+                              </span>
                             </div>
                           </div>
 
@@ -869,6 +957,14 @@ export function PhytoAdvisorModal({
                             <div className="mt-2.5 p-2.5 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive flex items-start gap-2 text-[11px] font-medium leading-relaxed">
                               <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-destructive" />
                               <span>{blockReason}</span>
+                            </div>
+                          )}
+
+                          {/* Avertissement abeilles en orange (ex: IRAC 4A en floraison) */}
+                          {isAllowed && beeWarning && (
+                            <div className="mt-2.5 p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-800 dark:text-amber-300 flex items-start gap-2 text-[11px] font-bold leading-relaxed">
+                              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
+                              <span>🐝 {beeWarning}</span>
                             </div>
                           )}
                         </div>
@@ -940,17 +1036,17 @@ export function PhytoAdvisorModal({
               </div>
 
               {/* Résultat du calcul */}
-              <div className="p-4 rounded-2xl bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-between">
+              <div className="p-4 rounded-2xl bg-emerald-500/10 border-2 border-emerald-500/30 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
                     {isAr ? "الكمية الإجمالية الواجب وزنها / قياسها للصهريج بالكامل :" : "Quantité totale exacte à incorporer dans la cuve :"}
                   </p>
-                  <p className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-0.5">
+                  <p dir="ltr" className="inline-block text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-0.5">
                     {tankCalculation.displayStr}
                   </p>
                 </div>
-                <div className="text-right text-[11px] text-muted-foreground">
-                  <p>{tankVolume} L = {tankCalculation.numHl} hectolitres (hL)</p>
+                <div dir="ltr" className="text-right text-[11px] font-mono text-muted-foreground">
+                  <p>{tankVolume} L = {tankCalculation.numHl} hL</p>
                   <p>{calcDose100L} {calcUnit}/hL × {tankCalculation.numHl} hL</p>
                 </div>
               </div>
@@ -975,9 +1071,45 @@ export function PhytoAdvisorModal({
                           {isAr ? st.labelAr : st.labelFr}
                         </p>
                       </div>
-                      <span className="font-mono text-[10px] font-black px-2 py-0.5 rounded bg-background border text-muted-foreground">
+                      <span dir="ltr" className="font-mono text-[10px] font-black px-2 py-0.5 rounded bg-background border text-muted-foreground">
                         {st.type}
                       </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* RÈGLES D'INCOMPATIBILITÉ TANK MIX (engine.ts) */}
+              <div className="border-2 border-rose-500/30 rounded-2xl p-4 bg-rose-500/5 space-y-2.5">
+                <div className="flex items-center gap-2 border-b border-rose-500/20 pb-2">
+                  <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                  <h4 className="font-black text-xs uppercase text-rose-700 dark:text-rose-400">
+                    {isAr
+                      ? "ممنوعات وتعارضات الخلط في الصهريج (Tank Mix)"
+                      : "Règles d'Incompatibilité en Cuve (Mélanges Interdits)"}
+                  </h4>
+                </div>
+                <div className="space-y-2">
+                  {TANK_MIX_COMPATIBILITY_RULES.map((rule, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2.5 rounded-xl bg-background/90 border border-rose-500/20 space-y-1 text-[11px]"
+                    >
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span dir="ltr" className="inline-block font-mono text-[10px] font-black px-2 py-0.5 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
+                          {rule.groupA}
+                        </span>
+                        <span className="font-black text-rose-600">+</span>
+                        <span dir="ltr" className="inline-block font-mono text-[10px] font-black px-2 py-0.5 rounded bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
+                          {rule.groupB}
+                        </span>
+                        <span className="text-[10px] font-black text-rose-600 uppercase">
+                          ⛔ {isAr ? "خلط ممنوع" : "Interdit"}
+                        </span>
+                      </div>
+                      {rule.warningNotice && (
+                        <p className="text-muted-foreground leading-relaxed">{rule.warningNotice}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -990,6 +1122,30 @@ export function PhytoAdvisorModal({
           {/* ========================================================= */}
           {activeTab === 'catalog' && (
             <div className="space-y-4">
+              {/* Filtre par espèce (الكل / زيتون / تفاح / نكتارين) */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                {([
+                  { id: 'all' as const, icon: '🌿', fr: 'Toutes', ar: 'الكل' },
+                  { id: 'olive' as const, icon: '🫒', fr: 'Olivier', ar: 'زيتون' },
+                  { id: 'pomme' as const, icon: '🍎', fr: 'Pommier', ar: 'تفاح' },
+                  { id: 'nectarine' as const, icon: '🍑', fr: 'Nectarinier', ar: 'نكتارين' },
+                ]).map((sp) => (
+                  <button
+                    key={sp.id}
+                    type="button"
+                    onClick={() => setCatalogCropFilter(sp.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1 cursor-pointer ${
+                      catalogCropFilter === sp.id
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-background text-muted-foreground border-input hover:bg-muted'
+                    }`}
+                  >
+                    <span>{sp.icon}</span>
+                    <span>{isAr ? sp.ar : sp.fr}</span>
+                  </button>
+                ))}
+              </div>
+
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <Search className="h-4 w-4 absolute left-3 top-2.5 text-muted-foreground" />
@@ -1002,7 +1158,7 @@ export function PhytoAdvisorModal({
                   />
                 </div>
                 <span className="text-[11px] text-muted-foreground font-bold shrink-0">
-                  {filteredCatalog.length} {isAr ? "دواء" : "spécialité(s)"}
+                  <span dir="ltr" className="inline-block font-mono">{filteredCatalog.length}</span> {isAr ? "دواء" : "spécialité(s)"}
                 </span>
               </div>
 
@@ -1014,17 +1170,19 @@ export function PhytoAdvisorModal({
                         <h4 className="font-black text-xs text-foreground">{prod.tradeName}</h4>
                         <p className="text-[11px] text-muted-foreground font-medium">{prod.activeIngredient}</p>
                       </div>
-                      <span className="text-[9px] font-black px-2 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20">
+                      <span dir="ltr" className="inline-block whitespace-nowrap text-[9px] font-black px-2 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20">
                         {prod.groupCode}
                       </span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-[10px] pt-1.5 border-t text-muted-foreground">
                       <div>
-                        <strong>Dose :</strong> {prod.standardDose}
+                        <strong>{isAr ? "الجرعة :" : "Dose :"}</strong>{" "}
+                        <span dir="ltr" className="inline-block font-mono">{prod.standardDose}</span>
                       </div>
                       <div>
-                        <strong>DAR (PHI) :</strong> {prod.phiDays} {isAr ? "يوم" : "jours"}
+                        <strong>DAR (PHI) :</strong>{" "}
+                        <span dir="ltr" className="inline-block font-mono">{prod.phiDays}</span> {isAr ? "يوم" : "jours"}
                       </div>
                     </div>
 
