@@ -948,6 +948,17 @@ export const PEST_TARGETS_DATABASE: PestTarget[] = [
     compatibleActiveIngredients: ['ing_abamectine', 'ing_spiromesifene', 'ing_huile_minerale'],
     descriptionFr: 'Feuilles couleur plomb ou bronze, baisse de photosynthèse et perte de coloration des fruits.',
     descriptionAr: 'تلون الأوراق بلون برونزي كئيب وضعف قدرة الشجرة على تغذية الثمار في الصيف.',
+    primarySampleUrl: 'assets/phyto/photos/pom_acarien_rouge.jpg',
+    symptomOrgans: [
+      {
+        organ: 'feuille',
+        organFr: 'Feuillage (Acarien rouge)',
+        organAr: 'الأوراق (العنكبوت الأحمر الأوروبي)',
+        imageUrl: 'assets/phyto/photos/pom_acarien_rouge.jpg',
+        descriptionFr: 'Acariens rouge vif à soies dorsales blanches sur la face inférieure des feuilles, provoquant un bronzage caractéristique.',
+        descriptionAr: 'حلم أحمر قرمزي ذو شعيرات بيضاء على السطح السفلي للأوراق يسبب تلونها باللون البرونزي وضعف التمثيل الضوئي.'
+      }
+    ]
   },
 
   // -------------------------------------------------------------
