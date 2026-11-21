@@ -457,6 +457,9 @@ export async function validateRecommendationAndPurchases({
     markAsExecutedIfPast?: boolean;
     forceBypassDAR?: boolean;
     scheduledDates?: string[];
+    customStartHour?: string;          // Heure de commencement confirmée par l'utilisateur (ex: "06:30", "07:00", "15:00")
+    customFertIrrigationTime?: string; // Temps d'irrigation AVEC fertilisation confirmé (ex: "1h30", "1h00")
+    customPureIrrigationTime?: string; // Temps d'irrigation SANS fertilisation (eau claire) confirmé (ex: "0h", "1h30", "2h30")
   };
 }): Promise<ValidateRecoResult> {
   const payload = (reco.payload ?? {}) as any;
@@ -565,8 +568,13 @@ export async function validateRecommendationAndPurchases({
       );
 
       const phaseInfo = getHydraulicPhaseForDate(plannedStartDate);
-      const groupDurationMinutes =
-        phaseInfo.phase >= 2
+      const effectiveFertIrrigStr =
+        options.customFertIrrigationTime ||
+        program.irrigationTime ||
+        (phaseInfo.phase >= 2 ? "1h00" : "1h30");
+      const groupDurationMinutes = options.customFertIrrigationTime
+        ? parseDurationToMinutes(options.customFertIrrigationTime)
+        : phaseInfo.phase >= 2
           ? phaseInfo.morningSlotMinutes
           : parseDurationToMinutes(program.irrigationTime || "1h30");
       const existingFertRecords = getAllModuleRecordsSnapshot("fertilisation");
@@ -578,7 +586,16 @@ export async function validateRecommendationAndPurchases({
         (titleLowerFert.includes("gzb") && plannedStartDate === "2026-06-05") ||
         titleLowerFert.includes("lessivage");
 
+      const parseHHMMToMinutes = (hhmm?: string): number | null => {
+        if (!hhmm) return null;
+        const m = hhmm.trim().match(/^(\d{1,2})[:h](\d{2})$/i);
+        if (!m) return null;
+        return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+      };
+      const customStartMin = parseHHMMToMinutes(options.customStartHour);
+
       const getMorningStartMinute = (dateStr: string): number => {
+        if (customStartMin !== null) return customStartMin;
         const ph = getHydraulicPhaseForDate(dateStr);
         return ph.morningStartMinutes !== null
           ? ph.morningStartMinutes
@@ -807,7 +824,8 @@ export async function validateRecommendationAndPurchases({
             wettingTime: program.wettingTime,
             injectionTime: program.injectionTime,
             rinsingTime: program.rinsingTime,
-            irrigationTime: program.irrigationTime,
+            irrigationTime: effectiveFertIrrigStr,
+            pureIrrigationTime: options.customPureIrrigationTime || program.pureIrrigationTime || (phaseInfo.nightWaterMinutes > 0 ? `${Math.floor(phaseInfo.nightWaterMinutes / 60)}h${String(phaseInfo.nightWaterMinutes % 60).padStart(2, "0")}` : "0h"),
             slotLabel: item.slotLabel,
             // Statut selon option : "execute" si demandé, ou "planifie" par défaut
             status: options.markAsExecutedIfPast ? "execute" : "planifie",
@@ -882,8 +900,8 @@ export async function validateRecommendationAndPurchases({
         pulvSafety++;
       }
 
-      // Correction 4 : Horaire Foliaire matin (07h00 - 09h00)
-      const foliarStartHour = "07:00";
+      // Heure de commencement confirmée par l'utilisateur (ou 07:00 par défaut pour Foliaire)
+      const foliarStartHour = options.customStartHour || "07:00";
 
       for (const parcel of targetParcels) {
         const surface = safeParseFloat(parcel.info?.surface) || 1;
@@ -950,8 +968,8 @@ export async function validateRecommendationAndPurchases({
         phytoSafety++;
       }
 
-      // Correction 4 : Horaire Phytosanitaire fin d'après-midi avant la nuit (15h00 - 17h00)
-      const phytoStartHour = "15:00";
+      // Heure de commencement confirmée par l'utilisateur (ou 15:00 par défaut pour Phytosanitaire)
+      const phytoStartHour = options.customStartHour || "15:00";
 
       for (const parcel of targetParcels) {
         const surface = safeParseFloat(parcel.info?.surface) || 1;

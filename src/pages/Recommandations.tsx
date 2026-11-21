@@ -32,7 +32,9 @@ import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useParcels, useParcelActions } from "@/lib/parcel-store";
 import { checkRecoStock, getTargetParcelsForReco } from "@/lib/stock-alerts";
-import { validateRecommendationAndPurchases, resetAllAppliedRecoHistory, syncPurchasesForAcceptedRecos } from "@/lib/reco-validation";
+import { validateRecommendationAndPurchases, resetAllAppliedRecoHistory, syncPurchasesForAcceptedRecos, getHydraulicPhaseForDate } from "@/lib/reco-validation";
+import { ValidateOrderScheduleDialog, type OrderScheduleConfirmation } from "@/components/ValidateOrderScheduleDialog";
+import { getSolarTimesForDate } from "@/lib/astronomy";
 
 type PrescriptionType = "all" | "fert_irrigation" | "fert_foliaire" | "phytosanitaire";
 
@@ -195,6 +197,125 @@ function RecommandationsPageContent() {
   const [deletingAll, setDeletingAll] = useState(false);
   const [resettingHistory, setResettingHistory] = useState(false);
   const [isBatchValidating, setIsBatchValidating] = useState(false);
+
+  // Fenêtre systématique de confirmation de l'heure de début + temps d'irrigation (avec et sans fertilisation)
+  const [scheduleConfirmState, setScheduleConfirmState] = useState<{
+    open: boolean;
+    recosToRun: Recommendation[];
+    mode: "execute" | "plan";
+    title: string;
+    subtitle: string;
+    operationLabel: string;
+    defaultStartHour: string;
+    defaultFertIrrigationTime: string;
+    defaultPureIrrigationTime: string;
+  } | null>(null);
+
+  const openScheduleConfirm = (
+    recosToRun: Recommendation[],
+    mode: "execute" | "plan",
+    title: string,
+    subtitle: string
+  ) => {
+    const first = recosToRun[0];
+    const firstDate = first ? getRecoDate(first) : "2026-03-09";
+    const phase = getHydraulicPhaseForDate(firstDate);
+    const pType = first ? getPrescriptionType(first) : "fert_irrigation";
+    const prog = (first?.payload as any)?.program || {};
+
+    let defaultStartHour = "06:30";
+    if (pType === "phytosanitaire") {
+      defaultStartHour = "15:00";
+    } else if (pType === "fert_foliaire") {
+      defaultStartHour = "07:00";
+    } else if (phase.morningStartMinutes !== null) {
+      defaultStartHour = "06:00";
+    } else {
+      const solar = getSolarTimesForDate(firstDate);
+      defaultStartHour = solar.sunriseStr.replace("h", ":");
+    }
+
+    const defaultFertIrrigationTime =
+      prog.irrigationTime || (phase.phase >= 2 ? "1h00" : "1h30");
+    const defaultPureIrrigationTime =
+      prog.pureIrrigationTime ||
+      (phase.phase === 2 ? "1h30" : phase.phase === 3 ? "2h30" : "0h");
+
+    const opTypes = Array.from(
+      new Set(
+        recosToRun.map((r) => {
+          const t = getPrescriptionType(r);
+          return t === "fert_irrigation"
+            ? "Fertilisation (Irrigation)"
+            : t === "fert_foliaire"
+              ? "Pulvérisation Foliaire"
+              : "Traitement Phytosanitaire";
+        })
+      )
+    ).join(" · ");
+
+    setScheduleConfirmState({
+      open: true,
+      recosToRun,
+      mode,
+      title,
+      subtitle,
+      operationLabel: opTypes || "Ordonnance",
+      defaultStartHour,
+      defaultFertIrrigationTime,
+      defaultPureIrrigationTime,
+    });
+  };
+
+  const executeConfirmedValidation = async (values: OrderScheduleConfirmation) => {
+    if (!scheduleConfirmState) return;
+    const { recosToRun, mode } = scheduleConfirmState;
+    setIsBatchValidating(true);
+    let successCount = 0;
+    let totalTasks = 0;
+    let totalPurchases = 0;
+    const errors: string[] = [];
+
+    try {
+      for (const r of recosToRun) {
+        try {
+          const res = await validateRecommendationAndPurchases({
+            reco: r,
+            parcels,
+            suppliers,
+            addPurchase,
+            acceptReco: async (id) => accept.mutateAsync(id),
+            addModuleRecord,
+            setParcelStatus,
+            options: {
+              markAsExecutedIfPast: mode === "execute",
+              customStartHour: values.customStartHour,
+              customFertIrrigationTime: values.customFertIrrigationTime,
+              customPureIrrigationTime: values.customPureIrrigationTime,
+            },
+          });
+          successCount++;
+          totalTasks += res.clonedCount;
+          totalPurchases += res.createdPurchasesCount;
+        } catch (err: any) {
+          errors.push(`${r.title}: ${err?.message || "Erreur"}`);
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(
+          `${successCount} recommandation(s) ${mode === "execute" ? "validée(s) & exécutée(s)" : "planifiée(s)"} (début ${values.customStartHour} · fert. ${values.customFertIrrigationTime} · eau claire ${values.customPureIrrigationTime}) — ${totalTasks} tâche(s)${totalPurchases > 0 ? `, ${totalPurchases} achat(s) complémentaire(s)` : ", stock Agrimax suffisant"}.`
+        );
+        setSelectedRecoIds(new Set());
+      }
+      if (errors.length > 0) {
+        toast.error(`${errors.length} erreur(s) :\n${errors.join("\n")}`);
+      }
+      setScheduleConfirmState(null);
+    } finally {
+      setIsBatchValidating(false);
+    }
+  };
 
   // Filtres de recherche demandés par l'utilisateur
   const [selectedYear, setSelectedYear] = useState<string>("all");
@@ -450,62 +571,12 @@ function RecommandationsPageContent() {
     }
 
     const count = toValidate.length;
-    if (
-      !window.confirm(
-        `Voulez-vous vraiment valider simultanément ces ${count} recommandation(s) ?\n\nDes Bons d'Achat individuels seront générés pour chaque intervention et les programmes correspondants seront créés pour chaque parcelle.`
-      )
-    ) {
-      return;
-    }
-
-    setIsValidatingBatch(true);
-    let successCount = 0;
-    let totalTasks = 0;
-    let totalPurchases = 0;
-    const errors: string[] = [];
-
-    try {
-      toast.info(`Validation groupée en cours (0/${count})...`);
-
-      for (let i = 0; i < toValidate.length; i++) {
-        const r = toValidate[i];
-        try {
-          const res = await validateRecommendationAndPurchases({
-            reco: r,
-            parcels,
-            suppliers,
-            addPurchase,
-            acceptReco: async (id) => accept.mutateAsync(id),
-            addModuleRecord,
-            setParcelStatus,
-            options: {
-              supplierName: "Achat Validé (Historique Ingénieur)",
-              markAsExecutedIfPast: false,
-            },
-          });
-          successCount++;
-          totalTasks += res.clonedCount;
-          totalPurchases += res.createdPurchasesCount;
-        } catch (err: any) {
-          errors.push(`${r.title}: ${err?.message || "Erreur"}`);
-        }
-      }
-
-      if (successCount > 0) {
-        toast.success(
-          `${successCount} recommandation(s) validée(s) avec succès ! (${totalTasks} tâches créées, ${totalPurchases} achats enregistrés).`
-        );
-        setSelectedRecoIds(new Set());
-      }
-
-      if (errors.length > 0) {
-        toast.error(`${errors.length} erreur(s) lors de la validation groupée :\n${errors.join("\n")}`);
-      }
-    } catch (err: any) {
-      toast.error(err?.message || "Erreur lors de la validation groupée");
-    } finally {
-      setIsValidatingBatch(false);
-    }
+    openScheduleConfirm(
+      toValidate,
+      "plan",
+      `Valider la sélection (${count} reco${count > 1 ? "s" : ""})`,
+      "Confirmez l'heure de commencement du planning et les temps d'irrigation (avec et sans fertilisation)."
+    );
   };
 
   return (
@@ -831,33 +902,13 @@ function RecommandationsPageContent() {
             <button
               type="button"
               disabled={isBatchValidating}
-              onClick={async () => {
-                if (!window.confirm(`Exécuter et valider l'ensemble des ${pendingMarchRecos.length} recommandations du 09 Mars 2026 ?`)) return;
-                setIsBatchValidating(true);
-                let doneCount = 0;
-                try {
-                  for (const r of pendingMarchRecos) {
-                    await validateRecommendationAndPurchases({
-                      reco: r,
-                      parcels,
-                      suppliers,
-                      addPurchase,
-                      acceptReco: async (id) => accept.mutateAsync(id),
-                      addModuleRecord,
-                      setParcelStatus,
-                      options: {
-                        supplierName: "Achat Validé (Historique Ingénieur)",
-                        markAsExecutedIfPast: true,
-                      },
-                    });
-                    doneCount++;
-                  }
-                  toast.success(`✅ Les ${doneCount} recommandations du 09 Mars ont été validées et exécutées avec succès !`);
-                } catch (err: any) {
-                  toast.error(err?.message || "Erreur lors du traitement du lot");
-                } finally {
-                  setIsBatchValidating(false);
-                }
+              onClick={() => {
+                openScheduleConfirm(
+                  pendingMarchRecos,
+                  "execute",
+                  `Valider & Exécuter le Lot du 09 Mars (${pendingMarchRecos.length})`,
+                  "Confirmez l'heure de commencement du planning et les temps d'irrigation (avec et sans fertilisation)."
+                );
               }}
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 text-xs font-black shadow-sm active:scale-95 transition cursor-pointer"
             >
@@ -868,33 +919,13 @@ function RecommandationsPageContent() {
             <button
               type="button"
               disabled={isBatchValidating}
-              onClick={async () => {
-                if (!window.confirm(`Planifier l'ensemble des ${pendingMarchRecos.length} recommandations du 09 Mars 2026 (sans marquer exécuté) ?`)) return;
-                setIsBatchValidating(true);
-                let doneCount = 0;
-                try {
-                  for (const r of pendingMarchRecos) {
-                    await validateRecommendationAndPurchases({
-                      reco: r,
-                      parcels,
-                      suppliers,
-                      addPurchase,
-                      acceptReco: async (id) => accept.mutateAsync(id),
-                      addModuleRecord,
-                      setParcelStatus,
-                      options: {
-                        supplierName: "Achat Validé (Historique Ingénieur)",
-                        markAsExecutedIfPast: false,
-                      },
-                    });
-                    doneCount++;
-                  }
-                  toast.success(`✅ Les ${doneCount} recommandations du 09 Mars ont été planifiées avec succès !`);
-                } catch (err: any) {
-                  toast.error(err?.message || "Erreur lors de la planification");
-                } finally {
-                  setIsBatchValidating(false);
-                }
+              onClick={() => {
+                openScheduleConfirm(
+                  pendingMarchRecos,
+                  "plan",
+                  `Planifier le Lot du 09 Mars (${pendingMarchRecos.length})`,
+                  "Confirmez l'heure de commencement du planning et les temps d'irrigation (avec et sans fertilisation)."
+                );
               }}
               className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-600 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/15 px-3 py-2 text-xs font-bold transition cursor-pointer"
             >
@@ -1029,34 +1060,14 @@ function RecommandationsPageContent() {
                         {isPast ? (
                           <button
                             type="button"
-                            onClick={async (e) => {
+                            onClick={(e) => {
                               e.stopPropagation();
-                              if (
-                                !window.confirm(
-                                  `Valider et EXÉCUTER la recommandation "${r.title}" (statut Exécuté avec achats exacts 100% payés) ?`
-                                )
-                              )
-                                return;
-                              try {
-                                const res = await validateRecommendationAndPurchases({
-                                  reco: r,
-                                  parcels,
-                                  suppliers,
-                                  addPurchase,
-                                  acceptReco: async (id) => accept.mutateAsync(id),
-                                  addModuleRecord,
-                                  setParcelStatus,
-                                  options: {
-                                    supplierName: "Achat Validé (Historique Ingénieur)",
-                                    markAsExecutedIfPast: true,
-                                  },
-                                });
-                                toast.success(
-                                  `Recommandation validée & exécutée ! (${res.clonedCount} tâches créées${res.createdPurchasesCount > 0 ? `, ${res.createdPurchasesCount} achats alignés` : ""}).`
-                                );
-                              } catch (err: any) {
-                                toast.error(err?.message || "Erreur lors de la validation");
-                              }
+                              openScheduleConfirm(
+                                [r],
+                                "execute",
+                                `Valider & Exécuter : ${r.title}`,
+                                "Confirmez l'heure de commencement et les temps d'irrigation avant validation."
+                              );
                             }}
                             className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition cursor-pointer"
                             title="Valider la recommandation et solder l'exécution historique (date passée)"
@@ -1080,34 +1091,14 @@ function RecommandationsPageContent() {
                         {/* 2. Bouton bleu Planifier : Toujours actif (passée pour calendrier, future pour planifier) */}
                         <button
                           type="button"
-                          onClick={async (e) => {
+                          onClick={(e) => {
                             e.stopPropagation();
-                            if (
-                              !window.confirm(
-                                `Planifier la recommandation "${r.title}" (statut Planifié) ?`
-                              )
-                            )
-                              return;
-                            try {
-                              const res = await validateRecommendationAndPurchases({
-                                reco: r,
-                                parcels,
-                                suppliers,
-                                addPurchase,
-                                acceptReco: async (id) => accept.mutateAsync(id),
-                                addModuleRecord,
-                                setParcelStatus,
-                                options: {
-                                  supplierName: "Achat Validé (Historique Ingénieur)",
-                                  markAsExecutedIfPast: false,
-                                },
-                              });
-                              toast.success(
-                                `Recommandation planifiée avec succès ! (${res.clonedCount} tâches planifiées).`
-                              );
-                            } catch (err: any) {
-                              toast.error(err?.message || "Erreur lors de la planification");
-                            }
+                            openScheduleConfirm(
+                              [r],
+                              "plan",
+                              `Planifier : ${r.title}`,
+                              "Confirmez l'heure de commencement et les temps d'irrigation avant planification."
+                            );
                           }}
                           className="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition cursor-pointer"
                           title="Planifier sans marquer comme exécuté"
@@ -1177,6 +1168,21 @@ function RecommandationsPageContent() {
           setFormOpen(true);
         }}
       />
+      {scheduleConfirmState && (
+        <ValidateOrderScheduleDialog
+          open={scheduleConfirmState.open}
+          onOpenChange={(o) => !o && setScheduleConfirmState(null)}
+          title={scheduleConfirmState.title}
+          subtitle={scheduleConfirmState.subtitle}
+          operationLabel={scheduleConfirmState.operationLabel}
+          mode={scheduleConfirmState.mode}
+          defaultStartHour={scheduleConfirmState.defaultStartHour}
+          defaultFertIrrigationTime={scheduleConfirmState.defaultFertIrrigationTime}
+          defaultPureIrrigationTime={scheduleConfirmState.defaultPureIrrigationTime}
+          loading={isBatchValidating}
+          onConfirm={executeConfirmedValidation}
+        />
+      )}
     </main>
   );
 }
