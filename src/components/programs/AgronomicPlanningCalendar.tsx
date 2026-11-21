@@ -1837,53 +1837,53 @@ export function AgronomicPlanningCalendar({
       </div>
 
       {/* 2. Barre de Navigation (Les 4 Vues Agronomiques) */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-b">
+      <div className="flex flex-wrap items-center gap-1.5 pb-1.5 border-b">
         <button
           type="button"
           onClick={() => setActiveView("grid")}
-          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border ${
+          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border cursor-pointer ${
             activeView === "grid"
-              ? "bg-foreground text-background shadow-xs border-foreground"
-              : "bg-muted/40 text-muted-foreground hover:bg-muted border-border"
+              ? "bg-primary text-primary-foreground shadow-sm border-primary ring-2 ring-primary/25"
+              : "bg-muted/50 text-foreground/80 hover:bg-muted border-border"
           }`}
         >
-          <TableIcon className="h-3.5 w-3.5 text-amber-500" />
+          <TableIcon className="h-3.5 w-3.5 text-amber-400" />
           <span>Grille Calendrier (Excel)</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveView("cards")}
-          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border ${
+          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border cursor-pointer ${
             activeView === "cards"
-              ? "bg-foreground text-background shadow-xs border-foreground"
-              : "bg-muted/40 text-muted-foreground hover:bg-muted border-border"
+              ? "bg-primary text-primary-foreground shadow-sm border-primary ring-2 ring-primary/25"
+              : "bg-muted/50 text-foreground/80 hover:bg-muted border-border"
           }`}
         >
-          <Calendar className="h-3.5 w-3.5 text-primary" />
+          <Calendar className="h-3.5 w-3.5 text-sky-400" />
           <span>Fiches Horaires</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveView("periods")}
-          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border ${
+          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border cursor-pointer ${
             activeView === "periods"
-              ? "bg-foreground text-background shadow-xs border-foreground"
-              : "bg-muted/40 text-muted-foreground hover:bg-muted border-border"
+              ? "bg-primary text-primary-foreground shadow-sm border-primary ring-2 ring-primary/25"
+              : "bg-muted/50 text-foreground/80 hover:bg-muted border-border"
           }`}
         >
-          <Layers className="h-3.5 w-3.5 text-indigo-500" />
-          <span>Paliers & Périodes</span>
+          <Layers className="h-3.5 w-3.5 text-indigo-400" />
+          <span>Paliers &amp; Périodes</span>
         </button>
         <button
           type="button"
           onClick={() => setActiveView("consolidation")}
-          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border ${
+          className={`px-3.5 py-2 text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shrink-0 border cursor-pointer ${
             activeView === "consolidation"
-              ? "bg-foreground text-background shadow-xs border-foreground"
-              : "bg-muted/40 text-muted-foreground hover:bg-muted border-border"
+              ? "bg-primary text-primary-foreground shadow-sm border-primary ring-2 ring-primary/25"
+              : "bg-muted/50 text-foreground/80 hover:bg-muted border-border"
           }`}
         >
-          <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+          <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
           <span>Synthèse Intrants</span>
         </button>
       </div>
@@ -1990,14 +1990,14 @@ export function AgronomicPlanningCalendar({
           </div>
         </div>
 
-        {/* Ligne 2 : Espèce (Sa propre ligne dédiée sur toute la largeur) */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2.5 border-t">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground w-40 shrink-0">
+        {/* Ligne 2 : Espèce (Tous les groupes visibles sans coupure : Pommier, Nablara, Redix 25, Oliviers) */}
+        <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-2.5 border-t">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground w-40 shrink-0 pt-1">
             <span>🌳</span>
             <span>Espèce :</span>
           </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none flex-1">
+          <div className="flex flex-wrap items-center gap-1.5 flex-1">
             <button
               type="button"
               onClick={() => setSelectedSpecies("all")}
@@ -3030,7 +3030,7 @@ export function AgronomicPlanningCalendar({
           {/* Barre de Commande : Grouper par (Espèce / Mois / Matrice) & Trier par Ordre */}
           <div className="rounded-2xl border bg-card p-3 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 shadow-xs">
             {/* 1. Sélecteur de Regroupement */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-[11px] font-bold text-muted-foreground shrink-0 pr-1 flex items-center gap-1">
                 <Layers className="h-3.5 w-3.5 text-primary" />
                 <span>Grouper par :</span>

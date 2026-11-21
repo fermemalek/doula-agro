@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Shield, HardHat, FlaskConical, Settings as SettingsIcon, Image as ImageIcon, RotateCcw } from "lucide-react";
+import { Shield, HardHat, FlaskConical, Settings as SettingsIcon, Image as ImageIcon, RotateCcw, ArrowLeft, Languages } from "lucide-react";
 import { useRole } from "@/lib/role";
 import { saveConfig, getConfig, type ConfigRole } from "@/lib/config-store";
 import { resetFarmData } from "@/lib/cloud/admin-reset";
@@ -33,6 +33,7 @@ function ConfigPage() {
   const { session, loading, isAdmin, switchRole } = useRole();
   const cfg = getConfig();
   const [role, setRole] = useState<ConfigRole>(cfg.role);
+  const [lang, setLang] = useState<"fr" | "ar">(cfg.lang || "fr");
   const [bgColor, setBgColor] = useState(cfg.bgColor);
   const [bgImage, setBgImage] = useState(cfg.bgImage);
   const [resetOpen, setResetOpen] = useState(false);
@@ -94,7 +95,7 @@ function ConfigPage() {
   }
 
   function onValidate() {
-    saveConfig({ role, bgColor, bgImage, configured: true });
+    saveConfig({ role, lang, bgColor, bgImage, configured: true });
     switchRole(role);
     toast.success("Configuration enregistrée");
     navigate({ to: "/" });
@@ -103,13 +104,75 @@ function ConfigPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-background to-muted px-4 py-8">
       <div className="mx-auto max-w-2xl space-y-5">
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/" })}
+            className="inline-flex items-center gap-1.5 rounded-xl border bg-card px-3 py-1.5 text-xs font-bold text-foreground hover:bg-muted transition cursor-pointer"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Retour</span>
+          </button>
+          <div className="flex rounded-lg border bg-muted p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => {
+                setLang("fr");
+                saveConfig({ lang: "fr" });
+              }}
+              className={`px-2.5 py-1 rounded-md font-bold cursor-pointer ${lang === "fr" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"}`}
+            >
+              FR
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLang("ar");
+                saveConfig({ lang: "ar" });
+              }}
+              className={`px-2.5 py-1 rounded-md font-bold cursor-pointer ${lang === "ar" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground"}`}
+            >
+              AR
+            </button>
+          </div>
+        </div>
+
         <header className="text-center space-y-1">
           <div className="mx-auto h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
             <SettingsIcon className="h-6 w-6 text-primary" />
           </div>
           <h1 className="text-xl font-bold">Configuration</h1>
-          <p className="text-sm text-muted-foreground">Choisissez votre profil et l'arrière-plan de l'application.</p>
+          <p className="text-sm text-muted-foreground">Choisissez votre profil, la langue et l&apos;arrière-plan de l&apos;application.</p>
         </header>
+
+        <Card className="p-5 space-y-3">
+          <h2 className="font-semibold flex items-center gap-2">
+            <Languages className="h-4 w-4 text-primary" />
+            <span>Langue de l&apos;interface</span>
+          </h2>
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              { v: "fr" as const, label: "Français (FR)" },
+              { v: "ar" as const, label: "العربية (AR)" },
+            ]).map((item) => (
+              <button
+                key={item.v}
+                type="button"
+                onClick={() => {
+                  setLang(item.v);
+                  saveConfig({ lang: item.v });
+                }}
+                className={`rounded-xl border-2 px-4 py-2.5 text-xs font-bold transition cursor-pointer ${
+                  lang === item.v
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border hover:border-primary/40 text-muted-foreground"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </Card>
 
         <Card className="p-5 space-y-3">
           <h2 className="font-semibold">Type d'utilisateur</h2>

@@ -235,7 +235,7 @@ export const PARCELS: Parcel[] = [
 export const INFO_LABELS: Record<keyof ParcelInfo, string> = {
   flowering: "Période de floraison",
   harvest: "Période de récolte",
-  pumpBar: "Débit (bar)",
+  pumpBar: "Pression (bar)",
   frequency: "Fréquence",
   anneeAgricoleDebut: "Année agricole du",
   anneeAgricoleFin: "au",
@@ -275,7 +275,7 @@ export const INFO_LABELS: Record<keyof ParcelInfo, string> = {
   briseNbGouteurs: "Nombre de Gouteurs",
   briseDebitTotal: "DébitTotal (L/h)",
   nbArbresParcelle: "Nb. Arbres Parcelle",
-  debitGlobal: "DébitGlobale (L/h)",
+  debitGlobal: "Débit global (L/h)",
 };
 
 // Champs alphanumériques (texte libre)

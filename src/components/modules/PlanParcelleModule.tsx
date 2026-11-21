@@ -181,10 +181,10 @@ export function PlanParcelleModule({
         </div>
       )}
 
-      <Legend />
+      <Legend showApplePollinators={parcel?.type === "pommier"} />
 
-      <div className="overflow-auto rounded-xl border bg-card p-3">
-        <div className="inline-block">
+      <div className="w-full overflow-x-auto rounded-xl border bg-card p-3">
+        <div className="inline-block min-w-max">
           {/* En-tête : L1, L2, ... */}
           <div className="flex">
             <div className="w-8 shrink-0" />
@@ -247,7 +247,7 @@ export function PlanParcelleModule({
   );
 }
 
-function Legend() {
+function Legend({ showApplePollinators = false }: { showApplePollinators?: boolean }) {
   const items: { v: Vitality; desc: string }[] = [
     { v: "sain", desc: "Sain" },
     { v: "replante", desc: "Replanté" },
@@ -266,7 +266,9 @@ function Legend() {
           <span className="text-foreground">{i.desc}</span>
         </span>
       ))}
-      <span className="ml-auto text-muted-foreground">G = Golden · S = Granny Smith</span>
+      {showApplePollinators && (
+        <span className="ml-auto text-muted-foreground">G = Golden · S = Granny Smith</span>
+      )}
     </div>
   );
 }

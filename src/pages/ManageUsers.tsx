@@ -68,6 +68,7 @@ export default function ManageUsers() {
   // Liste des utilisateurs
   const [usersList, setUsersList] = useState<UserItem[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
+  const [offlineMode, setOfflineMode] = useState(false);
 
   // Dialogue d'édition
   const [editingUser, setEditingUser] = useState<UserItem | null>(null);
@@ -93,6 +94,24 @@ export default function ManageUsers() {
 
   const fetchUsers = async () => {
     setLoadingUsers(true);
+    setOfflineMode(false);
+    const loadCachedUsers = () => {
+      try {
+        const raw = localStorage.getItem("doula-users-cache");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) setUsersList(parsed);
+        }
+      } catch {}
+    };
+
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setOfflineMode(true);
+      loadCachedUsers();
+      setLoadingUsers(false);
+      return;
+    }
+
     try {
       // 1. Récupérer tous les profils publics
       const { data: profiles, error: pErr } = await supabase
@@ -139,9 +158,20 @@ export default function ManageUsers() {
       });
 
       setUsersList(combined);
+      try {
+        localStorage.setItem("doula-users-cache", JSON.stringify(combined));
+      } catch {}
     } catch (err: any) {
       console.error("[ManageUsers] fetchUsers error:", err);
-      toast.error("Impossible de récupérer la liste des utilisateurs: " + err.message);
+      const isNetErr =
+        (typeof navigator !== "undefined" && navigator.onLine === false) ||
+        /fetch|network|offline|timeout/i.test(String(err?.message || ""));
+      if (isNetErr) {
+        setOfflineMode(true);
+        loadCachedUsers();
+      } else {
+        toast.error("Impossible de récupérer la liste des utilisateurs: " + err.message);
+      }
     } finally {
       setLoadingUsers(false);
     }
@@ -562,6 +592,15 @@ export default function ManageUsers() {
         <div className="md:col-span-3">
           <Card className="p-4 space-y-3">
             <h2 className="font-semibold">Membres de la ferme ({usersList.length})</h2>
+
+            {offlineMode && (
+              <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-300 font-medium flex items-center justify-between gap-2">
+                <span>📡 Gestion des comptes indisponible hors ligne{usersList.length > 0 ? " — affichage du cache local" : ""}.</span>
+                <Button variant="outline" size="sm" onClick={() => void fetchUsers()} className="h-7 text-[11px] shrink-0">
+                  Réessayer
+                </Button>
+              </div>
+            )}
 
             {loadingUsers ? (
               <div className="py-12 flex flex-col items-center justify-center text-muted-foreground gap-2">

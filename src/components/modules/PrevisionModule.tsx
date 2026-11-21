@@ -43,9 +43,23 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
     toast.info(`Unité de prévision modifiée : ${next === "kg" ? "Kilogrammes (kg)" : "Nombre de fruits"}`);
   };
 
-  // 22 Lines & 19 Sections layout configuration
-  const totalLines = 22;
-  const totalSections = 19;
+  // Dimensions dynamiques lues depuis la parcelle sélectionnée (P1–P8) au lieu de valeurs figées
+  const parseParcelInt = (val?: string): number => {
+    if (!val) return 0;
+    const match = String(val).replace(/\s+/g, "").match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+  };
+  const parcelLinesCount = parseParcelInt(parcel?.info?.nbLignes);
+  const parcelTreesPerLine = parseParcelInt(parcel?.info?.arbresLigne);
+  const parcelDeclaredTrees =
+    parseParcelInt(parcel?.info?.nbArbresParcelle) ||
+    parseParcelInt(parcel?.info?.nbArbres);
+
+  const totalLines = parcelLinesCount > 0 ? Math.min(60, parcelLinesCount) : 22;
+  const defaultTreesPerSection = parcel?.type === "pommier" ? 8 : Math.max(1, Math.min(10, parcelTreesPerLine || 8));
+  const totalSections = parcelTreesPerLine > 0
+    ? Math.max(1, Math.ceil(parcelTreesPerLine / defaultTreesPerSection))
+    : 19;
 
   const [selectedLine, setSelectedLine] = useState<number>(1);
   const [editingTree, setEditingTree] = useState<{ lineNumber: number; treeNumber: number } | null>(null);
@@ -72,19 +86,26 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
     return map;
   }, [allConfigs]);
 
-  // Compute total trees in parcel by summing configured trees in all 22 lines and 19 sections
+  // Compute total trees in parcel dynamically from parcel dimensions & section configs
   const totalTrees = useMemo(() => {
+    if (allConfigs.length === 0 && parcelDeclaredTrees > 0) {
+      return parcelDeclaredTrees;
+    }
     let total = 0;
     for (let l = 1; l <= totalLines; l++) {
       for (let s = 1; s <= totalSections; s++) {
-        const count = configsMap.get(`${l}-${s}`) ?? 8; // defaults to 8
+        const defaultCount =
+          parcelTreesPerLine > 0 && s === totalSections
+            ? Math.max(1, parcelTreesPerLine - (totalSections - 1) * defaultTreesPerSection)
+            : defaultTreesPerSection;
+        const count = configsMap.get(`${l}-${s}`) ?? defaultCount;
         total += count;
       }
     }
     return total;
-  }, [configsMap]);
+  }, [configsMap, allConfigs.length, parcelDeclaredTrees, totalLines, totalSections, parcelTreesPerLine, defaultTreesPerSection]);
 
-  // Compute start tree index for each of the 19 sections of the selected line
+  // Compute start tree index for each section of the selected line
   const selectedLineSections = useMemo(() => {
     const list: Array<{
       sectionNumber: number;
@@ -93,7 +114,11 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
     }> = [];
     let currentIndex = 1;
     for (let s = 1; s <= totalSections; s++) {
-      const count = configsMap.get(`${selectedLine}-${s}`) ?? 8; // defaults to 8
+      const defaultCount =
+        parcelTreesPerLine > 0 && s === totalSections
+          ? Math.max(1, parcelTreesPerLine - (totalSections - 1) * defaultTreesPerSection)
+          : defaultTreesPerSection;
+      const count = configsMap.get(`${selectedLine}-${s}`) ?? defaultCount;
       list.push({
         sectionNumber: s,
         treeCount: count,
@@ -102,7 +127,7 @@ export function PrevisionModule({ parcelId, canEdit }: PrevisionModuleProps) {
       currentIndex += count;
     }
     return list;
-  }, [selectedLine, configsMap]);
+  }, [selectedLine, configsMap, totalSections, parcelTreesPerLine, defaultTreesPerSection]);
 
   // Map predictions for O(1) lookup
   const predictionMap = useMemo(() => {

@@ -265,13 +265,21 @@ export function StatsModule() {
       });
     });
 
-    // 3. Process Pulverisation (DB)
+    // 3. Process Pulverisation (DB) — supporte aussi bien r.items (foliaires) que r.products
     pulvRecords.forEach((r) => {
       const key = getKey(r.date, r.parcelId);
-      (r.products ?? []).forEach((p: any) => {
-        const cost = parseFloat((p.price || "").replace(",", ".")) || 0;
-        addCost(key, "Pulvérisation / Foliaire", p.product, cost);
-      });
+      const list = Array.isArray(r.items) && r.items.length > 0 ? r.items : (r.products ?? []);
+      if (list.length > 0) {
+        list.forEach((p: any) => {
+          const pName = p.name || p.product || "Foliaire";
+          const qty = parseFloat(String(p.qty || "1").replace(",", ".")) || 1;
+          const unitPrice = parseFloat(String(p.price || "0").replace(",", ".")) || 0;
+          const cost = p.name ? qty * unitPrice : unitPrice;
+          if (cost > 0) addCost(key, "Pulvérisation / Foliaire", pName, cost);
+        });
+      } else if ((r.total || 0) > 0) {
+        addCost(key, "Pulvérisation / Foliaire", r.label || "Pulvérisation Foliaire", r.total);
+      }
     });
 
     // 4. Process Phytosanitaire (DB)
@@ -469,8 +477,16 @@ export function StatsModule() {
                     <XAxis dataKey="name" tickLine={false} className="text-[10px]" />
                     <YAxis
                       tickLine={false}
+                      width={64}
                       className="text-[10px]"
-                      tickFormatter={(v) => `${(v / 1000).toFixed(0)}k DA`}
+                      tickFormatter={(v: number) => {
+                        if (!v || v === 0) return "0 DA";
+                        if (Math.abs(v) >= 1000) {
+                          const k = v / 1000;
+                          return `${Number.isInteger(k) ? k : k.toFixed(1)}k DA`;
+                        }
+                        return `${Math.round(v)} DA`;
+                      }}
                     />
                     <Tooltip
                       formatter={(value: any) => [`${parseFloat(value).toFixed(2)} DA`]}
@@ -495,17 +511,17 @@ export function StatsModule() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {/* Pie Chart of Dépenses */}
-            <div className="rounded-xl border bg-card p-4 shadow-xs">
+            <div className="rounded-xl border bg-card p-4 shadow-xs min-w-0">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">
-                Répartition Globale par Type d'Intrant
+                Répartition Globale par Type d&apos;Intrant
               </h3>
               {pieData.length === 0 ? (
                 <p className="py-12 text-center text-xs text-muted-foreground">Aucune donnée disponible.</p>
               ) : (
-                <div className="flex items-center justify-between gap-2 h-44">
-                  <div className="relative h-40 w-40 shrink-0">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="relative h-44 w-44 shrink-0">
                     {/* Centered Total Label */}
                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                       <span className="text-[9px] uppercase font-bold text-muted-foreground tracking-wider">Total</span>
@@ -520,8 +536,8 @@ export function StatsModule() {
                           data={pieData}
                           cx="50%"
                           cy="50%"
-                          innerRadius={46}
-                          outerRadius={66}
+                          innerRadius={48}
+                          outerRadius={70}
                           paddingAngle={3}
                           dataKey="value"
                         >
@@ -529,17 +545,17 @@ export function StatsModule() {
                             <Cell key={entry.name} fill={INTRANT_COLORS[entry.name]} />
                           ))}
                         </Pie>
-                        <Tooltip formatter={(v: any) => `${(v).toLocaleString("fr-FR")} DA`} />
+                        <Tooltip formatter={(v: any) => `${Math.round(Number(v) || 0).toLocaleString("fr-FR")} DA`} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="space-y-2 text-[10px] flex-1 pl-3 border-l">
+                  <div className="space-y-2 text-[10px] w-full sm:flex-1 min-w-0 sm:pl-3 sm:border-l">
                     {pieData.map((d) => {
-                      const pct = ((d.value / stats.grandTotal) * 100).toFixed(1);
+                      const pct = stats.grandTotal > 0 ? ((d.value / stats.grandTotal) * 100).toFixed(1) : "0.0";
                       return (
-                        <div key={d.name} className="flex flex-col border-l-2 pl-2" style={{ borderColor: INTRANT_COLORS[d.name] }}>
-                          <span className="font-bold text-foreground text-[11px] truncate leading-tight">{d.name}</span>
-                          <div className="flex items-center gap-1.5 text-muted-foreground font-semibold">
+                        <div key={d.name} className="flex flex-col border-l-2 pl-2 min-w-0" style={{ borderColor: INTRANT_COLORS[d.name] }}>
+                          <span className="font-bold text-foreground text-[11px] leading-tight break-words">{d.name}</span>
+                          <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground font-semibold">
                             <span className="text-foreground">{pct}%</span>
                             <span>·</span>
                             <span>{Math.round(d.value).toLocaleString("fr-FR")} DA</span>
@@ -552,31 +568,64 @@ export function StatsModule() {
               )}
             </div>
 
-            {/* Advice and summary info */}
-            <div className="rounded-xl border bg-card p-4 shadow-xs space-y-2.5">
+            {/* Advice and summary info — dynamique selon les vrais montants calculés */}
+            <div className="rounded-xl border bg-card p-4 shadow-xs space-y-2.5 min-w-0">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                Conseils & Analyse Agronomique
+                Conseils &amp; Analyse Agronomique
               </h3>
-              <ul className="text-xs space-y-2 text-foreground">
-                <li className="flex items-start gap-1.5">
-                  <span className="text-emerald-600 shrink-0 mt-0.5">🌱</span>
-                  <span>
-                    <b>Optimisation de la fertilisation</b> : La fertilisation au sol représente le poste principal de dépenses. Un fractionnement plus précis basé sur des analyses d'eau mensuelles pourrait réduire les pertes de calcium et potassium de 10%.
-                  </span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-amber-500 shrink-0 mt-0.5">🍂</span>
-                  <span>
-                    <b>Amendement organique</b> : Privilégier les apports de compost (Mouton / Vache) en début d'hiver pour enrichir durablement l'humus et augmenter la capacité de rétention d'eau lors de la transition estivale.
-                  </span>
-                </li>
-                <li className="flex items-start gap-1.5">
-                  <span className="text-destructive shrink-0 mt-0.5">⚠️</span>
-                  <span>
-                    <b>Traitements phytosanitaires</b> : Vérifiez systématiquement la météo locale (vitesse de vent inférieur à 19 km/h) via notre indicateur météo intégré avant de planifier un traitement pour maximiser l'adhérence du produit.
-                  </span>
-                </li>
-              </ul>
+              {(() => {
+                const ranked = [
+                  { name: "Fertilisation au sol", value: stats.fertTotal },
+                  { name: "Pulvérisation / Foliaire", value: stats.pulvTotal },
+                  { name: "Traitements phytosanitaires", value: stats.phytoTotal },
+                  { name: "Amendements organiques", value: stats.amendTotal },
+                ]
+                  .filter((x) => x.value > 0)
+                  .sort((a, b) => b.value - a.value);
+                const top = ranked[0];
+                const topPct = top && stats.grandTotal > 0 ? ((top.value / stats.grandTotal) * 100).toFixed(1) : "0";
+
+                return (
+                  <ul className="text-xs space-y-2 text-foreground">
+                    <li className="flex items-start gap-1.5">
+                      <span className="text-emerald-600 shrink-0 mt-0.5">🌱</span>
+                      <span>
+                        {top ? (
+                          <>
+                            <b>Poste principal ({top.name})</b> : représente <strong>{topPct}%</strong> du budget intrants (
+                            {Math.round(top.value).toLocaleString("fr-FR")} DA).{" "}
+                            {stats.fertTotal > 0
+                              ? "Un fractionnement précis basé sur les analyses d'eau mensuelles permet de réduire les pertes en N-P-K et calcium."
+                              : "Aucune dépense de fertigation enregistrée pour le moment."}
+                          </>
+                        ) : (
+                          <>
+                            <b>Aucune dépense intrant enregistrée</b> : validez vos premières recommandations pour générer l&apos;analyse budgétaire en temps réel.
+                          </>
+                        )}
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <span className="text-amber-500 shrink-0 mt-0.5">🍂</span>
+                      <span>
+                        <b>Amendement organique</b> :{" "}
+                        {stats.amendTotal > 0
+                          ? `${Math.round(stats.amendTotal).toLocaleString("fr-FR")} DA engagés en amendements. Poursuivre le suivi humus avant l'été.`
+                          : "Aucun amendement saisi actuellement — privilégier un apport de compost en début d'hiver pour la rétention en eau."}
+                      </span>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <span className="text-destructive shrink-0 mt-0.5">⚠️</span>
+                      <span>
+                        <b>Traitements phytosanitaires</b> :{" "}
+                        {stats.phytoTotal > 0
+                          ? `${Math.round(stats.phytoTotal).toLocaleString("fr-FR")} DA consacrés à la protection phytosanitaire. Respectez la rotation FRAC/IRAC et le verrou vent (< 20 km/h).`
+                          : "Vérifiez systématiquement la météo locale (vent < 20 km/h) et la rotation FRAC/IRAC avant chaque traitement."}
+                      </span>
+                    </li>
+                  </ul>
+                );
+              })()}
             </div>
           </div>
         </div>

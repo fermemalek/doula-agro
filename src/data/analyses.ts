@@ -122,7 +122,7 @@ export const EAU_LABELS: Record<keyof EauAnalyse, string> = {
   date: "Date d'analyse",
   ph: "pH (1/5) ISO-10390",
   ce: "CE (μS/cm) ISO-11265",
-  tds: "TDS (ppt)",
+  tds: "TDS (ppm / mg/L)",
   chlorure: "Chlorure (mg/L)",
   bicarbonate: "Bicarbonate (mg/L)",
   sodium: "Sodium Na+ (mg/L)",

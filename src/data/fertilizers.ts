@@ -59,9 +59,9 @@ export const FERTILIZER_DATABASE: FertilizerProduct[] = [
   {
     name: "Sulfate de Magnésium / سلفات ماغنسيوم",
     type: "Fertigation - Bac B",
-    solubility: 0,
-    time: 0,
-    note: "",
+    solubility: 71.0,
+    time: 8,
+    note: "Source soluble de Magnésium (MgO 16% + SO3 32%). Compatible Bac B.",
     price: 240,
     unit: "kg"
   },

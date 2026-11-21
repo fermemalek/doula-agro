@@ -39,6 +39,9 @@ async function fetchWeather() {
       tmax = Math.max(...todays.map((e) => e.main.temp_max));
     }
   }
+  // Garantir la cohérence physique : Max >= Température actuelle et Min <= Température actuelle
+  tmax = Math.max(tmax, current.main.temp);
+  tmin = Math.min(tmin, current.main.temp);
   return {
     temp: current.main.temp,
     tempMin: tmin,

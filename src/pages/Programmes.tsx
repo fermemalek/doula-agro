@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import ReactDOM from "react-dom";
 import { Link, useNavigate } from "@/lib/router-compat";
 import { useSearchParams, Navigate } from "react-router-dom";
 import {
@@ -60,7 +61,8 @@ import { useRecommendations, useRecommendationActions, type Recommendation } fro
 import { useProfilesMap } from "@/lib/cloud/alerts";
 import { RecommendationDetailDialog } from "@/components/RecommendationDetailDialog";
 import { StatsModule } from "@/components/stats/StatsModule";
-import { getMatiereActive } from "@/data/phytosanitaires";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { getMatiereActive, PHYTO_DATABASE } from "@/data/phytosanitaires";
 import { AgronomicPlanningCalendar } from "@/components/programs/AgronomicPlanningCalendar";
 import { validateRecommendationAndPurchases, syncPurchasesForAcceptedRecos } from "@/lib/reco-validation";
 
@@ -532,6 +534,7 @@ function ProgrammesPage() {
   // Tab 2: Database Search & Filtering
   const [dbSearch, setDbSearch] = useState("");
   const [dbType, setDbType] = useState<string>("all");
+  const [dbFamily, setDbFamily] = useState<"all" | "fertigation" | "phyto">("all");
   const [editingProduct, setEditingProduct] = useState<FertilizerProduct | null>(null);
   const [editProductOpen, setEditProductOpen] = useState(false);
   const [newProductOpen, setNewProductOpen] = useState(false);
@@ -639,25 +642,84 @@ function ProgrammesPage() {
       .sort((a, b) => b.createdAt - a.createdAt);
   }, [irr, fert, pulv, phyto, typeFilter, filters]);
 
+  // Close supplier portal modal on Escape
+  useEffect(() => {
+    if (!selectedSupplier) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedSupplier(null);
+        setEditingPurchase(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedSupplier]);
+
+  // Tab 2: Merge products-store with PHYTO_DATABASE (INPV) so all 165 specialties are browsable & price-editable
+  const mergedProducts = useMemo<FertilizerProduct[]>(() => {
+    const map = new Map<string, FertilizerProduct>();
+    for (const p of products) {
+      if (!p?.name) continue;
+      map.set(p.name.trim().toLowerCase(), p);
+    }
+    for (const phytoItem of PHYTO_DATABASE) {
+      if (!phytoItem?.name) continue;
+      const key = phytoItem.name.trim().toLowerCase();
+      if (map.has(key)) continue;
+      const parsedPrice = parseFloat(String(phytoItem.price || "0").replace(/[^\d.,]/g, "").replace(",", ".")) || 0;
+      const parsedDar = parseInt(String(phytoItem.dar || "0").replace(/[^\d]/g, ""), 10) || 0;
+      const isPowder = /wg|wp|sp|sg|df/i.test(phytoItem.formulation || phytoItem.name);
+      const badge = phytoItem.validationStatus === "validated" ? "Validé FITO" : "Indicatif";
+      const noteParts = [
+        phytoItem.codeGroup ? `[${phytoItem.codeGroup}]` : "",
+        phytoItem.cible ? `Cible : ${phytoItem.cible}` : "",
+        phytoItem.dosage ? `Dose : ${phytoItem.dosage}` : "",
+        `(${badge})`,
+      ].filter(Boolean);
+      map.set(key, {
+        name: phytoItem.name,
+        type: "Phytosanitaire (INPV)",
+        unit: isPowder ? "kg" : "litres",
+        price: parsedPrice,
+        solubility: parsedDar,
+        time: 0,
+        note: noteParts.join(" · "),
+        matiereActive: phytoItem.matiereActive || getMatiereActive(phytoItem.name) || "",
+      });
+    }
+    return Array.from(map.values());
+  }, [products]);
+
   // Tab 2: Database computed items
   const filteredProducts = useMemo(() => {
-    return products.filter((prod) => {
-      const matchesSearch =
-        prod.name.toLowerCase().includes(dbSearch.toLowerCase()) ||
-        prod.type.toLowerCase().includes(dbSearch.toLowerCase()) ||
-        (prod.note || "").toLowerCase().includes(dbSearch.toLowerCase());
+    const q = dbSearch.trim().toLowerCase();
+    return mergedProducts.filter((prod) => {
+      const isPhyto =
+        prod.type.toLowerCase().includes("phyto") ||
+        prod.type.toLowerCase().includes("inpv");
 
-      const matchesType = dbType === "all"
-        ? true
-        : prod.type.toLowerCase().includes(dbType.toLowerCase());
+      if (dbFamily === "fertigation" && isPhyto) return false;
+      if (dbFamily === "phyto" && !isPhyto) return false;
+
+      const matchesSearch =
+        !q ||
+        prod.name.toLowerCase().includes(q) ||
+        prod.type.toLowerCase().includes(q) ||
+        (prod.matiereActive || "").toLowerCase().includes(q) ||
+        (prod.note || "").toLowerCase().includes(q);
+
+      const matchesType =
+        dbType === "all"
+          ? true
+          : prod.type.toLowerCase().includes(dbType.toLowerCase());
 
       return matchesSearch && matchesType;
     });
-  }, [products, dbSearch, dbType]);
+  }, [mergedProducts, dbSearch, dbType, dbFamily]);
 
   const dbTypesList = useMemo(() => {
     const types = new Set<string>();
-    products.forEach((p) => {
+    mergedProducts.forEach((p) => {
       if (p.type.includes("Bac A")) types.add("Bac A");
       else if (p.type.includes("Bac B")) types.add("Bac B");
       else if (p.type.includes("Bac C")) types.add("Bac C");
@@ -665,7 +727,106 @@ function ProgrammesPage() {
       else types.add(p.type);
     });
     return Array.from(types);
-  }, [products]);
+  }, [mergedProducts]);
+
+  // Tab 4: Dynamic Species Costs (safe against empty data, offline, division by zero, excludes P9-P12 non-planted)
+  const dynamicSpeciesCosts = useMemo(() => {
+    const NON_PLANTED_IDS = new Set(["p9", "p10", "p11", "p12"]);
+    const parseSurfaceHa = (raw?: string | number): number => {
+      const n = parseFloat(String(raw ?? "0").trim().replace(",", "."));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+
+    const plantedParcels = (parcels ?? []).filter((p) => {
+      if (!p?.id) return false;
+      if (NON_PLANTED_IDS.has(p.id.toLowerCase())) return false;
+      if (p.type === "vide") return false;
+      return true;
+    });
+
+    const speciesBuckets = [
+      {
+        key: "oliviers",
+        label: "Oliviers",
+        icon: "🫒",
+        match: (p: (typeof plantedParcels)[number]) => p.type === "olivier",
+      },
+      {
+        key: "pommiers",
+        label: "Pommiers Gala One",
+        icon: "🍏",
+        match: (p: (typeof plantedParcels)[number]) => p.type === "pommier",
+      },
+      {
+        key: "nablara",
+        label: "Nectarine Nablara",
+        icon: "🍑",
+        match: (p: (typeof plantedParcels)[number]) =>
+          p.type === "nectarinier" &&
+          (p.name.toLowerCase().includes("nablara") ||
+            (p.info?.variete || "").toLowerCase().includes("nablara") ||
+            p.id === "p4" ||
+            p.id === "p5" ||
+            p.id === "p6"),
+      },
+      {
+        key: "redix25",
+        label: "Nectarine Redix 25",
+        icon: "🍑",
+        match: (p: (typeof plantedParcels)[number]) =>
+          p.type === "nectarinier" &&
+          (p.name.toLowerCase().includes("redix") ||
+            (p.info?.variete || "").toLowerCase().includes("redix") ||
+            p.id === "p2" ||
+            p.id === "p3"),
+      },
+    ];
+
+    const recordCost = (r: any): number => {
+      const t = Number(r?.total ?? 0);
+      if (Number.isFinite(t) && t > 0) return t;
+      const items = Array.isArray(r?.items) ? r.items : Array.isArray(r?.products) ? r.products : [];
+      return items.reduce((acc: number, it: any) => {
+        const sub = Number(it?.cost ?? it?.total ?? 0);
+        if (Number.isFinite(sub) && sub > 0) return acc + sub;
+        const q = parseFloat(String(it?.qty ?? it?.quantity ?? it?.volume ?? "0").replace(",", ".")) || 0;
+        const pr = parseFloat(String(it?.price ?? "0").replace(",", ".")) || 0;
+        return acc + (Number.isFinite(q * pr) ? q * pr : 0);
+      }, 0);
+    };
+
+    return speciesBuckets.map((bucket) => {
+      const matched = plantedParcels.filter(bucket.match);
+      const parcelIds = new Set(matched.map((p) => p.id));
+      const surfaceHa = matched.reduce((sum, p) => sum + parseSurfaceHa(p.info?.surface), 0);
+
+      const fertCost = (fert ?? [])
+        .filter((r) => r?.parcelId && parcelIds.has(r.parcelId))
+        .reduce((sum, r) => sum + recordCost(r), 0);
+      const pulvCost = (pulv ?? [])
+        .filter((r) => r?.parcelId && parcelIds.has(r.parcelId))
+        .reduce((sum, r) => sum + recordCost(r), 0);
+      const phytoCost = (phyto ?? [])
+        .filter((r) => r?.parcelId && parcelIds.has(r.parcelId))
+        .reduce((sum, r) => sum + recordCost(r), 0);
+
+      const total = Math.round(fertCost + pulvCost + phytoCost);
+      const costPerHa = surfaceHa > 0 ? Math.round(total / surfaceHa) : 0;
+
+      return {
+        key: bucket.key,
+        label: bucket.label,
+        icon: bucket.icon,
+        parcelNames: matched.map((p) => p.name),
+        surfaceHa: Number(surfaceHa.toFixed(2)),
+        fertigation: Math.round(fertCost),
+        foliar: Math.round(pulvCost),
+        phyto: Math.round(phytoCost),
+        total,
+        costPerHa,
+      };
+    });
+  }, [parcels, fert, pulv, phyto]);
 
   // Tab 3: Suppliers dynamic calculations
   const supplierSummaries = useMemo(() => {
@@ -894,6 +1055,45 @@ function ProgrammesPage() {
       {/* TAB 2: DATABASE */}
       {effectiveTab === "database" && (
         <div className="space-y-3">
+          {/* Filtre Famille : Tous / Fertigation / Phytosanitaire (INPV) */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { id: "all", label: "Tous", count: mergedProducts.length },
+                {
+                  id: "fertigation",
+                  label: "Fertigation & Foliaire",
+                  count: mergedProducts.filter(
+                    (p) => !p.type.toLowerCase().includes("phyto") && !p.type.toLowerCase().includes("inpv")
+                  ).length,
+                },
+                {
+                  id: "phyto",
+                  label: "Phytosanitaire (INPV)",
+                  count: mergedProducts.filter(
+                    (p) => p.type.toLowerCase().includes("phyto") || p.type.toLowerCase().includes("inpv")
+                  ).length,
+                },
+              ] as const
+            ).map((fam) => (
+              <button
+                key={fam.id}
+                type="button"
+                onClick={() => {
+                  setDbFamily(fam.id);
+                  setDbType("all");
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                  dbFamily === fam.id
+                    ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                    : "bg-card text-muted-foreground border-border hover:bg-muted"
+                }`}
+              >
+                {fam.label} <span className="opacity-75">({fam.count})</span>
+              </button>
+            ))}
+          </div>
+
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3.5 top-3 h-4 w-4 text-muted-foreground" />
@@ -1149,80 +1349,140 @@ function ProgrammesPage() {
 
       {/* TAB 4: SPECIES */}
       {effectiveTab === "species" && (
-        <div className="space-y-4">
-          {SPECIES_SUMMARIES.map((spec) => {
-            const specIcon = spec.species === "NECTARINE" ? "🍑" : spec.species === "POMMIER" ? "🍏" : "🫒";
-            return (
-              <div key={spec.species} className="space-y-2">
-                {/* Header Species */}
-                <div className="flex items-center gap-2 pl-1 mt-2">
-                  <span className="text-xl">{specIcon}</span>
-                  <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
-                    {spec.species} — Budget estimatif
-                  </h3>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <div className="rounded-2xl border bg-card p-3 shadow-sm">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Fertigation Sol</span>
-                    <p className="font-mono font-bold text-xs text-foreground mt-0.5">
-                      {formatMoney(spec.subtotal.fertigation)}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border bg-card p-3 shadow-sm">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Foliaires / Pulv</span>
-                    <p className="font-mono font-bold text-xs text-foreground mt-0.5">
-                      {formatMoney(spec.subtotal.foliar)}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border bg-card p-3 shadow-sm">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Traitement Phyto</span>
-                    <p className="font-mono font-bold text-xs text-foreground mt-0.5">
-                      {formatMoney(spec.subtotal.phyto)}
-                    </p>
-                  </div>
-                  <div className="rounded-2xl border bg-primary/10 border-primary/20 p-3 shadow-sm">
-                    <span className="text-[10px] font-extrabold text-primary uppercase flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" /> Total Espèce
-                    </span>
-                    <p className="font-mono font-extrabold text-sm text-primary mt-0.5">
-                      {formatMoney(spec.subtotal.total)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  {spec.entries.map((entry, eIdx) => {
-                    const hasCosts = entry.total > 0;
-                    return (
-                      <Card key={eIdx} className={`p-3 ${!hasCosts ? "opacity-60 bg-muted/20" : ""}`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-bold text-xs text-foreground">{entry.program}</span>
-                          <span className="font-mono font-bold text-xs text-foreground bg-muted/60 px-2 py-0.5 rounded-lg">
-                            {formatMoney(entry.total)}
-                          </span>
-                        </div>
-                        {hasCosts && (
-                          <div className="mt-2 grid grid-cols-3 text-[9px] text-muted-foreground border-t border-dashed pt-1.5">
-                            <div>
-                              <span className="font-medium">Fertigation:</span> {formatMoney(entry.fertigation)}
-                            </div>
-                            <div className="text-center">
-                              <span className="font-medium">Foliaires:</span> {formatMoney(entry.foliar)}
-                            </div>
-                            <div className="text-right">
-                              <span className="font-medium">Phyto:</span> {formatMoney(entry.phyto)}
-                            </div>
-                          </div>
-                        )}
-                      </Card>
-                    );
-                  })}
-                </div>
+        <ErrorBoundary fallbackTitle="Coûts par Espèce — Erreur de calcul">
+          <div className="space-y-5">
+            {/* Coûts réels enregistrés par espèce (parcelles plantées P1–P8 uniquement, P9–P12 exclues) */}
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+                <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                  Coûts réels par Espèce — Parcelles plantées (P1–P8)
+                </h3>
+                <span className="text-[11px] text-muted-foreground">
+                  Parcelles non plantées (P9–P12) exclues des calculs / ha
+                </span>
               </div>
-            );
-          })}
-        </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {dynamicSpeciesCosts.map((sp) => (
+                  <Card key={sp.key} className="p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{sp.icon}</span>
+                        <div>
+                          <div className="font-bold text-sm text-foreground">{sp.label}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {sp.surfaceHa > 0 ? `${sp.surfaceHa} ha` : "Surface non renseignée"}
+                            {sp.parcelNames.length > 0 ? ` · ${sp.parcelNames.join(", ")}` : ""}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-mono font-black text-sm text-primary">
+                          {formatMoney(sp.total ?? 0)}
+                        </div>
+                        <div className="text-[10px] font-mono text-muted-foreground">
+                          {formatMoney(sp.costPerHa ?? 0)} / ha
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5 border-t pt-2 text-[10px]">
+                      <div className="rounded-lg bg-muted/40 px-2 py-1">
+                        <span className="text-muted-foreground block">Fertigation</span>
+                        <span className="font-mono font-bold text-foreground">{formatMoney(sp.fertigation ?? 0)}</span>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 px-2 py-1">
+                        <span className="text-muted-foreground block">Foliaire</span>
+                        <span className="font-mono font-bold text-foreground">{formatMoney(sp.foliar ?? 0)}</span>
+                      </div>
+                      <div className="rounded-lg bg-muted/40 px-2 py-1">
+                        <span className="text-muted-foreground block">Phyto</span>
+                        <span className="font-mono font-bold text-foreground">{formatMoney(sp.phyto ?? 0)}</span>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
+            {/* Budgets estimatifs annuels de référence */}
+            {(SPECIES_SUMMARIES ?? []).map((spec) => {
+              const subtotal = spec?.subtotal ?? { fertigation: 0, foliar: 0, phyto: 0, total: 0 };
+              const entries = Array.isArray(spec?.entries) ? spec.entries : [];
+              const specIcon = spec?.species === "NECTARINE" ? "🍑" : spec?.species === "POMMIER" ? "🍏" : "🫒";
+              return (
+                <div key={spec?.species ?? "unknown"} className="space-y-2">
+                  {/* Header Species */}
+                  <div className="flex items-center gap-2 pl-1 mt-2">
+                    <span className="text-xl">{specIcon}</span>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                      {spec?.species ?? "Espèce"} — Budget estimatif
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="rounded-2xl border bg-card p-3 shadow-sm">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase">Fertigation Sol</span>
+                      <p className="font-mono font-bold text-xs text-foreground mt-0.5">
+                        {formatMoney(subtotal.fertigation ?? 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border bg-card p-3 shadow-sm">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase">Foliaires / Pulv</span>
+                      <p className="font-mono font-bold text-xs text-foreground mt-0.5">
+                        {formatMoney(subtotal.foliar ?? 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border bg-card p-3 shadow-sm">
+                      <span className="text-[10px] font-bold text-muted-foreground uppercase">Traitement Phyto</span>
+                      <p className="font-mono font-bold text-xs text-foreground mt-0.5">
+                        {formatMoney(subtotal.phyto ?? 0)}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border bg-primary/10 border-primary/20 p-3 shadow-sm">
+                      <span className="text-[10px] font-extrabold text-primary uppercase flex items-center gap-1">
+                        <Sparkles className="h-3 w-3" /> Total Espèce
+                      </span>
+                      <p className="font-mono font-extrabold text-sm text-primary mt-0.5">
+                        {formatMoney(subtotal.total ?? 0)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    {entries.map((entry, eIdx) => {
+                      const entryTotal = entry?.total ?? 0;
+                      const hasCosts = entryTotal > 0;
+                      return (
+                        <Card key={eIdx} className={`p-3 ${!hasCosts ? "opacity-60 bg-muted/20" : ""}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-xs text-foreground">{entry?.program ?? "Programme"}</span>
+                            <span className="font-mono font-bold text-xs text-foreground bg-muted/60 px-2 py-0.5 rounded-lg">
+                              {formatMoney(entryTotal)}
+                            </span>
+                          </div>
+                          {hasCosts && (
+                            <div className="mt-2 grid grid-cols-3 text-[9px] text-muted-foreground border-t border-dashed pt-1.5">
+                              <div>
+                                <span className="font-medium">Fertigation:</span> {formatMoney(entry?.fertigation ?? 0)}
+                              </div>
+                              <div className="text-center">
+                                <span className="font-medium">Foliaires:</span> {formatMoney(entry?.foliar ?? 0)}
+                              </div>
+                              <div className="text-right">
+                                <span className="font-medium">Phyto:</span> {formatMoney(entry?.phyto ?? 0)}
+                              </div>
+                            </div>
+                          )}
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </ErrorBoundary>
       )}
 
       {/* TAB 5: PURCHASE */}
@@ -1354,10 +1614,11 @@ function ProgrammesPage() {
                   productSums.push({
                     ...sumsMap[key],
                     qty: parseFloat(sumsMap[key].qty.toFixed(2)),
+                    price: Math.round(sumsMap[key].price),
                   });
                 }
 
-                const grandTotal = productSums.reduce((sum, item) => sum + item.qty * item.price, 0);
+                const grandTotal = productSums.reduce((sum, item) => sum + Math.round(item.qty * item.price), 0);
 
                 const RecoIcon = reco.kind === "irrigation" ? Droplets : reco.kind === "phytosanitaire" ? Bug : Sprout;
 
@@ -1463,7 +1724,7 @@ function ProgrammesPage() {
                                     {formatMoney(item.price)}
                                   </td>
                                   <td className="p-2 border text-right font-mono font-bold text-foreground">
-                                    {formatMoney(item.qty * item.price)}
+                                    {formatMoney(Math.round(item.qty * item.price))}
                                   </td>
                                 </tr>
                               ))}
@@ -1518,17 +1779,11 @@ function ProgrammesPage() {
         <StatsModule />
       )}
 
-      {/* SUPPLIER DETAILS DIALOG */}
-      <Dialog open={selectedSupplier !== null} onOpenChange={(open) => {
-        if (!open) {
-          setSelectedSupplier(null);
-          setEditingPurchase(null);
-        }
-      }}>
-        {selectedSupplier && (() => {
+      {/* SUPPLIER DETAILS PORTAL MODAL (centrée, z-[9999], jamais décalée hors écran) */}
+      {selectedSupplier && typeof document !== "undefined" && ReactDOM.createPortal((() => {
           const supplierPurchases = purchases.filter(p => p.supplierName.trim().toLowerCase() === selectedSupplier.trim().toLowerCase());
-          const totalCost = supplierPurchases.reduce((sum, p) => sum + p.totalCost, 0);
-          const totalPaid = supplierPurchases.reduce((sum, p) => sum + p.paidAmount, 0);
+          const totalCost = Math.round(supplierPurchases.reduce((sum, p) => sum + (p.totalCost ?? 0), 0));
+          const totalPaid = Math.round(supplierPurchases.reduce((sum, p) => sum + (p.paidAmount ?? 0), 0));
           const remainingDebt = totalCost - totalPaid;
 
           // Helper to extract or resolve the Bon d'Achat order number
@@ -1548,8 +1803,8 @@ function ProgrammesPage() {
             const bNum = getBonNumber(p);
             const bEntry = bonMap.get(bNum) || { orderNumber: bNum, date: p.purchaseDate, items: [], totalCost: 0, paidAmount: 0 };
             bEntry.items.push(p);
-            bEntry.totalCost = parseFloat((bEntry.totalCost + p.totalCost).toFixed(2));
-            bEntry.paidAmount = parseFloat((bEntry.paidAmount + p.paidAmount).toFixed(2));
+            bEntry.totalCost = Math.round(bEntry.totalCost + (p.totalCost ?? 0));
+            bEntry.paidAmount = Math.round(bEntry.paidAmount + (p.paidAmount ?? 0));
             bonMap.set(bNum, bEntry);
           }
           const distinctBons = Array.from(bonMap.values()).sort((a, b) => b.date.localeCompare(a.date));
@@ -1591,12 +1846,18 @@ function ProgrammesPage() {
           }
 
           const aggregatedProducts = Array.from(aggMap.values()).map(item => {
-            const avgPu = item.quantity > 0 ? parseFloat((item.totalCost / item.quantity).toFixed(2)) : 0;
+            const avgPu = item.quantity > 0 ? Math.round(item.totalCost / item.quantity) : 0;
+            const harmonizedTotal = item.quantity > 0 && Math.abs(item.totalCost - item.quantity * avgPu) <= 2
+              ? Math.round(item.quantity * avgPu)
+              : Math.round(item.totalCost);
             const remainingQty = parseFloat((item.quantity - item.consumed).toFixed(2));
-            const remainingDebt = parseFloat((item.totalCost - item.paidAmount).toFixed(2));
-            const isSolded = item.paidAmount >= item.totalCost;
+            const roundedPaid = Math.round(item.paidAmount);
+            const remainingDebt = harmonizedTotal - roundedPaid;
+            const isSolded = roundedPaid >= harmonizedTotal;
             return {
               ...item,
+              totalCost: harmonizedTotal,
+              paidAmount: roundedPaid,
               avgPu,
               remainingQty,
               remainingDebt,
@@ -1610,11 +1871,22 @@ function ProgrammesPage() {
             : distinctBons.filter(b => b.orderNumber === selectedBonFilter);
 
           return (
-            <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl md:max-w-6xl w-[96vw] rounded-2xl bg-card text-card-foreground">
-              <DialogHeader className="border-b pb-2">
-                <DialogTitle className="text-base font-black uppercase tracking-wide flex flex-wrap justify-between items-center gap-2">
-                  <span>Détails Fournisseur — {selectedSupplier}</span>
-                  <div className="flex items-center gap-2">
+            <div
+              className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-[2px]"
+              onClick={() => {
+                setSelectedSupplier(null);
+                setEditingPurchase(null);
+              }}
+            >
+              <div
+                className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border bg-card text-card-foreground p-5 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="border-b pb-3 mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-base font-black uppercase tracking-wide text-foreground">
+                    Détails Fournisseur — {selectedSupplier}
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={async () => {
@@ -1638,14 +1910,25 @@ function ProgrammesPage() {
                       title="Réaligner automatiquement les achats pour que Acheté = Consommé et restaurer les achats manquants"
                     >
                       <RefreshCw className="h-3.5 w-3.5" />
-                      Réaligner les stocks (Acheté = Consommé)
+                      Réaligner les stocks
                     </button>
-                    <span className="text-xs bg-primary/10 text-primary px-3 py-1 rounded-xl">
+                    <span className="text-xs bg-primary/10 text-primary px-3 py-1 rounded-xl font-bold">
                       Situation Financière
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSupplier(null);
+                        setEditingPurchase(null);
+                      }}
+                      className="rounded-xl p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+                      aria-label="Fermer"
+                      title="Fermer (Échap)"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
                   </div>
-                </DialogTitle>
-              </DialogHeader>
+                </div>
 
               {/* Financial situation summary cards */}
               <div className="grid grid-cols-3 gap-3 my-2 text-xs">
@@ -1893,8 +2176,13 @@ function ProgrammesPage() {
                               <tbody className="divide-y font-medium text-foreground">
                                 {bon.items.map((p) => {
                                   const remainingQty = parseFloat((p.quantity - p.consumed).toFixed(2));
-                                  const remainingPay = parseFloat((p.totalCost - p.paidAmount).toFixed(2));
-                                  const pu = p.pricePerUnit > 0 ? p.pricePerUnit : (p.quantity > 0 ? Math.round((p.totalCost / p.quantity) * 100) / 100 : 0);
+                                  const rawPu = p.pricePerUnit > 0 ? p.pricePerUnit : (p.quantity > 0 ? p.totalCost / p.quantity : 0);
+                                  const pu = Math.round(rawPu);
+                                  const displayedTotal = p.quantity > 0 && Math.abs(p.totalCost - p.quantity * pu) <= 2
+                                    ? Math.round(p.quantity * pu)
+                                    : Math.round(p.totalCost);
+                                  const roundedPaid = Math.round(p.paidAmount);
+                                  const remainingPay = displayedTotal - roundedPaid;
                                   const isEditing = editingPurchase?.id === p.id;
 
                                   return (
@@ -1921,10 +2209,10 @@ function ProgrammesPage() {
                                         {remainingQty} {p.unit}
                                       </td>
                                       <td className="p-2 border text-right font-mono font-bold whitespace-nowrap">
-                                        {formatMoney(p.totalCost)}
+                                        {formatMoney(displayedTotal)}
                                       </td>
                                       <td className="p-2 border text-right font-mono text-emerald-600 font-bold whitespace-nowrap">
-                                        {formatMoney(p.paidAmount)}
+                                        {formatMoney(roundedPaid)}
                                       </td>
                                       <td className={`p-2 border text-right font-mono font-bold whitespace-nowrap ${remainingPay > 0 ? "text-destructive" : "text-emerald-600"}`}>
                                         {formatMoney(remainingPay)}
@@ -1971,24 +2259,33 @@ function ProgrammesPage() {
                 </div>
               )}
 
-              <DialogFooter className="mt-4 gap-2">
-                <Button variant="outline" onClick={() => setSelectedSupplier(null)} className="rounded-xl">
-                  Fermer
-                </Button>
-                <Button
-                  onClick={() => {
-                    setPSupplierName(selectedSupplier || "");
-                    setAddPurchaseOpen(true);
-                  }}
-                  className="rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
-                >
-                  + Enregistrer un Achat
-                </Button>
-              </DialogFooter>
-            </DialogContent>
+                <div className="mt-4 pt-3 border-t flex flex-wrap justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSelectedSupplier(null);
+                      setEditingPurchase(null);
+                    }}
+                    className="rounded-xl"
+                  >
+                    Fermer
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setPSupplierName(selectedSupplier || "");
+                      setAddPurchaseOpen(true);
+                    }}
+                    className="rounded-xl font-bold bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    + Enregistrer un Achat
+                  </Button>
+                </div>
+              </div>
+            </div>
           );
-        })()}
-      </Dialog>
+        })(),
+        document.body
+      )}
 
       {/* EDIT PRODUCT DIALOG */}
       <Dialog open={editProductOpen} onOpenChange={setEditProductOpen}>
@@ -2012,8 +2309,24 @@ function ProgrammesPage() {
                   const unit = (form.elements.namedItem("unit") as HTMLSelectElement).value as "kg" | "litres";
                   const matiereActive = (form.elements.namedItem("matiereActive") as HTMLInputElement)?.value.trim() || "";
 
-                  updateProduct(editingProduct.name, { price, solubility, time, note, type, unit, matiereActive });
-                  toast.success("Informations du produit modifiées avec succès !");
+                  const existsInStore = products.some(
+                    (p) => p.name.trim().toLowerCase() === editingProduct.name.trim().toLowerCase()
+                  );
+                  if (existsInStore) {
+                    updateProduct(editingProduct.name, { price, solubility, time, note, type, unit, matiereActive });
+                  } else {
+                    addProduct({
+                      name: editingProduct.name,
+                      price,
+                      solubility,
+                      time,
+                      note,
+                      type,
+                      unit,
+                      matiereActive,
+                    });
+                  }
+                  toast.success("Informations du produit enregistrées avec succès !");
                   setEditProductOpen(false);
                   setEditingProduct(null);
                 }}

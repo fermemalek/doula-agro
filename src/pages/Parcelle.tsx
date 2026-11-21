@@ -415,7 +415,15 @@ function InfoTable({
       <div className="grid grid-cols-2 border-t bg-primary/5">
         <Cell
           field="nbArbresParcelle"
-          value={info.nbArbresParcelle}
+          value={
+            info.nbArbresParcelle?.trim() ||
+            info.nbArbres?.trim() ||
+            (() => {
+              const l = parseInt(String(info.nbLignes || "").replace(/\s+/g, ""), 10);
+              const a = parseInt(String(info.arbresLigne || "").replace(/\s+/g, ""), 10);
+              return !isNaN(l) && !isNaN(a) && l > 0 && a > 0 ? (l * a).toLocaleString("fr-FR") : "";
+            })()
+          }
           editMode={editMode}
           onChange={onChange}
         />
