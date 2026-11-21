@@ -801,8 +801,10 @@ export function AgronomicPlanningCalendar({
         weeklyCycleStarts.forEach((cycleStart) => {
           if (activeRecosForWeeks.length === 0) return;
           // Séparation native A1 (Bac B), A2 (Bac A), et A3 (Bac C dédié : Acide Humique + Fer)
-          const subA3 = activeRecosForWeeks.find((r) => isProgramA3((r.payload as any)?.program || {}, r.title || ""));
-          const nonA3 = activeRecosForWeeks.filter((r) => r !== subA3);
+          // Ne jamais assigner le même objet à la fois à subA1 et subA3 (évite le doublon sur Pommiers 09/03)
+          const candidateA3 = activeRecosForWeeks.find((r) => isProgramA3((r.payload as any)?.program || {}, r.title || ""));
+          const nonA3 = candidateA3 ? activeRecosForWeeks.filter((r) => r !== candidateA3) : activeRecosForWeeks;
+          const subA3 = nonA3.length > 0 ? candidateA3 : undefined;
           const subA1 = nonA3[0] || activeRecosForWeeks[0];
           const subA2 = nonA3[1];
 

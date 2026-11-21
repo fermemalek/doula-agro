@@ -105,6 +105,17 @@ export function isProgramA3(program: any, title: string = ""): boolean {
   if (t.includes("programme a3") || t.includes("prog. a3") || t.includes("(a3)")) {
     return true;
   }
+  // Un programme explicitement nommé A1 ou A2 n'est jamais un Programme A3
+  if (
+    t.includes("programme a1") ||
+    t.includes("prog. a1") ||
+    t.includes("(a1)") ||
+    t.includes("programme a2") ||
+    t.includes("prog. a2") ||
+    t.includes("(a2)")
+  ) {
+    return false;
+  }
   const bacs = getUsedBacsFromProgram(program);
   if (bacs.usesBacC && !bacs.usesBacB && !bacs.usesBacA) {
     return true;
