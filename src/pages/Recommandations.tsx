@@ -34,7 +34,7 @@ import { useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useParcels, useParcelActions } from "@/lib/parcel-store";
 import { checkRecoStock, getTargetParcelsForReco } from "@/lib/stock-alerts";
 import { validateRecommendationAndPurchases, resetAllAppliedRecoHistory, syncPurchasesForAcceptedRecos, getHydraulicPhaseForDate } from "@/lib/reco-validation";
-import { ValidateOrderScheduleDialog, type OrderScheduleConfirmation, type OrderStockSummary } from "@/components/ValidateOrderScheduleDialog";
+import { ValidateOrderScheduleDialog, type OrderScheduleConfirmation, type OrderStockSummary, type OrderBacDetail } from "@/components/ValidateOrderScheduleDialog";
 import { getSolarTimesForDate } from "@/lib/astronomy";
 
 type PrescriptionType = "all" | "fert_irrigation" | "fert_foliaire" | "phytosanitaire";
@@ -46,6 +46,39 @@ function getPrescriptionType(r: Recommendation): "fert_irrigation" | "fert_folia
     return "fert_foliaire";
   }
   return "fert_irrigation";
+}
+
+function getFertigationBacs(r: Recommendation): OrderBacDetail[] {
+  if (getPrescriptionType(r) !== "fert_irrigation") return [];
+  const entries = (r.payload as any)?.program?.entries;
+  if (!Array.isArray(entries)) return [];
+  const bacMap = new Map<string, Set<string>>();
+  for (const entry of entries) {
+    const bac = String(entry?.bac || "").trim().toUpperCase();
+    const items = Array.isArray(entry?.items) ? entry.items : [];
+    if (!bac || items.length === 0) continue;
+    if (!bacMap.has(bac)) bacMap.set(bac, new Set());
+    for (const it of items) {
+      const cleanName = String(it?.name || "").split("/")[0].trim();
+      if (cleanName) bacMap.get(bac)!.add(cleanName);
+    }
+  }
+  const order = ["A", "B", "C", "D"];
+  return Array.from(bacMap.entries())
+    .sort((a, b) => {
+      const ia = order.indexOf(a[0]);
+      const ib = order.indexOf(b[0]);
+      if (ia !== -1 && ib !== -1) return ia - ib;
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([bac, set]) => ({ bac, products: Array.from(set) }));
+}
+
+function getBacBadgeTone(bac: string): string {
+  if (bac === "A") return "border-blue-500/40 bg-blue-500/15 text-blue-700 dark:text-blue-300";
+  if (bac === "B") return "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300";
+  if (bac === "C") return "border-purple-500/40 bg-purple-500/15 text-purple-700 dark:text-purple-300";
+  return "border-orange-500/40 bg-orange-500/15 text-orange-700 dark:text-orange-300";
 }
 
 function getRecoDate(r: Recommendation): string {
@@ -211,6 +244,7 @@ function RecommandationsPageContent() {
     defaultFertIrrigationTime: string;
     defaultPureIrrigationTime: string;
     stockSummary: OrderStockSummary;
+    bacDetails: OrderBacDetail[];
   } | null>(null);
 
   const openScheduleConfirm = (
@@ -276,6 +310,23 @@ function RecommandationsPageContent() {
       lowLabels,
     };
 
+    const bacAggMap = new Map<string, Set<string>>();
+    for (const r of recosToRun) {
+      for (const b of getFertigationBacs(r)) {
+        if (!bacAggMap.has(b.bac)) bacAggMap.set(b.bac, new Set());
+        b.products.forEach((p) => bacAggMap.get(b.bac)!.add(p));
+      }
+    }
+    const bacOrder = ["A", "B", "C", "D"];
+    const bacDetails: OrderBacDetail[] = Array.from(bacAggMap.entries())
+      .sort((a, b) => {
+        const ia = bacOrder.indexOf(a[0]);
+        const ib = bacOrder.indexOf(b[0]);
+        if (ia !== -1 && ib !== -1) return ia - ib;
+        return a[0].localeCompare(b[0]);
+      })
+      .map(([bac, set]) => ({ bac, products: Array.from(set) }));
+
     setScheduleConfirmState({
       open: true,
       recosToRun,
@@ -287,6 +338,7 @@ function RecommandationsPageContent() {
       defaultFertIrrigationTime,
       defaultPureIrrigationTime,
       stockSummary,
+      bacDetails,
     });
   };
 
@@ -992,6 +1044,7 @@ function RecommandationsPageContent() {
             const statusInfo = getRecoStatusInfo(r);
             const isPending = r.status === "envoyee" || r.status === "rejetee";
             const stockReport = isPending ? checkRecoStock(r, suppliers, parcels) : null;
+            const fertBacs = getFertigationBacs(r);
             const targetParcels = getTargetParcelsForReco(r, parcels);
             const rDate = getRecoDate(r);
             const todayStr = new Date().toISOString().slice(0, 10);
@@ -1043,6 +1096,17 @@ function RecommandationsPageContent() {
                       <span>{config.label}</span>
                     </span>
 
+                    {/* Badges des Bacs concernés pour les programmes de fertilisation */}
+                    {fertBacs.map((b) => (
+                      <span
+                        key={b.bac}
+                        title={`Bac ${b.bac} : ${b.products.join(", ")}`}
+                        className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${getBacBadgeTone(b.bac)}`}
+                      >
+                        Bac {b.bac}
+                      </span>
+                    ))}
+
                     {stockReport && stockReport.stockStatus === "missing" && (
                       <span
                         title={`Produits manquants : ${stockReport.missingItems.map((i) => `${i.name} (-${Math.round(i.missing * 100) / 100} ${i.unit})`).join(", ")}`}
@@ -1087,6 +1151,16 @@ function RecommandationsPageContent() {
                       </span>
                     )}
                   </p>
+                  {fertBacs.length > 0 && (
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-foreground/80">
+                      {fertBacs.map((b) => (
+                        <span key={b.bac} className="inline-flex items-center gap-1">
+                          <strong className="font-black">Bac {b.bac}</strong>
+                          <span className="text-muted-foreground">({b.products.join(", ")})</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {stockReport && stockReport.stockStatus === "missing" && stockReport.missingItems.length > 0 && (
                     <p className="mt-1 text-[10px] font-semibold text-rose-600 dark:text-rose-400 leading-snug">
                       Manque :{" "}
@@ -1238,6 +1312,7 @@ function RecommandationsPageContent() {
           defaultFertIrrigationTime={scheduleConfirmState.defaultFertIrrigationTime}
           defaultPureIrrigationTime={scheduleConfirmState.defaultPureIrrigationTime}
           stockSummary={scheduleConfirmState.stockSummary}
+          bacDetails={scheduleConfirmState.bacDetails}
           loading={isBatchValidating}
           onConfirm={executeConfirmedValidation}
         />

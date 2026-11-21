@@ -16,6 +16,11 @@ export interface OrderStockSummary {
   lowLabels: string[];
 }
 
+export interface OrderBacDetail {
+  bac: string;
+  products: string[];
+}
+
 interface ValidateOrderScheduleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -23,6 +28,7 @@ interface ValidateOrderScheduleDialogProps {
   subtitle?: string;
   operationLabel?: string;
   stockSummary?: OrderStockSummary;
+  bacDetails?: OrderBacDetail[];
   mode: "execute" | "plan";
   defaultStartHour: string;
   defaultFertIrrigationTime: string;
@@ -41,6 +47,7 @@ export function ValidateOrderScheduleDialog({
   subtitle,
   operationLabel,
   stockSummary,
+  bacDetails,
   mode,
   defaultStartHour,
   defaultFertIrrigationTime,
@@ -88,6 +95,38 @@ export function ValidateOrderScheduleDialog({
           {operationLabel && (
             <div className="rounded-xl bg-primary/5 border border-primary/20 px-3 py-2 text-xs font-bold text-primary">
               Opération : {operationLabel}
+            </div>
+          )}
+
+          {/* Bacs concernés pour les programmes de fertilisation */}
+          {bacDetails && bacDetails.length > 0 && (
+            <div className="rounded-xl bg-muted/40 border border-border px-3 py-2 text-xs space-y-1.5">
+              <div className="font-black text-foreground flex items-center gap-1.5">
+                <Droplets className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <span>Bacs concernés ({bacDetails.map((b) => `Bac ${b.bac}`).join(" · ")})</span>
+              </div>
+              <div className="space-y-1">
+                {bacDetails.map((b) => {
+                  const tone =
+                    b.bac === "A"
+                      ? "bg-blue-500/15 border-blue-500/40 text-blue-700 dark:text-blue-300"
+                      : b.bac === "B"
+                        ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-700 dark:text-emerald-300"
+                        : b.bac === "C"
+                          ? "bg-purple-500/15 border-purple-500/40 text-purple-700 dark:text-purple-300"
+                          : "bg-orange-500/15 border-orange-500/40 text-orange-700 dark:text-orange-300";
+                  return (
+                    <div key={b.bac} className="flex items-start gap-1.5 text-[11px]">
+                      <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-black uppercase ${tone}`}>
+                        Bac {b.bac}
+                      </span>
+                      <span className="text-muted-foreground leading-snug pt-0.5">
+                        {b.products.join(", ")}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
