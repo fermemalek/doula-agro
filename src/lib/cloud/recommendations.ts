@@ -396,10 +396,12 @@ export function useRecommendationActions() {
     mutationFn: async () => {
       const currentList = qc.getQueryData<Recommendation[]>(KEY) || [];
 
-      // 1. Purger les overrides locaux et mettre à jour immédiatement le cache React Query
+      // 1. Purger les overrides locaux, vider immédiatement le store modules local et mettre à jour React Query
       if (typeof window !== "undefined") {
         try {
           localStorage.removeItem(STATUS_OVERRIDES_KEY);
+          const { clearAllModuleRecordsLocal } = await import("@/lib/modules-store");
+          clearAllModuleRecordsLocal();
         } catch { }
       }
 
@@ -424,6 +426,10 @@ export function useRecommendationActions() {
       qc.invalidateQueries({ queryKey: ["programs"] });
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["executions"] });
+      qc.invalidateQueries({ queryKey: ["phyto-executions"] });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("doula:farm-reset"));
+      }
     },
   });
 

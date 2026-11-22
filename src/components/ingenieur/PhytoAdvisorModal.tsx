@@ -46,6 +46,7 @@ import {
   SPECIES_LABELS,
   isFruitBearingStage,
   getDefaultPhenologicalStage,
+  isExecutedOrAcceptedStatus,
   TreatmentActionRule,
   SystemicType,
   ModeOfActionRecommendation,
@@ -261,11 +262,10 @@ export function PhytoAdvisorModal({
   const historyLogs: SprayApplicationRecord[] = useMemo(() => {
     const logs: SprayApplicationRecord[] = [];
 
-    // 1. Extraire depuis les recommandations
+    // 1. Extraire UNIQUEMENT depuis les recommandations réellement EXÉCUTÉES ou ACCEPTÉES (jamais "envoyee" / "pending")
     for (const r of recos) {
       if (r.kind === 'phytosanitaire') {
-        // Ignorer les recommandations rejetées ou supprimées
-        if (r.status === 'rejetee') continue;
+        if (!isExecutedOrAcceptedStatus(r.status)) continue;
 
         const payload = (r.payload || {}) as any;
         const cropList = Array.isArray(payload.crop_group)
@@ -273,15 +273,22 @@ export function PhytoAdvisorModal({
           : payload.crop_group
             ? [payload.crop_group]
             : [];
+        const parcelText = (r.parcel_ids || []).join(' ').toLowerCase();
+        const titleText = (r.title || '').toLowerCase();
+        const combinedCropText = `${cropList.join(' ').toLowerCase()} ${parcelText} ${titleText}`;
 
-        // Ne compter que les traitements de la même culture
-        const matchesCrop = cropList.length === 0 || cropList.some((c: string) => {
-          const cl = c.toLowerCase();
-          if (currentCrop === 'olive') return cl.includes('oliv');
-          if (currentCrop === 'pomme') return cl.includes('pomm');
-          if (currentCrop === 'nectarine') return cl.includes('pech') || cl.includes('nectar');
-          return true;
-        });
+        // Ne compter que les traitements de la même culture (incluant NABLARA / REDIX 25 pour Nectarine)
+        const matchesCrop =
+          (cropList.length === 0 && !parcelText) ||
+          (currentCrop === 'olive' && (combinedCropText.includes('oliv') || /\bp[1-4]\b/.test(combinedCropText))) ||
+          (currentCrop === 'pomme' && (combinedCropText.includes('pomm') || /\bp[7-8]\b/.test(combinedCropText))) ||
+          (currentCrop === 'nectarine' &&
+            (combinedCropText.includes('pech') ||
+              combinedCropText.includes('pêch') ||
+              combinedCropText.includes('nectar') ||
+              combinedCropText.includes('nablara') ||
+              combinedCropText.includes('redix') ||
+              /\bp[5-6]\b/.test(combinedCropText)));
         if (!matchesCrop) continue;
 
         // Ignorer les recommandations supprimées localement ou marquées comme effacées
@@ -293,9 +300,14 @@ export function PhytoAdvisorModal({
         } catch { }
 
         const prog = payload.program || {};
-        const products = prog.products || [];
+        const products = Array.isArray(prog.products)
+          ? prog.products
+          : Array.isArray(payload.products)
+            ? payload.products
+            : [];
+        const appDate = String(prog.date || r.created_at);
         for (const p of products) {
-          const pName = (p.product || '').toLowerCase();
+          const pName = (p.product || p.name || '').toLowerCase();
           const matchIng = ACTIVE_INGREDIENTS_DATABASE.find(
             ing => pName.includes(ing.name.toLowerCase()) || ing.commonNameFr.toLowerCase().includes(pName)
           );
@@ -304,33 +316,38 @@ export function PhytoAdvisorModal({
               id: r.id,
               parcelId: (r.parcel_ids && r.parcel_ids[0]) || 'all',
               crop: currentCrop,
-              date: r.created_at,
+              date: appDate,
               targetPestId: selectedPestId || 'unknown',
               activeIngredientId: matchIng.id,
               codeGroup: matchIng.codeGroup,
               multiCodes: matchIng.multiCodes,
+              status: r.status,
             });
           }
         }
       }
     }
 
-    // 2. Extraire depuis les exécutions réelles
+    // 2. Extraire depuis les exécutions réelles (modules parcelles)
     for (const rec of modulePhytoRecords) {
-      const pName = ((rec.product_name || rec.payload?.product_name || '') as string).toLowerCase();
+      if (rec.status && !isExecutedOrAcceptedStatus(rec.status) && String(rec.status).toLowerCase() !== 'planifie') {
+        continue;
+      }
+      const pName = ((rec.product_name || rec.product || rec.payload?.product_name || '') as string).toLowerCase();
       const matchIng = ACTIVE_INGREDIENTS_DATABASE.find(
-        ing => pName.includes(ing.name.toLowerCase()) || ing.commonNameFr.toLowerCase().includes(pName)
+        ing => pName && (pName.includes(ing.name.toLowerCase()) || ing.commonNameFr.toLowerCase().includes(pName))
       );
       if (matchIng) {
         logs.push({
           id: rec.id,
-          parcelId: rec.parcel_id || 'all',
+          parcelId: rec.parcel_id || rec.parcelId || 'all',
           crop: currentCrop,
           date: rec.date || new Date().toISOString(),
           targetPestId: selectedPestId || 'unknown',
           activeIngredientId: matchIng.id,
           codeGroup: matchIng.codeGroup,
           multiCodes: matchIng.multiCodes,
+          status: 'executed',
         });
       }
     }

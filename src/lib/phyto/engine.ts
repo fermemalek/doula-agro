@@ -298,6 +298,49 @@ export interface SprayApplicationRecord {
   activeIngredientId: string;
   codeGroup: string; // Stocké à l'écriture pour éviter les jointures lourdes en offline
   multiCodes?: string[];
+  status?: string; // Ex: 'executed' | 'accepted' | 'acceptee' | 'transferee' | 'envoyee' | 'pending' | 'rejetee'
+}
+
+/**
+ * Vérifie qu'un traitement est réellement exécuté ou accepté (jamais "pending" / "envoyee" / "rejetee").
+ * Utilisé pour la rotation anti-résistance (45 j), le quota saisonnier et l'historique phyto.
+ */
+export function isExecutedOrAcceptedStatus(status?: string | null): boolean {
+  if (!status) return true;
+  const s = status.trim().toLowerCase();
+  if (
+    s === 'envoyee' ||
+    s === 'envoyée' ||
+    s === 'pending' ||
+    s === 'en_attente' ||
+    s === 'en attente' ||
+    s === 'rejetee' ||
+    s === 'rejetée' ||
+    s === 'rejected' ||
+    s === 'annulee' ||
+    s === 'annulée' ||
+    s === 'cancelled'
+  ) {
+    return false;
+  }
+  return (
+    s === 'executed' ||
+    s === 'execute' ||
+    s === 'exécuté' ||
+    s === 'executee' ||
+    s === 'exécutée' ||
+    s === 'accepted' ||
+    s === 'acceptee' ||
+    s === 'acceptée' ||
+    s === 'transferee' ||
+    s === 'transférée' ||
+    s === 'done' ||
+    s === 'fait' ||
+    s === 'termine' ||
+    s === 'terminé' ||
+    s === 'validee' ||
+    s === 'validée'
+  );
 }
 
 export interface CompatibilityRule {
@@ -521,8 +564,10 @@ export class PhytosanitaryEngine {
       (targetPest.crops.length === 1 ? targetPest.crops[0] : 'pommier');
     const activeSeason = getAgriculturalSeason(effectiveSpeciesForSeason, currentDate);
 
-    // Récupérer les traitements appliqués durant cette campagne agricole sur la parcelle contre cette cible
+    // Récupérer UNIQUEMENT les traitements réellement exécutés ou acceptés durant cette campagne agricole
+    // (exclut strictement "pending" / "envoyee" / "rejetee" de la rotation 45 j et du quota saisonnier)
     const currentSeasonLogs = parcelHistory.filter((log) => {
+      if (!isExecutedOrAcceptedStatus(log.status)) return false;
       const logSeason = getAgriculturalSeason(effectiveSpeciesForSeason, log.date);
       return logSeason.label === activeSeason.label && log.targetPestId === targetPest.id;
     });

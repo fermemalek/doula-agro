@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { clearAllModuleRecordsLocal } from "@/lib/modules-store";
 
 const FARM_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -85,6 +86,21 @@ export async function resetFarmData(): Promise<ResetResult> {
     }
 
     const anyFail = Object.values(results).some((r) => !r.ok);
+
+    // Purger immédiatement les caches locaux (modules, overrides, historique phyto) et notifier l'UI
+    if (!anyFail && typeof window !== "undefined") {
+      try {
+        clearAllModuleRecordsLocal();
+        localStorage.removeItem("doula-modules");
+        localStorage.removeItem("doula_recos_status_overrides");
+        localStorage.removeItem("doula_deleted_recos");
+        localStorage.removeItem("doula_dismissed_phyto_history");
+        window.dispatchEvent(new CustomEvent("doula:farm-reset"));
+      } catch (err) {
+        console.warn("[resetFarmData] local cache purge warning:", err);
+      }
+    }
+
     return {
       ok: !anyFail,
       results,

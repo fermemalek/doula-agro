@@ -17,6 +17,7 @@ import { useRole } from "@/lib/role";
 import { saveConfig, getConfig, type ConfigRole } from "@/lib/config-store";
 import { resetFarmData } from "@/lib/cloud/admin-reset";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 const PRESET_COLORS = [
@@ -30,6 +31,7 @@ const PRESET_COLORS = [
 
 function ConfigPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { session, loading, isAdmin, switchRole } = useRole();
   const cfg = getConfig();
   const [role, setRole] = useState<ConfigRole>(cfg.role);
@@ -65,6 +67,7 @@ function ConfigPage() {
         
         const { resetAllConsumedQuantities } = await import("@/lib/suppliers-store");
         resetAllConsumedQuantities();
+        await queryClient.invalidateQueries();
       } catch {}
       toast.success("Application réinitialisée");
       setTimeout(() => window.location.reload(), 700);

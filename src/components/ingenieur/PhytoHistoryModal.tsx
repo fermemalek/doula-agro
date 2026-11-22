@@ -17,7 +17,9 @@ import {
 import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
 import { useTranslation } from "@/lib/i18n";
-import { getAgriculturalSeason } from "@/lib/phyto/engine";
+import { getAgriculturalSeason, isExecutedOrAcceptedStatus } from "@/lib/phyto/engine";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   History, 
   ShieldAlert, 
@@ -72,7 +74,7 @@ export function resolveActiveSubstance(prodName: string): string {
 export interface PhytoHistoryEntry {
   id: string;
   rawKey: string;
-  sourceType: "reco" | "module";
+  sourceType: "reco" | "module" | "execution";
   recoId?: string;
   moduleRecordId?: string;
   parcelId?: string;
@@ -86,9 +88,10 @@ export interface PhytoHistoryEntry {
   cible: string;
   dosage: string;
   volume: string;
-  cropKey: string;
+  cropKey: "all" | "olivier" | "pommier" | "nectarine";
   cropLabel: string;
   status: string;
+  isPending: boolean;
 }
 
 const MONTH_NAMES_FR = [
@@ -101,14 +104,43 @@ const MONTH_NAMES_AR = [
   "جويلية (يوليو)", "أوت (أغسطس)", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"
 ];
 
-function normalizeCropKey(raw?: string): string {
-  if (!raw) return "all";
-  const r = raw.toLowerCase();
-  if (r.includes("oliv")) return "olivier";
-  if (r.includes("pomm") || r.includes("apple")) return "pommier";
-  if (r.includes("nectar")) return "nectarine";
-  if (r.includes("pech") || r.includes("pêch")) return "nectarine";
-  return r;
+function normalizeCropKey(
+  raw?: string,
+  parcelIds?: string[],
+  title?: string
+): "all" | "olivier" | "pommier" | "nectarine" {
+  const combined = [raw || "", ...(parcelIds || []), title || ""]
+    .join(" ")
+    .toLowerCase();
+  if (!combined.trim()) return "all";
+  if (
+    combined.includes("nablara") ||
+    combined.includes("redix") ||
+    combined.includes("nectar") ||
+    combined.includes("pech") ||
+    combined.includes("pêch") ||
+    combined.includes("نكتارين") ||
+    combined.includes("خوخ") ||
+    /\bp[5-6]\b/.test(combined)
+  ) {
+    return "nectarine";
+  }
+  if (
+    combined.includes("pomm") ||
+    combined.includes("apple") ||
+    combined.includes("تفاح") ||
+    /\bp[7-8]\b/.test(combined)
+  ) {
+    return "pommier";
+  }
+  if (
+    combined.includes("oliv") ||
+    combined.includes("زيتون") ||
+    /\bp[1-4]\b/.test(combined)
+  ) {
+    return "olivier";
+  }
+  return "all";
 }
 
 export function PhytoHistoryModal({
@@ -122,6 +154,7 @@ export function PhytoHistoryModal({
 }) {
   const { t, lang } = useTranslation();
   const isAr = lang === "ar";
+  const queryClient = useQueryClient();
 
   const parcels = useParcels();
   const { data: recos = [] } = useRecommendations();
@@ -129,16 +162,49 @@ export function PhytoHistoryModal({
   const modulePhytoRecords = useAllModuleRecords("phytosanitaire");
   const { remove: removeModuleRecord } = useModuleActions();
 
-  // Déterminer la culture active de départ (ex: 'olivier' ou 'pommier')
+  // Charger également les tâches phytosanitaires exécutées (table tasks + task_executions)
+  const { data: executedPhytoTasks = [] } = useQuery({
+    queryKey: ["phyto-executions"],
+    enabled: open,
+    queryFn: async () => {
+      try {
+        const { data: doneTasks, error } = await supabase
+          .from("tasks")
+          .select("id, parcel_id, title, description, kind, status, due_date, updated_at, created_at")
+          .eq("status", "fait")
+          .eq("kind", "pulverisation")
+          .order("due_date", { ascending: false });
+        if (error || !doneTasks) return [];
+        return doneTasks;
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  // Invalider immédiatement les caches locaux/React Query lors d'une réinitialisation ferme ou recommandations
+  useEffect(() => {
+    const onFarmReset = () => {
+      void queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+      void queryClient.invalidateQueries({ queryKey: ["executions"] });
+      void queryClient.invalidateQueries({ queryKey: ["phyto-executions"] });
+      void queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    };
+    window.addEventListener("doula:farm-reset", onFarmReset);
+    return () => window.removeEventListener("doula:farm-reset", onFarmReset);
+  }, [queryClient]);
+
+  // Déterminer la culture active de départ (toujours normalisée sur "all" | "olivier" | "pommier" | "nectarine")
   const defaultCropFilter = currentCrops && currentCrops.length > 0
-    ? normalizeCropKey(currentCrops[0])
+    ? normalizeCropKey(currentCrops.join(" "))
     : "all";
 
-  const [selectedCrop, setSelectedCrop] = useState<string>(defaultCropFilter);
+  const [selectedCrop, setSelectedCrop] = useState<"all" | "olivier" | "pommier" | "nectarine">(defaultCropFilter);
   const [selectedSeason, setSelectedSeason] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedActive, setSelectedActive] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [showPending, setShowPending] = useState<boolean>(false);
 
   // Clés supprimées / blacklistées localement
   const [dismissedKeys, setDismissedKeys] = useState<string[]>(() => {
@@ -185,11 +251,11 @@ export function PhytoHistoryModal({
   // Synchroniser le filtre de culture à l'ouverture de la modale
   useEffect(() => {
     if (open && currentCrops && currentCrops.length > 0) {
-      setSelectedCrop(normalizeCropKey(currentCrops[0]));
+      setSelectedCrop(normalizeCropKey(currentCrops.join(" ")));
     }
   }, [open, currentCrops]);
 
-  // Agréger tous les traitements phytosanitaires passés
+  // Agréger tous les traitements phytosanitaires (recommandations + modules parcelles + exécutions)
   const allTreatments = useMemo(() => {
     const list: PhytoHistoryEntry[] = [];
     const seen = new Set<string>();
@@ -202,9 +268,24 @@ export function PhytoHistoryModal({
       // Vérifier si la reco a été supprimée ou blacklistée
       if (dismissedKeys.includes(r.id) || dismissedKeys.includes(`reco-${r.id}`)) continue;
 
+      const isPending = !isExecutedOrAcceptedStatus(r.status);
+
       const payload = (r.payload || {}) as any;
       const prog = payload.program || {};
-      const prods = Array.isArray(prog.products) ? prog.products : [];
+      let prods: any[] = [];
+      if (Array.isArray(prog.products) && prog.products.length > 0) {
+        prods = prog.products;
+      } else if (Array.isArray(payload.products) && payload.products.length > 0) {
+        prods = payload.products;
+      } else if (Array.isArray(payload.passages) && payload.passages.length > 0) {
+        prods = payload.passages.flatMap((ps: any) => (Array.isArray(ps?.products) ? ps.products : []));
+      } else if (typeof r.title === "string") {
+        // Repli : extraire le nom du produit entre parenthèses du titre (ex: "NABLARA, REDIX 25 - 2026-03-09 (Azostar 325SC)")
+        const m = r.title.match(/\(([^)]+)\)\s*$/);
+        if (m && m[1] && !/^(?:Traitement|Phyto|معاملة)\s*\d+$/i.test(m[1].trim())) {
+          prods = [{ product: m[1].trim(), cible: "—", dosage: "—", volume: "1000" }];
+        }
+      }
 
       // Si le payload contient le produit Luna/Fluopyram orphelin, l'ignorer
       const pStr = JSON.stringify(prods).toLowerCase();
@@ -214,7 +295,13 @@ export function PhytoHistoryModal({
         }
       }
 
-      const date = String(prog.date || (r.created_at ? r.created_at.slice(0, 10) : "") || new Date().toISOString().slice(0, 10));
+      const titleDateMatch = typeof r.title === "string" ? r.title.match(/\b(20\d{2}-\d{2}-\d{2})\b/) : null;
+      const date = String(
+        prog.date ||
+        (titleDateMatch ? titleDateMatch[1] : "") ||
+        (r.created_at ? r.created_at.slice(0, 10) : "") ||
+        new Date().toISOString().slice(0, 10)
+      );
       const year = date.length >= 4 ? date.slice(0, 4) : new Date().getFullYear().toString();
       const month = date.length >= 7 ? date.slice(5, 7) : "01";
       const period = prog.period as "matin" | "soir" | undefined;
@@ -224,17 +311,26 @@ export function PhytoHistoryModal({
         : payload.crop_group
         ? [payload.crop_group]
         : [];
-      const primaryCrop = cropList[0] || "";
-      const cropKey = normalizeCropKey(primaryCrop);
-      const cropLabel = cropList.map((c: string) => t(`crop.${c}`, c)).join(", ") || (isAr ? "الضيعة" : "Ferme");
+      const cropKey = normalizeCropKey(cropList.join(" "), r.parcel_ids, r.title);
+      const cropLabel =
+        cropList.length > 0
+          ? cropList.map((c: string) => t(`crop.${c}`, c)).join(", ")
+          : cropKey === "nectarine"
+          ? (isAr ? "الخوخ / النكتارين" : "Nectarine (Nablara / Redix 25)")
+          : cropKey === "pommier"
+          ? (isAr ? "التفاح" : "Pommier")
+          : cropKey === "olivier"
+          ? (isAr ? "الزيتون" : "Olivier")
+          : (isAr ? "الضيعة" : "Ferme");
 
       for (let i = 0; i < prods.length; i++) {
         const p = prods[i];
-        if (!p || !p.product) continue;
+        const prodName = String(p?.product || p?.name || "").trim();
+        if (!prodName) continue;
         const entryId = `reco-${r.id}-${i}`;
         if (dismissedKeys.includes(entryId)) continue;
 
-        const rawKey = `${date}|${p.product}|${p.cible || ""}|${cropKey}`;
+        const rawKey = `${date}|${prodName.toLowerCase()}|${cropKey}`;
         if (seen.has(rawKey)) continue;
         seen.add(rawKey);
 
@@ -249,35 +345,45 @@ export function PhytoHistoryModal({
           season: getAgriculturalSeason(cropKey, date).label,
           month,
           period,
-          productName: p.product,
-          activeSubstance: resolveActiveSubstance(p.product),
+          productName: prodName,
+          activeSubstance: resolveActiveSubstance(prodName),
           cible: p.cible || "—",
           dosage: p.dosage || "—",
           volume: p.volume || "1000",
           cropKey,
           cropLabel,
-          status: r.status === "acceptee" ? (isAr ? "منفذ / مقبول" : "Exécuté") : (isAr ? "موصى به" : "Recommandé"),
+          status: isPending
+            ? (isAr ? "قيد الانتظار (موصى به)" : "En attente (Recommandé)")
+            : (isAr ? "منفذ / مقبول" : "Exécuté / Accepté"),
+          isPending,
         });
       }
     }
 
-    // 2. Depuis les enregistrements modules locaux/cloud
+    // 2. Depuis les enregistrements modules locaux/cloud (uniquement exécutés / saisis)
     for (const m of modulePhytoRecords) {
       const p = m as any;
+      if (p.status && !isExecutedOrAcceptedStatus(p.status) && String(p.status).toLowerCase() !== "planifie") {
+        continue;
+      }
       const date = p.date || p.scheduled_at?.slice(0, 10) || "";
       if (!date) continue;
       const year = date.slice(0, 4);
       const month = date.slice(5, 7);
-      const prods = Array.isArray(p.products) ? p.products : p.product ? [p] : [];
+      const prods = Array.isArray(p.products) ? p.products : p.product || p.product_name ? [p] : [];
 
-      // Trouver l'espèce de la parcelle
+      // Trouver l'espèce de la parcelle (inclut NABLARA / REDIX 25 -> nectarine)
       const parcelObj = parcels.find((pr) => pr.id === m.parcelId);
-      const cropKey = parcelObj?.type ? normalizeCropKey(parcelObj.type) : "all";
+      const cropKey = normalizeCropKey(
+        parcelObj?.type || parcelObj?.name,
+        m.parcelId ? [m.parcelId] : undefined,
+        p.title || p.label
+      );
       const cropLabel = parcelObj?.name || (m.parcelId ? `Parcelle ${m.parcelId}` : "Ferme");
 
       for (let i = 0; i < prods.length; i++) {
         const prod = prods[i];
-        const prodName = prod.product || prod.name;
+        const prodName = String(prod.product || prod.product_name || prod.name || "").trim();
         if (!prodName) continue;
 
         // Ignorer si Luna / Fluopyram orphelin
@@ -288,7 +394,7 @@ export function PhytoHistoryModal({
         const entryId = `mod-${m.parcelId || ""}-${i}-${date}-${prodName}`;
         if (dismissedKeys.includes(entryId)) continue;
 
-        const rawKey = `${date}|${prodName}|${prod.cible || ""}|${cropKey}`;
+        const rawKey = `${date}|${prodName.toLowerCase()}|${cropKey}`;
         if (seen.has(rawKey)) continue;
         seen.add(rawKey);
 
@@ -311,13 +417,66 @@ export function PhytoHistoryModal({
           cropKey,
           cropLabel,
           status: isAr ? "منفذ" : "Exécuté",
+          isPending: false,
         });
       }
     }
 
+    // 3. Depuis les tâches phytosanitaires exécutées (table tasks status="fait") si absentes des sources 1 & 2
+    for (const tk of executedPhytoTasks as any[]) {
+      const titleStr = String(tk.title || "");
+      const descStr = String(tk.description || "");
+      const combinedText = `${titleStr} ${descStr}`.toLowerCase();
+      // Ne garder que les tâches phytosanitaires (pas la ferti foliaire simple)
+      const isPhytoTask =
+        combinedText.includes("phyto") ||
+        combinedText.includes("traitement") ||
+        Object.keys(PHYTO_ACTIVE_SUBSTANCES).some((k) => combinedText.includes(k));
+      if (!isPhytoTask) continue;
+
+      const matchParen = titleStr.match(/\(([^)]+)\)\s*$/);
+      const prodName = (matchParen?.[1] || titleStr).trim();
+      if (!prodName) continue;
+
+      const date = String(tk.due_date || tk.updated_at?.slice(0, 10) || tk.created_at?.slice(0, 10) || "").slice(0, 10);
+      if (!date) continue;
+
+      const parcelObj = parcels.find((pr) => pr.id === tk.parcel_id);
+      const cropKey = normalizeCropKey(
+        parcelObj?.type || parcelObj?.name,
+        tk.parcel_id ? [tk.parcel_id] : undefined,
+        titleStr
+      );
+      const rawKey = `${date}|${prodName.toLowerCase()}|${cropKey}`;
+      if (seen.has(rawKey)) continue;
+      const entryId = `exec-${tk.id}`;
+      if (dismissedKeys.includes(entryId) || dismissedKeys.includes(rawKey)) continue;
+      seen.add(rawKey);
+
+      list.push({
+        id: entryId,
+        rawKey,
+        sourceType: "execution",
+        parcelId: tk.parcel_id || undefined,
+        date,
+        year: date.slice(0, 4),
+        season: getAgriculturalSeason(cropKey, date).label,
+        month: date.slice(5, 7),
+        productName: prodName,
+        activeSubstance: resolveActiveSubstance(prodName),
+        cible: "—",
+        dosage: "—",
+        volume: "1000",
+        cropKey,
+        cropLabel: parcelObj?.name || (cropKey === "nectarine" ? "Nectarine" : cropKey === "pommier" ? "Pommier" : cropKey === "olivier" ? "Olivier" : "Ferme"),
+        status: isAr ? "منفذ" : "Exécuté",
+        isPending: false,
+      });
+    }
+
     // Tri décroissant par date
     return list.sort((a, b) => b.date.localeCompare(a.date));
-  }, [recos, modulePhytoRecords, parcels, dismissedKeys, isAr, t]);
+  }, [recos, modulePhytoRecords, executedPhytoTasks, parcels, dismissedKeys, isAr, t]);
 
   // Suppression manuelle d'une entrée de l'historique
   const handleDeleteEntry = (item: PhytoHistoryEntry) => {
@@ -402,10 +561,12 @@ export function PhytoHistoryModal({
   }, [allTreatments]);
 
   // Fréquence d'utilisation par matière active sur la campagne agricole choisie ET FILTRÉE PAR CULTURE !
+  // STRICT : ne compte JAMAIS les recommandations "pending" / "envoyee" (uniquement exécutées / acceptées)
   const currentSeasonRef = selectedSeason !== "all" ? selectedSeason : activeSeasonForCrop;
   const activeUsageCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const item of allTreatments) {
+      if (item.isPending) continue;
       // Filtrer par campagne agricole réelle
       if (item.season !== currentSeasonRef) continue;
       // FILTRER PAR CULTURE SÉLECTIONNÉE (Ne pas mélanger pommier, olivier, etc.)
@@ -416,9 +577,21 @@ export function PhytoHistoryModal({
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }, [allTreatments, currentSeasonRef, selectedCrop]);
 
-  // Filtrage combiné : Culture (Espèce), Campagne, Mois, Matière Active et Recherche
+  const pendingCount = useMemo(
+    () =>
+      allTreatments.filter(
+        (item) =>
+          item.isPending &&
+          (selectedCrop === "all" || item.cropKey === "all" || item.cropKey === selectedCrop)
+      ).length,
+    [allTreatments, selectedCrop]
+  );
+
+  // Filtrage combiné : Statut (Exécuté/Accepté par défaut), Culture (Espèce), Campagne, Mois, Matière Active et Recherche
   const filteredTreatments = useMemo(() => {
     return allTreatments.filter((item) => {
+      // 0. Exclure par défaut les recommandations en attente ("pending" / "envoyee")
+      if (!showPending && item.isPending) return false;
       // 1. FILTRE CRUCIAL PAR CULTURE (Espèce elle-même)
       if (selectedCrop !== "all" && item.cropKey !== "all" && item.cropKey !== selectedCrop) {
         return false;
@@ -441,7 +614,7 @@ export function PhytoHistoryModal({
       }
       return true;
     });
-  }, [allTreatments, selectedCrop, selectedSeason, selectedMonth, selectedActive, searchTerm]);
+  }, [allTreatments, showPending, selectedCrop, selectedSeason, selectedMonth, selectedActive, searchTerm]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -536,21 +709,21 @@ export function PhytoHistoryModal({
           </div>
 
           {/* Filtres par Espèce / Culture, Campagne, Mois, Matière Active et Recherche */}
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-6 gap-2.5">
             {/* FILTRE 1 : CULTURE / ESPÈCE */}
-            <div className="col-span-2 sm:col-span-2 min-w-[190px]">
+            <div className="sm:col-span-2 min-w-[210px]">
               <label className="text-[10px] font-bold text-muted-foreground block mb-1">
                 {isAr ? "المحصول / النوع" : "Espèce / Culture"}
               </label>
               <select
                 value={selectedCrop}
-                onChange={(e) => setSelectedCrop(e.target.value)}
-                className="w-full min-w-[180px] rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200 px-3 py-1.5 text-xs font-bold"
+                onChange={(e) => setSelectedCrop(e.target.value as "all" | "olivier" | "pommier" | "nectarine")}
+                className="w-full min-w-[210px] rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200 px-3 py-1.5 text-xs font-bold"
               >
                 <option value="all">{isAr ? "جميع المحاصيل (الكل)" : "Toutes les cultures"}</option>
                 <option value="olivier">🫒 {isAr ? "الزيتون (Olivier)" : "Olivier"}</option>
                 <option value="pommier">🍎 {isAr ? "التفاح (Pommier)" : "Pommier"}</option>
-                <option value="nectarine">🍑 {isAr ? "الخوخ والنكتارين (Pêcher / Nectarine)" : "Pêcher & Nectarine"}</option>
+                <option value="nectarine">🍑 {isAr ? "الخوخ والنكتارين (Nectarine)" : "Pêcher & Nectarine"}</option>
               </select>
             </div>
 
@@ -632,6 +805,21 @@ export function PhytoHistoryModal({
               </div>
             </div>
           </div>
+
+          {/* Case à cocher optionnelle : afficher aussi les recommandations en attente (jamais comptées dans les quotas) */}
+          <label className="flex items-center gap-2 text-[11px] font-semibold text-muted-foreground cursor-pointer select-none px-1">
+            <input
+              type="checkbox"
+              checked={showPending}
+              onChange={(e) => setShowPending(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-input accent-primary cursor-pointer"
+            />
+            <span>
+              {isAr
+                ? `عرض التوصيات قيد الانتظار أيضاً (${pendingCount}) — لا تُحتسب أبداً في حصص IRAC/FRAC`
+                : `Afficher aussi les recommandations en attente (${pendingCount}) — jamais comptées dans les quotas`}
+            </span>
+          </label>
 
           {/* Liste des traitements triée */}
           <div className="space-y-2">
