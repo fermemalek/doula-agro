@@ -29,6 +29,7 @@ interface ValidateOrderScheduleDialogProps {
   title: string;
   subtitle?: string;
   operationLabel?: string;
+  showIrrigationTimes?: boolean;
   stockSummary?: OrderStockSummary;
   bacDetails?: OrderBacDetail[];
   tankRinseAlert?: TankRinseAlert | null;
@@ -52,6 +53,7 @@ export function ValidateOrderScheduleDialog({
   title,
   subtitle,
   operationLabel,
+  showIrrigationTimes,
   stockSummary,
   bacDetails,
   tankRinseAlert,
@@ -69,6 +71,20 @@ export function ValidateOrderScheduleDialog({
   const [fertTime, setFertTime] = useState(defaultFertIrrigationTime || "1h30");
   const [pureTime, setPureTime] = useState(defaultPureIrrigationTime || "0h");
 
+  // Masquer les temps d'irrigation (avec/sans fertilisation) pour les Pulvérisations foliaires & Traitements phytosanitaires
+  const isSprayOrPhyto = /pulv[eé]risation|foliaire|phyto|traitement/i.test(
+    `${operationLabel || ""} ${title || ""}`
+  );
+  const shouldShowIrrigationTimes =
+    typeof showIrrigationTimes === "boolean" ? showIrrigationTimes : !isSprayOrPhyto;
+
+  const effectiveSubtitle =
+    !shouldShowIrrigationTimes && subtitle && /temps d['’]irrigation/i.test(subtitle)
+      ? mode === "execute"
+        ? "Confirmez l'heure de commencement avant exécution."
+        : "Confirmez l'heure de commencement avant planification."
+      : subtitle;
+
   useEffect(() => {
     if (open) {
       setStartHour(defaultStartHour || "06:30");
@@ -81,8 +97,12 @@ export function ValidateOrderScheduleDialog({
     e.preventDefault();
     await onConfirm({
       customStartHour: startHour.trim() || defaultStartHour || "06:30",
-      customFertIrrigationTime: fertTime.trim() || defaultFertIrrigationTime || "1h30",
-      customPureIrrigationTime: pureTime.trim() || "0h",
+      customFertIrrigationTime: shouldShowIrrigationTimes
+        ? fertTime.trim() || defaultFertIrrigationTime || "1h30"
+        : "",
+      customPureIrrigationTime: shouldShowIrrigationTimes
+        ? pureTime.trim() || "0h"
+        : "0h",
     });
   };
 
@@ -94,9 +114,9 @@ export function ValidateOrderScheduleDialog({
             <Clock className="h-5 w-5 text-primary" />
             <span>{title}</span>
           </DialogTitle>
-          {subtitle && (
+          {effectiveSubtitle && (
             <DialogDescription className="text-xs text-muted-foreground">
-              {subtitle}
+              {effectiveSubtitle}
             </DialogDescription>
           )}
         </DialogHeader>
@@ -263,67 +283,70 @@ export function ValidateOrderScheduleDialog({
             </p>
           </div>
 
-          {/* 2. Temps d'irrigation AVEC fertilisation */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-extrabold text-foreground flex items-center gap-1.5">
-              <Droplets className="h-3.5 w-3.5 text-emerald-600" />
-              <span>Temps d&apos;irrigation AVEC fertilisation</span>
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {FERT_PRESETS.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setFertTime(preset)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                    fertTime === preset
-                      ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
-                      : "bg-muted/50 text-foreground border-border hover:bg-muted"
-                  }`}
-                >
-                  {preset}
-                </button>
-              ))}
-            </div>
-            <input
-              type="text"
-              value={fertTime}
-              onChange={(e) => setFertTime(e.target.value)}
-              placeholder="ex: 1h30, 1h00, 2h00"
-              className="w-full rounded-xl border bg-background px-3 py-1.5 text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
+          {/* 2 & 3. Temps d'irrigation (masqués pour Pulvérisation foliaire et Traitement phytosanitaire) */}
+          {shouldShowIrrigationTimes && (
+            <>
+              <div className="space-y-1.5">
+                <label className="text-xs font-extrabold text-foreground flex items-center gap-1.5">
+                  <Droplets className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>Temps d&apos;irrigation AVEC fertilisation</span>
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {FERT_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setFertTime(preset)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                        fertTime === preset
+                          ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                          : "bg-muted/50 text-foreground border-border hover:bg-muted"
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={fertTime}
+                  onChange={(e) => setFertTime(e.target.value)}
+                  placeholder="ex: 1h30, 1h00, 2h00"
+                  className="w-full rounded-xl border bg-background px-3 py-1.5 text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
 
-          {/* 3. Temps d'irrigation SANS fertilisation (eau claire) */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-extrabold text-foreground flex items-center gap-1.5">
-              <Droplet className="h-3.5 w-3.5 text-blue-600" />
-              <span>Temps d&apos;irrigation SANS fertilisation (eau claire)</span>
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {PURE_PRESETS.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setPureTime(preset)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
-                    pureTime === preset
-                      ? "bg-blue-600 text-white border-blue-600 shadow-xs"
-                      : "bg-muted/50 text-foreground border-border hover:bg-muted"
-                  }`}
-                >
-                  {preset === "0h" ? "0h (Aucune)" : preset}
-                </button>
-              ))}
-            </div>
-            <input
-              type="text"
-              value={pureTime}
-              onChange={(e) => setPureTime(e.target.value)}
-              placeholder="ex: 0h, 1h30, 2h30"
-              className="w-full rounded-xl border bg-background px-3 py-1.5 text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-          </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-extrabold text-foreground flex items-center gap-1.5">
+                  <Droplet className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Temps d&apos;irrigation SANS fertilisation (eau claire)</span>
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {PURE_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setPureTime(preset)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition cursor-pointer ${
+                        pureTime === preset
+                          ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                          : "bg-muted/50 text-foreground border-border hover:bg-muted"
+                      }`}
+                    >
+                      {preset === "0h" ? "0h (Aucune)" : preset}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={pureTime}
+                  onChange={(e) => setPureTime(e.target.value)}
+                  placeholder="ex: 0h, 1h30, 2h30"
+                  className="w-full rounded-xl border bg-background px-3 py-1.5 text-xs font-mono font-semibold focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </>
+          )}
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t">
             <Button
