@@ -1,23 +1,35 @@
 import { useMemo, useState } from "react";
-import { Save, Trash2, History, Image as ImageIcon, Scissors, Calendar, Flower2, Clock, Copy, Plus, Pencil, X } from "lucide-react";
+import {
+  Save,
+  Trash2,
+  History,
+  Image as ImageIcon,
+  Scissors,
+  Calendar,
+  Flower2,
+  Clock,
+  Copy,
+  Plus,
+  Pencil,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
 import {
   getVarietyProfileForParcel,
-  computePruningToBloomDays,
-  saveVarietyCampaignRecord,
   deleteVarietyCampaignRecord,
-  type PhenologyRecord,
+  computePruningToBloomDays,
 } from "@/lib/chilling/varietiesConfig";
 
-type Record = {
+type TailleRecord = {
   id: string;
   createdAt: number;
   date: string;
   typeTaille: string;
   mainOeuvre: string;
   equipements: string;
+  total?: number;
   notes: string;
   photo?: string;
 };
@@ -27,12 +39,12 @@ const TYPES_TAILLE = [
   "Taille de fructification / تقليم الإثمار",
   "Taille de rajeunissement / تقليم التشبيب",
   "Taille de nettoyage / تقليم التنظيف",
-  "Autre / آخر"
+  "Autre / آخر",
 ];
 
 export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit: boolean }) {
-  const records = useModuleRecords<Record>(parcelId, "taille");
-  const { add, remove } = useModuleActions();
+  const records = useModuleRecords<TailleRecord>(parcelId, "taille");
+  const { add, update, remove } = useModuleActions();
   const parcels = useParcels();
   const parcel = useMemo(() => parcels.find((p) => p.id === parcelId), [parcels, parcelId]);
   const [catalogTick, setCatalogTick] = useState(0);
@@ -41,67 +53,10 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
     return getVarietyProfileForParcel(parcel);
   }, [parcel, catalogTick]);
 
-  // Ajout / Modification d'une campagne de taille dans le référentiel variétal
-  const [campaignFormOpen, setCampaignFormOpen] = useState(false);
-  const [editingYear, setEditingYear] = useState<number | null>(null);
-  const [cYear, setCYear] = useState<number>(new Date().getFullYear());
-  const [cPruningDate, setCPruningDate] = useState("");
-  const [cBloomDate, setCBloomDate] = useState("");
-  const [cHarvestDate, setCHarvestDate] = useState("");
-  const [cNotes, setCNotes] = useState("");
+  // Ouverture du formulaire "Nouvelle session de taille" au clic sur + Ajouter ou Modifier
+  const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  function openAddCampaign() {
-    setEditingYear(null);
-    setCYear(new Date().getFullYear());
-    setCPruningDate("");
-    setCBloomDate("");
-    setCHarvestDate("");
-    setCNotes("");
-    setCampaignFormOpen(true);
-  }
-
-  function openEditCampaign(h: PhenologyRecord) {
-    setEditingYear(h.year);
-    setCYear(h.year);
-    setCPruningDate(h.pruningDate || "");
-    setCBloomDate(h.bloomStartDate || "");
-    setCHarvestDate(h.harvestStartDate || "");
-    setCNotes(h.notes || "");
-    setCampaignFormOpen(true);
-  }
-
-  function handleSaveCampaign() {
-    if (!varietyProfile) return;
-    if (!cPruningDate) {
-      toast.error("Veuillez indiquer la date de taille.");
-      return;
-    }
-    const existing = varietyProfile.campaignHistory.find((h) => h.year === (editingYear ?? cYear));
-    saveVarietyCampaignRecord(
-      varietyProfile.id,
-      {
-        ...existing,
-        year: Number(cYear) || new Date().getFullYear(),
-        pruningDate: cPruningDate,
-        bloomStartDate: cBloomDate,
-        harvestStartDate: cHarvestDate || existing?.harvestStartDate,
-        notes: cNotes.trim() || undefined,
-      },
-      editingYear ?? undefined
-    );
-    setCatalogTick((n) => n + 1);
-    setCampaignFormOpen(false);
-    setEditingYear(null);
-    toast.success(editingYear ? "Campagne de taille modifiée !" : "Campagne de taille ajoutée !");
-  }
-
-  function handleDeleteCampaign(year: number) {
-    if (!varietyProfile) return;
-    if (!window.confirm(`Supprimer l'historique de taille de la campagne ${year} ?`)) return;
-    deleteVarietyCampaignRecord(varietyProfile.id, year);
-    setCatalogTick((n) => n + 1);
-    toast.success(`Campagne ${year} supprimée.`);
-  }
   const [f, setF] = useState({
     date: "",
     typeTaille: TYPES_TAILLE[0],
@@ -113,6 +68,44 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
 
   const charges = (parseFloat(f.mainOeuvre) || 0) + (parseFloat(f.equipements) || 0);
 
+  function resetForm() {
+    setEditingId(null);
+    setF({
+      date: "",
+      typeTaille: TYPES_TAILLE[0],
+      mainOeuvre: "",
+      equipements: "",
+      notes: "",
+      photo: undefined,
+    });
+  }
+
+  function openNewForm() {
+    resetForm();
+    setFormOpen(true);
+  }
+
+  function openEditRecord(r: TailleRecord) {
+    setEditingId(r.id);
+    setF({
+      date: r.date || "",
+      typeTaille: r.typeTaille || TYPES_TAILLE[0],
+      mainOeuvre: r.mainOeuvre || "",
+      equipements: r.equipements || "",
+      notes: r.notes || "",
+      photo: r.photo,
+    });
+    setFormOpen(true);
+  }
+
+  function handleDeleteCampaign(year: number) {
+    if (!varietyProfile) return;
+    if (!window.confirm(`Supprimer l'historique de taille de la campagne ${year} ?`)) return;
+    deleteVarietyCampaignRecord(varietyProfile.id, year);
+    setCatalogTick((n) => n + 1);
+    toast.success(`Campagne ${year} supprimée.`);
+  }
+
   function onPhoto(file?: File) {
     if (!file) return;
     const r = new FileReader();
@@ -122,15 +115,19 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
 
   function save() {
     if (!f.date || !f.typeTaille) return;
-    add(parcelId, "taille", f);
-    setF({
-      date: "",
-      typeTaille: TYPES_TAILLE[0],
-      mainOeuvre: "",
-      equipements: "",
-      notes: "",
-      photo: undefined,
-    });
+    const payload = {
+      ...f,
+      total: charges,
+    };
+    if (editingId) {
+      update(parcelId, "taille", editingId, payload);
+      toast.success("Session de taille mise à jour !");
+    } else {
+      add(parcelId, "taille", payload);
+      toast.success("Session de taille enregistrée !");
+    }
+    resetForm();
+    setFormOpen(false);
   }
 
   const cls = "rounded border border-input bg-background px-2 py-1 text-sm w-full";
@@ -149,93 +146,21 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
             </h3>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold text-muted-foreground">
-                {varietyProfile.campaignHistory.filter((h) => h.pruningDate).length} campagne{varietyProfile.campaignHistory.filter((h) => h.pruningDate).length > 1 ? "s" : ""}
+                {varietyProfile.campaignHistory.filter((h) => h.pruningDate).length} campagne
+                {varietyProfile.campaignHistory.filter((h) => h.pruningDate).length > 1 ? "s" : ""}
               </span>
               {canEdit && (
                 <button
                   type="button"
-                  onClick={openAddCampaign}
+                  onClick={() => (formOpen ? (setFormOpen(false), resetForm()) : openNewForm())}
                   className="inline-flex items-center gap-1 rounded-lg bg-primary text-primary-foreground px-2.5 py-1 text-[10px] font-bold hover:opacity-90 transition cursor-pointer"
                 >
-                  <Plus className="h-3 w-3" />
-                  Ajouter
+                  {formOpen ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                  <span>{formOpen ? "Fermer" : "Ajouter"}</span>
                 </button>
               )}
             </div>
           </div>
-
-          {campaignFormOpen && canEdit && (
-            <div className="rounded-xl border border-primary/30 bg-card p-3 space-y-2.5 text-xs shadow-sm">
-              <div className="flex items-center justify-between border-b pb-1.5">
-                <span className="font-bold text-foreground">
-                  {editingYear ? `Modifier la campagne ${editingYear}` : "Ajouter une campagne de taille"}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setCampaignFormOpen(false)}
-                  className="rounded p-0.5 text-muted-foreground hover:bg-muted cursor-pointer"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Année</label>
-                  <input
-                    type="number"
-                    value={cYear}
-                    onChange={(e) => setCYear(Number(e.target.value) || new Date().getFullYear())}
-                    className={cls}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Date de taille</label>
-                  <input
-                    type="date"
-                    value={cPruningDate}
-                    onChange={(e) => setCPruningDate(e.target.value)}
-                    className={cls}
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Début floraison</label>
-                  <input
-                    type="date"
-                    value={cBloomDate}
-                    onChange={(e) => setCBloomDate(e.target.value)}
-                    className={cls}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Observations</label>
-                <input
-                  type="text"
-                  value={cNotes}
-                  onChange={(e) => setCNotes(e.target.value)}
-                  placeholder="Ex : Taille de fructification, bonne vigueur..."
-                  className={cls}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCampaignFormOpen(false)}
-                  className="rounded-lg border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted cursor-pointer"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveCampaign}
-                  className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1 text-xs font-bold text-primary-foreground cursor-pointer"
-                >
-                  <Save className="h-3 w-3" />
-                  {editingYear ? "Mettre à jour" : "Enregistrer"}
-                </button>
-              </div>
-            </div>
-          )}
 
           <div className="space-y-2">
             {[...varietyProfile.campaignHistory]
@@ -271,26 +196,20 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() =>
+                            onClick={() => {
+                              setEditingId(null);
                               setF((prev) => ({
                                 ...prev,
                                 date: h.pruningDate || prev.date,
                                 notes: h.notes || prev.notes,
-                              }))
-                            }
+                              }));
+                              setFormOpen(true);
+                            }}
                             className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 px-2 py-1 text-[10px] font-bold text-primary transition cursor-pointer"
                             title="Pré-remplir le formulaire"
                           >
                             <Copy className="h-3 w-3" />
                             Pré-remplir
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => openEditCampaign(h)}
-                            className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition cursor-pointer"
-                            title="Modifier cette campagne"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
                           </button>
                           <button
                             type="button"
@@ -315,11 +234,39 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
         </div>
       )}
 
-      {canEdit && (
-        <div className="space-y-3 rounded-xl border bg-card p-4">
-          <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-            <Scissors className="h-4 w-4 text-primary" /> Nouvelle session de taille
-          </h3>
+      {/* Bouton + Ajouter de secours si la parcelle n'a pas de profil variétal */}
+      {!varietyProfile && canEdit && !formOpen && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={openNewForm}
+            className="inline-flex items-center gap-1 rounded-lg bg-primary text-primary-foreground px-3 py-1.5 text-xs font-bold hover:opacity-90 transition cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            <span>Ajouter une taille</span>
+          </button>
+        </div>
+      )}
+
+      {canEdit && formOpen && (
+        <div className="space-y-3 rounded-xl border-2 border-primary/30 bg-card p-4 shadow-sm animate-in fade-in-50 duration-150">
+          <div className="flex items-center justify-between border-b pb-2">
+            <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+              <Scissors className="h-4 w-4 text-primary" />
+              <span>{editingId ? "Modifier la session de taille" : "Nouvelle session de taille"}</span>
+            </h3>
+            <button
+              type="button"
+              onClick={() => {
+                setFormOpen(false);
+                resetForm();
+              }}
+              className="p-1 rounded-lg text-muted-foreground hover:bg-muted cursor-pointer"
+              aria-label="Fermer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-[10px] uppercase font-bold text-muted-foreground">Date</label>
@@ -329,17 +276,31 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
               <label className="text-[10px] uppercase font-bold text-muted-foreground">Type de taille</label>
               <select value={f.typeTaille} onChange={(e) => setF({ ...f, typeTaille: e.target.value })} className={cls}>
                 {TYPES_TAILLE.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase font-bold text-muted-foreground">Main d'œuvre (DA)</label>
-              <input value={f.mainOeuvre} inputMode="decimal" onChange={(e) => setF({ ...f, mainOeuvre: e.target.value })} placeholder="Ex: 5000" className={cls} />
+              <label className="text-[10px] uppercase font-bold text-muted-foreground">Main d&apos;œuvre (DA)</label>
+              <input
+                value={f.mainOeuvre}
+                inputMode="decimal"
+                onChange={(e) => setF({ ...f, mainOeuvre: e.target.value })}
+                placeholder="Ex: 5000"
+                className={cls}
+              />
             </div>
             <div>
               <label className="text-[10px] uppercase font-bold text-muted-foreground">Équipements / Autres (DA)</label>
-              <input value={f.equipements} inputMode="decimal" onChange={(e) => setF({ ...f, equipements: e.target.value })} placeholder="Ex: 1500" className={cls} />
+              <input
+                value={f.equipements}
+                inputMode="decimal"
+                onChange={(e) => setF({ ...f, equipements: e.target.value })}
+                placeholder="Ex: 1500"
+                className={cls}
+              />
             </div>
           </div>
           <div>
@@ -348,20 +309,39 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
               <input type="file" accept="image/*" className="hidden" onChange={(e) => onPhoto(e.target.files?.[0])} />
             </label>
           </div>
-          <textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })}
-            placeholder="Notes (observations, état sanitaire des branches...)" className={`${cls} min-h-16 resize-y`} />
+          <textarea
+            value={f.notes}
+            onChange={(e) => setF({ ...f, notes: e.target.value })}
+            placeholder="Notes (observations, état sanitaire des branches...)"
+            className={`${cls} min-h-16 resize-y`}
+          />
 
           <div className="space-y-1 rounded-lg bg-muted/30 p-3 text-sm">
             <div className="flex justify-between font-bold">
-              <span>Coût Total de l'opération</span>
+              <span>Coût Total de l&apos;opération</span>
               <span>{charges.toFixed(2)} DA</span>
             </div>
           </div>
 
-          <div className="flex justify-end">
-            <button onClick={save} disabled={!f.date || !f.typeTaille}
-              className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">
-              <Save className="h-3.5 w-3.5" /> Enregistrer
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setFormOpen(false);
+                resetForm();
+              }}
+              className="rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted cursor-pointer"
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={!f.date || !f.typeTaille}
+              className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50 cursor-pointer"
+            >
+              <Save className="h-3.5 w-3.5" />
+              <span>{editingId ? "Mettre à jour" : "Enregistrer"}</span>
             </button>
           </div>
         </div>
@@ -379,21 +359,36 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
               const ch = (parseFloat(r.mainOeuvre) || 0) + (parseFloat(r.equipements) || 0);
               return (
                 <li key={r.id} className="px-4 py-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-foreground">{r.date} — {r.typeTaille.split("/")[0]}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-primary">
-                        {ch.toFixed(2)} DA
-                      </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-foreground">
+                      {r.date} — {r.typeTaille.split("/")[0]}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-primary">{ch.toFixed(2)} DA</span>
                       {canEdit && (
-                        <button onClick={() => remove(parcelId, "taille", r.id)} className="text-muted-foreground hover:text-destructive">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditRecord(r)}
+                            title="Modifier cette session"
+                            className="p-1 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition cursor-pointer"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => remove(parcelId, "taille", r.id)}
+                            title="Supprimer cette session"
+                            className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
                   <div className="mt-1 flex gap-3 text-xs text-muted-foreground">
-                    <span>Main d'œuvre : {(parseFloat(r.mainOeuvre) || 0).toFixed(0)} DA</span>
+                    <span>Main d&apos;œuvre : {(parseFloat(r.mainOeuvre) || 0).toFixed(0)} DA</span>
                     <span>Équipements : {(parseFloat(r.equipements) || 0).toFixed(0)} DA</span>
                   </div>
                   {r.notes && <p className="mt-1 text-xs italic text-muted-foreground">{r.notes}</p>}
