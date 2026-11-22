@@ -433,7 +433,7 @@ export default function MeteoPage() {
               <Snowflake className="h-6 w-6" />
             </span>
             <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 whitespace-nowrap shrink-0">
-              {isAr ? "Weinberger vs Utah · 4 أصناف" : "Weinberger vs Utah · 4 Variétés"}
+              {isAr ? "Weinberger · Utah · Dynamique · 4 أصناف" : "Weinberger · Utah · Dynamique · 4 Variétés"}
             </span>
           </div>
           <div className="mt-3.5 space-y-1">

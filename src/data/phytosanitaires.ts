@@ -399,6 +399,23 @@ export function checkTankMixCompatibility(
     };
   }
 
+  // Incompatibilité Cuivre (bactéricide M01) + Bacillus thuringiensis (IRAC 11A / Dipel)
+  const isBtA = codeA.includes("11A") || activeFrA.includes("bacillus") || cleanA.toLowerCase().includes("dipel");
+  const isBtB = codeB.includes("11A") || activeFrB.includes("bacillus") || cleanB.toLowerCase().includes("dipel");
+  if ((isCuivreA && isBtB) || (isCuivreB && isBtA)) {
+    return {
+      status: "incompatible",
+      title: isAr ? "⛔ تعارض بيولوجي: النحاس يبطل مفعول البكتيريا (Bt / Dipel)" : "⛔ Incompatibilité biologique : Cuivre + Bacillus thuringiensis (Bt)",
+      message: isAr
+        ? "النحاس مبيد بكتيري قوي يقضي مباشرة على أبواغ البكتيريا النافعة (Bacillus thuringiensis) في الخزان مما يجعل المعاملة عديمة الفعالية."
+        : "Le cuivre est un bactéricide qui inactive/détruit directement les spores de Bacillus thuringiensis (Bt) dans la bouillie.",
+      advice: isAr
+        ? "لا تخلط أبداً النحاس أو أي منتج قلوي مع Bt — افصل المعاملتين بـ 5 إلى 7 أيام."
+        : "Ne jamais mélanger un cuivre ou un produit alcalin avec Bt — espacer de 5 à 7 jours.",
+      codeA, codeB, typeA, typeB
+    };
+  }
+
   // Incompatibilité Captane + Huile
   if ((isCaptaneA && isHuileB) || (isCaptaneB && isHuileA)) {
     return {

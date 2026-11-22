@@ -12,6 +12,7 @@ export interface PhenologyRecord {
   harvestStartDate?: string; // Début récolte
   accumulatedHoursAtBloom?: number; // Heures < 7.2°C atteintes au réveil
   accumulatedUtahAtBloom?: number;  // Unités Utah atteintes au réveil
+  accumulatedDynamicCPAtBloom?: number; // Chill Portions (Fishman 1987) atteintes au réveil
   notes?: string;
 }
 
@@ -27,6 +28,7 @@ export interface VarietyProfile {
   chillRequirements: {
     weinbergerHours: number; // Heures < 7.2°C
     utahUnits: number;       // Unités Utah (CU)
+    dynamicCP: number;       // Chill Portions — Modèle Dynamique (Fishman 1987)
   };
 
   // Caractéristiques phénologiques de référence
@@ -56,6 +58,7 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
     chillRequirements: {
       weinbergerHours: 500, // Besoin modéré (floraison précoce)
       utahUnits: 550,
+      dynamicCP: 35,
     },
     phenologyReference: {
       bloomPeriodFr: 'Très précoce (début à mi-février)',
@@ -95,6 +98,7 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
     chillRequirements: {
       weinbergerHours: 600, // Floraison calée sur l'époque Big Top
       utahUnits: 650,
+      dynamicCP: 42,
     },
     phenologyReference: {
       bloomPeriodFr: 'Mi-saison (mi-février, ~7 jours après Nablara)',
@@ -134,6 +138,7 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
     chillRequirements: {
       weinbergerHours: 750, // Groupe Gala classique (besoin élevé)
       utahUnits: 850,
+      dynamicCP: 58,
     },
     phenologyReference: {
       bloomPeriodFr: 'Tardive par rapport aux noyaux (mi-mars à début avril)',
@@ -173,6 +178,7 @@ export const VARIETIES_CATALOG: VarietyProfile[] = [
     chillRequirements: {
       weinbergerHours: 300, // Vernalisation modérée
       utahUnits: 350,
+      dynamicCP: 22,
     },
     phenologyReference: {
       bloomPeriodFr: 'Mai (après accumulation thermique printanière)',

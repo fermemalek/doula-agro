@@ -39,6 +39,28 @@ import {
 const STORAGE_CATALOG_KEY = "doula_varieties_catalog";
 const STORAGE_SETTINGS_KEY = "doula_chill_hours_settings";
 
+/**
+ * Modèle Dynamique officiel de Fishman et al. (1987) — Chill Portions (CP)
+ * Référence scientifique pour climats méditerranéens et Hauts-Plateaux.
+ */
+export function computeDynamicChillPortions(hourlyTempsC: number[]): number {
+  const e0 = 4153.5, e1 = 12888.8, a0 = 139500.0, a1 = 2.567e18, slp = 1.6, tetmlt = 277.0;
+  const aa = a0 / a1, ee = e1 - e0;
+  let x = 0, cp = 0;
+  for (const t of hourlyTempsC) {
+    if (t == null || Number.isNaN(t)) continue;
+    const tk = t + 273.0;
+    const sr = Math.exp((slp * tetmlt * (tk - tetmlt)) / tk);
+    const xi = sr / (1 + sr);
+    const xs = aa * Math.exp(ee / tk);
+    const ak1 = a1 * Math.exp(-e1 / tk);
+    const interS = x >= 1 ? x * (1 - xi) : x;
+    x = xs - (xs - interS) * Math.exp(-ak1);
+    if (x >= 1) cp += xi * x;
+  }
+  return Math.round(cp * 10) / 10;
+}
+
 interface GeneralSettings {
   latitude: number;
   longitude: number;
@@ -149,12 +171,22 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
   const [newHarvestDate, setNewHarvestDate] = useState<string>("");
   const [newRecordNotes, setNewRecordNotes] = useState<string>("");
 
-  // Valeurs calculées simultanément
+  // Valeurs calculées simultanément (3 modèles : Weinberger, Utah, Dynamique Fishman 1987)
   const [weinbergerHours, setWeinbergerHours] = useState<number>(0);
   const [utahUnits, setUtahUnits] = useState<number>(0);
+  const [dynamicCP, setDynamicCP] = useState<number>(0);
   const [warmHoursCount, setWarmHoursCount] = useState<number>(0); // Heures > 16°C
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [totalHoursAnalyzed, setTotalHoursAnalyzed] = useState<number>(0);
+  const [openConcepts, setOpenConcepts] = useState<Record<"weinberger" | "utah" | "dynamic", boolean>>({
+    weinberger: false,
+    utah: false,
+    dynamic: false,
+  });
+
+  const toggleConcept = (key: "weinberger" | "utah" | "dynamic") => {
+    setOpenConcepts((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
 
   const saveGeneralSettings = (settings: GeneralSettings) => {
     setGeneralSettings(settings);
@@ -212,6 +244,7 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
 
     setWeinbergerHours(weinberger);
     setUtahUnits(Math.round(utah));
+    setDynamicCP(computeDynamicChillPortions(temperatures));
     setWarmHoursCount(warmHours);
     setTotalHoursAnalyzed(count);
   }, []);
@@ -293,6 +326,7 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
       harvestStartDate: newHarvestDate || undefined,
       accumulatedHoursAtBloom: editingRecord?.accumulatedHoursAtBloom || (weinbergerHours > 0 ? weinbergerHours : undefined),
       accumulatedUtahAtBloom: editingRecord?.accumulatedUtahAtBloom || (utahUnits > 0 ? utahUnits : undefined),
+      accumulatedDynamicCPAtBloom: editingRecord?.accumulatedDynamicCPAtBloom || (dynamicCP > 0 ? dynamicCP : undefined),
       notes: newRecordNotes.trim() || undefined,
     };
 
@@ -363,7 +397,7 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
                         : (isAr ? "ساعات البرودة والمرجع الصنفي" : "Heures de Froid & Référentiel Variétal")}
                     </span>
                     <span className="rounded-full bg-primary/10 text-primary border border-primary/20 text-[10px] font-black px-2 py-0.5">
-                      Weinberger vs Utah
+                      Weinberger · Utah · Dynamique
                     </span>
                   </h2>
                   <p className="text-[11px] text-muted-foreground flex items-center gap-1">
@@ -448,7 +482,7 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
           {/* Calibrage des 4 variétés */}
           <div className="space-y-2 pt-2 border-t text-xs">
             <p className="text-[11px] font-bold text-muted-foreground uppercase">
-              {isAr ? "احتياجات الأصناف الأربعة (Weinberger h / Utah CU) :" : "Calibrage des besoins en froid (Weinberger h / Utah CU) :"}
+              {isAr ? "احتياجات الأصناف الأربعة (Weinberger h / Utah CU / Dynamique CP) :" : "Calibrage des besoins en froid (Weinberger h / Utah CU / Dynamique CP) :"}
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
               {catalog.map((v, idx) => (
@@ -457,7 +491,7 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
                     <span>{v.icon}</span>
                     <span className="truncate">{isAr ? v.nameAr : v.nameFr}</span>
                   </p>
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="grid grid-cols-3 gap-1.5">
                     <div>
                       <span className="text-[9px] font-bold text-muted-foreground uppercase">Weinb. (h)</span>
                       <input
@@ -484,6 +518,19 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
                         className="w-full rounded-lg border bg-background px-2 py-1 text-xs font-bold"
                       />
                     </div>
+                    <div>
+                      <span className="text-[9px] font-bold text-violet-600 dark:text-violet-400 uppercase">Dyn. (CP)</span>
+                      <input
+                        type="number"
+                        value={v.chillRequirements.dynamicCP ?? 0}
+                        onChange={(e) => {
+                          const updated = [...catalog];
+                          updated[idx].chillRequirements.dynamicCP = Number(e.target.value) || 0;
+                          saveCatalog(updated);
+                        }}
+                        className="w-full rounded-lg border bg-background px-2 py-1 text-xs font-bold"
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
@@ -502,59 +549,135 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {/* Carte Weinberger */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* Carte 1 (Vert) : Weinberger */}
             <div className="rounded-2xl border-2 border-emerald-500/30 bg-emerald-500/5 p-4 relative overflow-hidden flex flex-col justify-between shadow-xs">
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-2">
                 <div>
                   <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase px-2 py-0.5">
-                    {isAr ? "النموذج الكلاسيكي البسيط" : "Modèle Simple"}
+                    {isAr ? "النموذج الكلاسيكي البسيط" : "Modèle Classique Simple"}
                   </span>
                   <h3 className="text-base font-black text-foreground mt-1">Weinberger</h3>
-                  <p className="text-xs text-muted-foreground">T° &le; 7.2°C (0°C &agrave; 7.2°C)</p>
+                  <p dir="ltr" className="text-xs text-muted-foreground inline-block">0°C &lt; T° &le; 7.2°C</p>
                 </div>
-                <span className="text-2xl">⏱️</span>
+                <span className="text-2xl shrink-0">⏱️</span>
               </div>
               <div className="my-3">
-                <span className="text-4xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
+                <span dir="ltr" className="inline-block text-4xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
                   {weinbergerHours}
                 </span>
                 <span className="text-xs font-bold text-muted-foreground ml-2 mr-2">
                   {isAr ? "ساعة فعلية" : "Heures Réelles"}
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground border-t border-emerald-500/20 pt-2">
-                {isAr
-                  ? "يحسب فقط الساعات أقل من 7.2°م دون مراعاة التأثير السلبي لارتفاع حرارة النهار."
-                  : "Comptabilise uniquement les heures < 7.2°C sans déduire l'impact des coups de chaud."}
-              </p>
+              <div className="border-t border-emerald-500/20 pt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => toggleConcept("weinberger")}
+                  className="w-full flex items-center justify-between text-[11px] font-bold text-emerald-700 dark:text-emerald-300 hover:underline cursor-pointer"
+                >
+                  <span>ℹ️ {isAr ? "شرح المفهوم / Comprendre" : "Comprendre / شرح المفهوم"}</span>
+                  {openConcepts.weinberger ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+                {openConcepts.weinberger && (
+                  <div className="rounded-xl bg-background/80 border border-emerald-500/20 p-2.5 space-y-1.5 text-[11px] leading-relaxed">
+                    <p dir="rtl" className="text-foreground font-medium">
+                      يحسب فقط عدد الساعات بين 0°م و 7.2°م دون خصم حرارة النهار. بسيط لكنه قد يبالغ في تقدير البرودة في المناطق المشمسة.
+                    </p>
+                    <p dir="ltr" className="text-muted-foreground border-t border-dashed pt-1.5">
+                      Compte simplement chaque heure entre 0 °C et 7,2 °C sans retirer la chaleur diurne. Simple, mais surestime le froid en climat ensoleillé.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Carte Utah */}
+            {/* Carte 2 (Bleu) : Utah (Richardson) */}
             <div className="rounded-2xl border-2 border-sky-500/30 bg-sky-500/5 p-4 relative overflow-hidden flex flex-col justify-between shadow-xs">
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-2">
                 <div>
                   <span className="rounded-full bg-sky-500/15 border border-sky-500/30 text-sky-700 dark:text-sky-300 text-[10px] font-black uppercase px-2 py-0.5">
-                    {isAr ? "النموذج الفسيولوجي الدقيق" : "Modèle Physiologique"}
+                    {isAr ? "النموذج الفسيولوجي (CU)" : "Modèle Physiologique (CU)"}
                   </span>
-                  <h3 className="text-base font-black text-foreground mt-1">Utah</h3>
-                  <p className="text-xs text-muted-foreground">{isAr ? "خصم عقوبات الحرارة > 16°م" : "Pénalités thermiques > 16°C"}</p>
+                  <h3 className="text-base font-black text-foreground mt-1">Utah (Richardson)</h3>
+                  <p className="text-xs text-muted-foreground">{isAr ? "خصم عقوبات الحرارة > 16°م" : "Pénalités chaleur > 16°C"}</p>
                 </div>
-                <span className="text-2xl">❄️</span>
+                <span className="text-2xl shrink-0">❄️</span>
               </div>
               <div className="my-3">
-                <span className="text-4xl font-black text-sky-600 dark:text-sky-400 tracking-tight">
+                <span dir="ltr" className="inline-block text-4xl font-black text-sky-600 dark:text-sky-400 tracking-tight">
                   {utahUnits}
                 </span>
                 <span className="text-xs font-bold text-muted-foreground ml-2 mr-2">
                   {isAr ? "وحدة برودة (CU)" : "Unités de Froid (CU)"}
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground border-t border-sky-500/20 pt-2">
-                {isAr
-                  ? "يطرح وحدات البرودة عند ارتفاع درجات الحرارة نهاراً فوق 16°م و18°م (انعكاس كسر السكون)."
-                  : "Applique des coefficients physiologiques et déduit le froid annulé par la chaleur de midi."}
-              </p>
+              <div className="border-t border-sky-500/20 pt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => toggleConcept("utah")}
+                  className="w-full flex items-center justify-between text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:underline cursor-pointer"
+                >
+                  <span>ℹ️ {isAr ? "شرح المفهوم / Comprendre" : "Comprendre / شرح المفهوم"}</span>
+                  {openConcepts.utah ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+                {openConcepts.utah && (
+                  <div className="rounded-xl bg-background/80 border border-sky-500/20 p-2.5 space-y-1.5 text-[11px] leading-relaxed">
+                    <p dir="rtl" className="text-foreground font-medium">
+                      يعطي وزناً لكل درجة حرارة (+0.5 أو +1) ويخصم وحدات عند ارتفاع الحرارة فوق 16°م (انعكاس كسر السكون)، مع سقف أدنى 0 ساعة بساعة.
+                    </p>
+                    <p dir="ltr" className="text-muted-foreground border-t border-dashed pt-1.5">
+                      Pondère chaque heure (+0,5 ou +1 CU) et retire du froid au-delà de 16 °C (annulation diurne), avec plancher à 0 heure par heure.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Carte 3 (Violet/Indigo) : Modèle Dynamique (Fishman 1987 — Chill Portions CP) */}
+            <div className="rounded-2xl border-2 border-violet-500/40 bg-violet-500/5 p-4 relative overflow-hidden flex flex-col justify-between shadow-xs">
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-1">
+                  <span className="inline-block rounded-full bg-violet-600 text-white text-[9.5px] font-black uppercase px-2 py-0.5 shadow-xs">
+                    ⭐ {isAr ? "المرجع المتوسطي الأدق" : "Référence méditerranéenne"}
+                  </span>
+                  <h3 className="text-base font-black text-foreground">
+                    {isAr ? "النموذج الديناميكي (CP)" : "Dynamique (Fishman 1987)"}
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    {isAr ? "الحصص الباردة المثبتة (Chill Portions)" : "Chill Portions fixées en 2 étapes"}
+                  </p>
+                </div>
+                <span className="text-2xl shrink-0">🧬</span>
+              </div>
+              <div className="my-3">
+                <span dir="ltr" className="inline-block text-4xl font-black text-violet-600 dark:text-violet-400 tracking-tight">
+                  {dynamicCP}
+                </span>
+                <span className="text-xs font-bold text-muted-foreground ml-2 mr-2">
+                  {isAr ? "حصة برودة (CP)" : "Chill Portions (CP)"}
+                </span>
+              </div>
+              <div className="border-t border-violet-500/20 pt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => toggleConcept("dynamic")}
+                  className="w-full flex items-center justify-between text-[11px] font-bold text-violet-700 dark:text-violet-300 hover:underline cursor-pointer"
+                >
+                  <span>ℹ️ {isAr ? "شرح المفهوم / Comprendre" : "Comprendre / شرح المفهوم"}</span>
+                  {openConcepts.dynamic ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+                {openConcepts.dynamic && (
+                  <div className="rounded-xl bg-background/80 border border-violet-500/20 p-2.5 space-y-1.5 text-[11px] leading-relaxed">
+                    <p dir="rtl" className="text-foreground font-medium">
+                      الأدق لمناخ الهضاب العليا والمتوسط: يتكون البرود على مرحلتين، وبمجرد تثبيت «حصة برودة» (CP) داخل البرعم لا يمكن لدفء الأيام اللاحقة محوها.
+                    </p>
+                    <p dir="ltr" className="text-muted-foreground border-t border-dashed pt-1.5">
+                      Le plus précis pour les Hauts-Plateaux / Méditerranée : le froid se fixe en 2 étapes ; une fois une « Chill Portion » (CP) fixée dans le bourgeon, un redoux ultérieur ne l'efface plus.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -676,8 +799,10 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
           {catalog.map((variety) => {
             const reqW = variety.chillRequirements.weinbergerHours;
             const reqU = variety.chillRequirements.utahUnits;
+            const reqCP = variety.chillRequirements.dynamicCP ?? 35;
             const pctW = Math.min(100, Math.round((weinbergerHours / (reqW || 1)) * 100));
             const pctU = Math.min(100, Math.round((utahUnits / (reqU || 1)) * 100));
+            const pctCP = Math.min(100, Math.round((dynamicCP / (reqCP || 1)) * 100));
             const isExpanded = expandedVarietyIds.includes(variety.id);
             const frostBadge = getFrostBadge(variety.phenologyReference.frostSensitivity);
 
@@ -755,6 +880,25 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
                         className={`h-full rounded-full transition-all duration-500 ${pctU >= 100 ? "bg-sky-600" : "bg-sky-500"
                           }`}
                         style={{ width: `${pctU}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Ligne Dynamique (Fishman 1987 — Chill Portions CP) */}
+                  <div className="space-y-1 text-xs pt-0.5">
+                    <div className="flex justify-between items-center text-[11px]">
+                      <span className="font-semibold text-muted-foreground flex items-center gap-1">
+                        <span>{isAr ? "الديناميكي (الحصص الباردة CP) :" : "Dynamique (Chill Portions CP) :"}</span>
+                      </span>
+                      <span dir="ltr" className="inline-block font-black text-violet-600 dark:text-violet-400">
+                        {dynamicCP} / {reqCP} CP ({pctCP}%)
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${pctCP >= 100 ? "bg-violet-600" : "bg-violet-500"
+                          }`}
+                        style={{ width: `${pctCP}%` }}
                       />
                     </div>
                   </div>
