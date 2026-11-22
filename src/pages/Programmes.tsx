@@ -342,6 +342,7 @@ function ProgrammesPage() {
   const fert = useAllModuleRecords<FertRec>("fertilisation");
   const pulv = useAllModuleRecords<any>("pulverisation");
   const phyto = useAllModuleRecords<any>("phytosanitaire");
+  const recolte = useAllModuleRecords<any>("recolte");
   const parcels = useParcels();
   const navigate = useNavigate();
   const role = useDisplayRole();
@@ -762,23 +763,18 @@ function ProgrammesPage() {
         label: "Nectarine Nablara",
         icon: "🍑",
         match: (p: (typeof plantedParcels)[number]) =>
-          p.type === "nectarinier" &&
-          (p.name.toLowerCase().includes("nablara") ||
-            (p.info?.variete || "").toLowerCase().includes("nablara") ||
-            p.id === "p4" ||
-            p.id === "p5" ||
-            p.id === "p6"),
+          p.id === "nablara" ||
+          ((p.type === "nectarine" || (p.type as string) === "nectarinier") &&
+            p.name.toLowerCase().includes("nablara")),
       },
       {
         key: "redix25",
         label: "Nectarine Redix 25",
         icon: "🍑",
         match: (p: (typeof plantedParcels)[number]) =>
-          p.type === "nectarinier" &&
-          (p.name.toLowerCase().includes("redix") ||
-            (p.info?.variete || "").toLowerCase().includes("redix") ||
-            p.id === "p2" ||
-            p.id === "p3"),
+          p.id === "redix25" ||
+          ((p.type === "nectarine" || (p.type as string) === "nectarinier") &&
+            p.name.toLowerCase().includes("redix")),
       },
     ];
 
@@ -810,7 +806,34 @@ function ProgrammesPage() {
         .filter((r) => r?.parcelId && parcelIds.has(r.parcelId))
         .reduce((sum, r) => sum + recordCost(r), 0);
 
-      const total = Math.round(fertCost + pulvCost + phytoCost);
+      const speciesRecolte = (recolte ?? []).filter((r) => r?.parcelId && parcelIds.has(r.parcelId));
+      const recolteCharges = speciesRecolte.reduce((sum, r) => {
+        const baseCh =
+          typeof r.totalCharges === "number"
+            ? r.totalCharges
+            : (parseFloat(r.mainOeuvre || "0") || 0) +
+              (parseFloat(r.emballages || "0") || 0) +
+              (parseFloat(r.transport || "0") || 0) +
+              (parseFloat(r.autres || "0") || 0) +
+              (Number(r.frigoCost) || 0) +
+              (Number(r.commissionAmount) || 0);
+        const exitsComm = Array.isArray(r.frigoExits)
+          ? r.frigoExits.reduce((s: number, e: any) => s + (Number(e.commissionAmount) || 0), 0)
+          : 0;
+        return sum + baseCh + exitsComm;
+      }, 0);
+      const recolteRecettes = speciesRecolte.reduce((sum, r) => {
+        const baseV =
+          typeof r.totalVente === "number"
+            ? r.totalVente
+            : (parseFloat(r.qty || "0") || 0) * (parseFloat(r.price || "0") || 0);
+        const exitsV = Array.isArray(r.frigoExits)
+          ? r.frigoExits.reduce((s: number, e: any) => s + (Number(e.grossAmount) || 0), 0)
+          : 0;
+        return sum + baseV + exitsV;
+      }, 0);
+
+      const total = Math.round(fertCost + pulvCost + phytoCost + recolteCharges);
       const costPerHa = surfaceHa > 0 ? Math.round(total / surfaceHa) : 0;
 
       return {
@@ -822,11 +845,13 @@ function ProgrammesPage() {
         fertigation: Math.round(fertCost),
         foliar: Math.round(pulvCost),
         phyto: Math.round(phytoCost),
+        recolteCharges: Math.round(recolteCharges),
+        recolteRecettes: Math.round(recolteRecettes),
         total,
         costPerHa,
       };
     });
-  }, [parcels, fert, pulv, phyto]);
+  }, [parcels, fert, pulv, phyto, recolte]);
 
   // Tab 3: Suppliers dynamic calculations
   const supplierSummaries = useMemo(() => {
@@ -1400,6 +1425,18 @@ function ProgrammesPage() {
                         <span className="font-mono font-bold text-foreground">{formatMoney(sp.phyto ?? 0)}</span>
                       </div>
                     </div>
+                    {((sp.recolteRecettes ?? 0) > 0 || (sp.recolteCharges ?? 0) > 0) && (
+                      <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2 py-1">
+                          <span className="text-emerald-700 dark:text-emerald-300 block font-bold">Recettes Récolte</span>
+                          <span className="font-mono font-black text-emerald-700 dark:text-emerald-300">+{formatMoney(sp.recolteRecettes ?? 0)}</span>
+                        </div>
+                        <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-2 py-1">
+                          <span className="text-amber-800 dark:text-amber-300 block font-bold">Charges Récolte</span>
+                          <span className="font-mono font-black text-amber-800 dark:text-amber-300">−{formatMoney(sp.recolteCharges ?? 0)}</span>
+                        </div>
+                      </div>
+                    )}
                   </Card>
                 ))}
               </div>
