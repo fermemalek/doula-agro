@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Calendar,
   Clock,
@@ -20,6 +20,10 @@ import {
   Check,
   RefreshCw,
   ArrowUpDown,
+  Maximize2,
+  ZoomIn,
+  ZoomOut,
+  X,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -497,6 +501,71 @@ export function AgronomicPlanningCalendar({
   const [onlyValidated, setOnlyValidated] = useState<boolean>(true);
   const [consolidationGrouping, setConsolidationGrouping] = useState<"by_species" | "by_month" | "matrix">("by_species");
   const [consolidationSort, setConsolidationSort] = useState<"qty_desc" | "name_asc" | "category">("qty_desc");
+
+  // Mode Mobile-First pour la vue « Grille Calendrier Excel » (< 768px uniquement)
+  type GridRowDetail = {
+    date: string;
+    dayLabel: string;
+    hours: string;
+    category: "FERTIGATION" | "FOLIAIRE" | "PHYTO" | "REPOS" | "VENDREDI REPOS";
+    officialLabel: string;
+    speciesLabel: string;
+    parcelsLabel: string;
+    events: ScheduledDayEvent[];
+  };
+  const [mobileGridZoomMode, setMobileGridZoomMode] = useState<"fit" | "full">("fit");
+  const [gridFullscreenOpen, setGridFullscreenOpen] = useState<boolean>(false);
+  const [fullscreenZoom, setFullscreenZoom] = useState<number>(1);
+  const [selectedGridRowDetail, setSelectedGridRowDetail] = useState<GridRowDetail | null>(null);
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
+  const [fitScale, setFitScale] = useState<number>(1);
+  const [scaledTableHeight, setScaledTableHeight] = useState<number | undefined>(undefined);
+  const gridViewportRef = useRef<HTMLDivElement | null>(null);
+  const gridTableRef = useRef<HTMLTableElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const updateViewport = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobileViewport(mobile);
+      if (!mobile) {
+        setFitScale(1);
+        setScaledTableHeight(undefined);
+        return;
+      }
+      const container = gridViewportRef.current;
+      const table = gridTableRef.current;
+      if (container && table && mobileGridZoomMode === "fit") {
+        const containerW = container.clientWidth;
+        const tableW = Math.max(760, table.scrollWidth || 760);
+        if (containerW > 0 && tableW > 0) {
+          const nextScale = Math.min(1, Math.max(0.35, containerW / tableW));
+          setFitScale(nextScale);
+          setScaledTableHeight(Math.ceil(table.scrollHeight * nextScale));
+        }
+      } else {
+        setFitScale(1);
+        setScaledTableHeight(undefined);
+      }
+    };
+
+    updateViewport();
+    const timer = setTimeout(updateViewport, 120);
+    window.addEventListener("resize", updateViewport);
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && gridViewportRef.current) {
+      ro = new ResizeObserver(updateViewport);
+      ro.observe(gridViewportRef.current);
+      if (gridTableRef.current) ro.observe(gridTableRef.current);
+    }
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", updateViewport);
+      ro?.disconnect();
+    };
+  }, [activeView, mobileGridZoomMode, selectedSpecies, selectedMonth, selectedPrescriptionType, onlyValidated, recos.length]);
 
   // 1. Calcul dynamique et exact des surfaces depuis la base de données (parcels)
   const cropsWithRealSurfaces = useMemo(() => {
@@ -2069,270 +2138,594 @@ export function AgronomicPlanningCalendar({
       {/* ======================================================== */}
       {/* VUE 1 : TABLEAU CHRONOLOGIQUE EXCEL PAR CYCLES (OFFICIEL) */}
       {/* ======================================================== */}
-      {activeView === "grid" && (
-        <div className="space-y-3">
-          <div className="rounded-xl border bg-card p-3 text-xs flex flex-wrap items-center justify-between gap-2">
-            <span className="font-bold text-foreground flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-primary" />
-              <span>Planning Officiel par Cycles Hebdomadaires (Format Excel)</span>
-            </span>
-            <span className="text-[11px] font-bold text-muted-foreground">
-              Cycle 7 jours (J1 ➔ J7) · Vendredi Repos · 1 seul pulvérisateur
-            </span>
-          </div>
+      {activeView === "grid" && (() => {
+        const renderExcelGridTable = (opts: {
+          stickyDate?: boolean;
+          tableRef?: React.RefObject<HTMLTableElement | null>;
+          allowRowClick?: boolean;
+        }) => {
+          const stickyDate = Boolean(opts.stickyDate);
+          const allowRowClick = Boolean(opts.allowRowClick);
+          const stickyThCls = stickyDate ? "sticky left-0 z-20 bg-[#14453d] shadow-[2px_0_4px_rgba(0,0,0,0.12)]" : "";
+          const stickyTdBase = stickyDate ? "sticky left-0 z-10 shadow-[2px_0_4px_rgba(0,0,0,0.06)]" : "";
 
-          <div className="border rounded-2xl bg-card overflow-hidden shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-xs text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#14453d] text-white text-[11px] font-black tracking-wide text-center">
-                    <th className="py-2.5 px-3 border-r border-white/15 w-28">Date</th>
-                    <th className="py-2.5 px-3 border-r border-white/15 w-32">Jour</th>
-                    <th className="py-2.5 px-3 border-r border-white/15 w-32">Créneau Horaire</th>
-                    <th className="py-2.5 px-3 border-r border-white/15 w-36">Catégorie</th>
-                    <th className="py-2.5 px-3 border-r border-white/15 w-36">Libellé Officiel</th>
-                    <th className="py-2.5 px-3 border-r border-white/15">Espèce / Groupe</th>
-                    <th className="py-2.5 px-3 w-36">Parcelles</th>
+          return (
+            <table
+              ref={opts.tableRef as any}
+              className="w-full min-w-[760px] text-xs text-left border-collapse"
+            >
+              <thead>
+                <tr className="bg-[#14453d] text-white text-[11px] font-black tracking-wide text-center">
+                  <th className={`py-2.5 px-3 border-r border-white/15 w-28 ${stickyThCls}`}>Date</th>
+                  <th className="py-2.5 px-3 border-r border-white/15 w-32">Jour</th>
+                  <th className="py-2.5 px-3 border-r border-white/15 w-32">Créneau Horaire</th>
+                  <th className="py-2.5 px-3 border-r border-white/15 w-36">Catégorie</th>
+                  <th className="py-2.5 px-3 border-r border-white/15 w-36">Libellé Officiel</th>
+                  <th className="py-2.5 px-3 border-r border-white/15">Espèce / Groupe</th>
+                  <th className="py-2.5 px-3 w-36">Parcelles</th>
+                </tr>
+              </thead>
+              <tbody className="font-medium">
+                {calendarGridRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                      <div className="max-w-md mx-auto space-y-2">
+                        <p className="font-bold text-sm text-foreground">🌱 Aucun programme validé à afficher</p>
+                        <p className="text-xs">
+                          Tous les programmes précédents et achats ont été réinitialisés. Rendez-vous dans l&apos;onglet <strong>Recommandations</strong> pour valider la 1ère recommandation (09 Mars 2026).
+                        </p>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="font-medium">
-                  {calendarGridRows.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                        <div className="max-w-md mx-auto space-y-2">
-                          <p className="font-bold text-sm text-foreground">🌱 Aucun programme validé à afficher</p>
-                          <p className="text-xs">
-                            Tous les programmes précédents et achats ont été réinitialisés. Rendez-vous dans l&apos;onglet <strong>Recommandations</strong> pour valider la 1ère recommandation (09 Mars 2026).
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    (() => {
-                      const firstCycleDate = calendarGridRows[0]?.date || "2026-03-10";
-                      const getParcelLabel = (spId: string, isSpray: boolean): string => {
-                        if (spId === "nablara") return "P5";
-                        if (spId === "redix25") return "P6";
-                        if (spId === "pommiers") return isSpray ? "P7 puis P8" : "P7 + P8";
-                        if (spId === "oliviers_s1") return isSpray ? "P1 puis P2" : "P1 + P2";
-                        if (spId === "oliviers_s2") return isSpray ? "P3 puis P4" : "P3 + P4";
-                        return "P1 à P8";
-                      };
+                ) : (
+                  (() => {
+                    const firstCycleDate = calendarGridRows[0]?.date || "2026-03-10";
+                    const getParcelLabel = (spId: string, isSpray: boolean): string => {
+                      if (spId === "nablara") return "P5";
+                      if (spId === "redix25") return "P6";
+                      if (spId === "pommiers") return isSpray ? "P7 puis P8" : "P7 + P8";
+                      if (spId === "oliviers_s1") return isSpray ? "P1 puis P2" : "P1 + P2";
+                      if (spId === "oliviers_s2") return isSpray ? "P3 puis P4" : "P3 + P4";
+                      return "P1 à P8";
+                    };
 
-                      const formatCycleRangeFr = (startIso: string, endIso: string): string => {
-                        const months = [
-                          "JANVIER", "FÉVRIER", "MARS", "AVRIL", "MAI", "JUIN",
-                          "JUILLET", "AOÛT", "SEPTEMBRE", "OCTOBRE", "NOVEMBRE", "DÉCEMBRE",
-                        ];
-                        const [y1, m1, d1] = startIso.split("-").map(Number);
-                        const [y2, m2, d2] = endIso.split("-").map(Number);
-                        if (m1 === m2 && y1 === y2) {
-                          return `DU ${String(d1).padStart(2, "0")} AU ${String(d2).padStart(2, "0")} ${months[(m1 || 1) - 1]} ${y1}`;
-                        }
-                        return `DU ${String(d1).padStart(2, "0")} ${months[(m1 || 1) - 1]} AU ${String(d2).padStart(2, "0")} ${months[(m2 || 1) - 1]} ${y2}`;
-                      };
+                    const formatCycleRangeFr = (startIso: string, endIso: string): string => {
+                      const months = [
+                        "JANVIER", "FÉVRIER", "MARS", "AVRIL", "MAI", "JUIN",
+                        "JUILLET", "AOÛT", "SEPTEMBRE", "OCTOBRE", "NOVEMBRE", "DÉCEMBRE",
+                      ];
+                      const [y1, m1, d1] = startIso.split("-").map(Number);
+                      const [y2, m2, d2] = endIso.split("-").map(Number);
+                      if (m1 === m2 && y1 === y2) {
+                        return `DU ${String(d1).padStart(2, "0")} AU ${String(d2).padStart(2, "0")} ${months[(m1 || 1) - 1]} ${y1}`;
+                      }
+                      return `DU ${String(d1).padStart(2, "0")} ${months[(m1 || 1) - 1]} AU ${String(d2).padStart(2, "0")} ${months[(m2 || 1) - 1]} ${y2}`;
+                    };
 
-                      // Regrouper les lignes par Cycle de 7 jours (J1..J7)
-                      const cyclesMap = new Map<number, typeof calendarGridRows>();
-                      calendarGridRows.forEach((row) => {
-                        const diff = Math.max(0, diffDaysDate(firstCycleDate, row.date));
-                        const cycleNum = Math.floor(diff / 7) + 1;
-                        if (!cyclesMap.has(cycleNum)) cyclesMap.set(cycleNum, []);
-                        cyclesMap.get(cycleNum)!.push(row);
-                      });
+                    // Regrouper les lignes par Cycle de 7 jours (J1..J7)
+                    const cyclesMap = new Map<number, typeof calendarGridRows>();
+                    calendarGridRows.forEach((row) => {
+                      const diff = Math.max(0, diffDaysDate(firstCycleDate, row.date));
+                      const cycleNum = Math.floor(diff / 7) + 1;
+                      if (!cyclesMap.has(cycleNum)) cyclesMap.set(cycleNum, []);
+                      cyclesMap.get(cycleNum)!.push(row);
+                    });
 
-                      const hasOliviersActive = calendarGridRows.some((r) =>
-                        r.events.some((e) => e.speciesId.startsWith("oliviers"))
+                    const hasOliviersActive = calendarGridRows.some((r) =>
+                      r.events.some((e) => e.speciesId.startsWith("oliviers"))
+                    );
+
+                    const renderedElements: JSX.Element[] = [];
+
+                    Array.from(cyclesMap.entries()).forEach(([cycleNum, cycleRows]) => {
+                      const cycleStartIso = cycleRows[0].date;
+                      const cycleEndIso = cycleRows[cycleRows.length - 1].date;
+                      const rangeLabel = formatCycleRangeFr(cycleStartIso, cycleEndIso);
+
+                      renderedElements.push(
+                        <tr key={`cycle-hdr-${cycleNum}`} className="bg-[#dce6e4] dark:bg-slate-800 border-y-2 border-slate-500/40">
+                          <td colSpan={7} className="py-2 px-3 font-black text-xs text-[#14453d] dark:text-emerald-300 tracking-wide">
+                            CYCLE {cycleNum} — SEMAINE {rangeLabel} (Vendredi Repos)
+                          </td>
+                        </tr>
                       );
 
-                      const renderedElements: JSX.Element[] = [];
+                      cycleRows.forEach((row) => {
+                        const dayInCycle = (Math.max(0, diffDaysDate(firstCycleDate, row.date)) % 7) + 1;
+                        const dayLabel = `${row.dayName} (J${dayInCycle})`;
+                        const isFri = row.dayOfWeek === 5;
 
-                      Array.from(cyclesMap.entries()).forEach(([cycleNum, cycleRows]) => {
-                        const cycleStartIso = cycleRows[0].date;
-                        const cycleEndIso = cycleRows[cycleRows.length - 1].date;
-                        const rangeLabel = formatCycleRangeFr(cycleStartIso, cycleEndIso);
-
-                        renderedElements.push(
-                          <tr key={`cycle-hdr-${cycleNum}`} className="bg-[#dce6e4] dark:bg-slate-800 border-y-2 border-slate-500/40">
-                            <td colSpan={7} className="py-2 px-3 font-black text-xs text-[#14453d] dark:text-emerald-300 tracking-wide">
-                              CYCLE {cycleNum} — SEMAINE {rangeLabel} (Vendredi Repos)
-                            </td>
-                          </tr>
-                        );
-
-                        cycleRows.forEach((row) => {
-                          const dayInCycle = (Math.max(0, diffDaysDate(firstCycleDate, row.date)) % 7) + 1;
-                          const dayLabel = `${row.dayName} (J${dayInCycle})`;
-                          const isFri = row.dayOfWeek === 5;
-
-                          if (!row.isPassageDay || row.events.length === 0) {
-                            if (isFri) {
-                              renderedElements.push(
-                                <tr
-                                  key={`fri-${row.date}`}
-                                  className="bg-rose-50/80 dark:bg-rose-950/25 border-b border-slate-300 dark:border-slate-700 text-[#8b1a1a] dark:text-rose-300 italic font-bold text-center"
-                                >
-                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">{row.date}</td>
-                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">{dayLabel}</td>
-                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">—</td>
-                                  <td className="py-2 px-2 border-r border-slate-200 dark:border-slate-700 bg-[#9b1c1c] text-white not-italic font-black text-[10.5px] uppercase tracking-wide">
-                                    VENDREDI REPOS
-                                  </td>
-                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Jour de Repos</td>
-                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Toute la Ferme</td>
-                                  <td className="py-2 px-2.5">P1 à P8</td>
-                                </tr>
-                              );
-                            } else {
-                              renderedElements.push(
-                                <tr
-                                  key={`rest-${row.date}`}
-                                  className="bg-slate-50/70 dark:bg-slate-900/30 border-b border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 italic text-center"
-                                >
-                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">{row.date}</td>
-                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">{dayLabel}</td>
-                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">—</td>
-                                  <td className="py-2 px-2 border-r border-slate-200 dark:border-slate-700 bg-[#5a6b7c] text-white not-italic font-black text-[10.5px] uppercase tracking-wide">
-                                    REPOS
-                                  </td>
-                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Eau claire / Repos</td>
-                                  <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Toutes Parcelles</td>
-                                  <td className="py-2 px-2.5">{hasOliviersActive ? "P1 à P8" : "P5, P6, P7, P8"}</td>
-                                </tr>
-                              );
-                            }
-                            return;
-                          }
-
-                          // Construire les lignes du jour (fusionner Nablara + Redix 25 sur Foliaire / Phyto identique)
-                          type ExcelLine = {
-                            key: string;
-                            hours: string;
-                            category: "FERTIGATION" | "FOLIAIRE" | "PHYTO";
-                            officialLabel: string;
-                            speciesLabel: string;
-                            parcelsLabel: string;
-                          };
-
-                          const lines: ExcelLine[] = [];
-                          const fertDayEvs = row.events.filter((e) => e.type === "fertigation" || e.type === "pure_irrigation");
-                          const sprayDayEvs = row.events.filter((e) => e.type === "pulverisation" || e.type === "phyto");
-
-                          fertDayEvs.forEach((ev, idx) => {
-                            const badge = getEventBadgeInfo(ev);
-                            lines.push({
-                              key: `f-${row.date}-${idx}-${ev.speciesId}`,
-                              hours: ev.hours,
-                              category: "FERTIGATION",
-                              officialLabel: badge.text,
-                              speciesLabel: ev.speciesName,
-                              parcelsLabel: getParcelLabel(ev.speciesId, false),
-                            });
-                          });
-
-                          // Fusionner Nablara + Redix 25 (ou Oliviers S1 + S2) si même type + même libellé le même jour
-                          const mergedSprayMap = new Map<string, ScheduledDayEvent[]>();
-                          sprayDayEvs.forEach((ev) => {
-                            const badge = getEventBadgeInfo(ev);
-                            const fam =
-                              ev.speciesId === "nablara" || ev.speciesId === "redix25"
-                                ? "nectarines"
-                                : ev.speciesId.startsWith("oliviers")
-                                  ? "oliviers"
-                                  : ev.speciesId;
-                            const mKey = `${ev.type}::${badge.text}::${fam}`;
-                            if (!mergedSprayMap.has(mKey)) mergedSprayMap.set(mKey, []);
-                            mergedSprayMap.get(mKey)!.push(ev);
-                          });
-
-                          Array.from(mergedSprayMap.entries()).forEach(([mKey, groupEvs]) => {
-                            const firstEv = groupEvs[0];
-                            const badge = getEventBadgeInfo(firstEv);
-                            const isNectPair =
-                              groupEvs.some((e) => e.speciesId === "nablara") &&
-                              groupEvs.some((e) => e.speciesId === "redix25");
-                            const isOlivPair =
-                              groupEvs.some((e) => e.speciesId === "oliviers_s1") &&
-                              groupEvs.some((e) => e.speciesId === "oliviers_s2");
-
-                            lines.push({
-                              key: `s-${row.date}-${mKey}`,
-                              hours: firstEv.hours,
-                              category: firstEv.type === "pulverisation" ? "FOLIAIRE" : "PHYTO",
-                              officialLabel: badge.text,
-                              speciesLabel: isNectPair
-                                ? "Nectarines (P5, P6)"
-                                : isOlivPair
-                                  ? "Oliviers (P1 à P4)"
-                                  : firstEv.speciesName,
-                              parcelsLabel: isNectPair
-                                ? "P5 puis P6"
-                                : isOlivPair
-                                  ? "P1-P2 puis P3-P4"
-                                  : getParcelLabel(firstEv.speciesId, true),
-                            });
-                          });
-
-                          lines.forEach((line, lIdx) => {
-                            const isLastOfDay = lIdx === lines.length - 1;
-                            const rowBg =
-                              line.category === "FERTIGATION"
-                                ? "bg-[#eef7ee]/70 dark:bg-emerald-950/20"
-                                : line.category === "FOLIAIRE"
-                                  ? "bg-[#edf4fc]/80 dark:bg-blue-950/20"
-                                  : "bg-[#fef2eb]/80 dark:bg-orange-950/20";
-                            const catBg =
-                              line.category === "FERTIGATION"
-                                ? "bg-[#226b2c] text-white"
-                                : line.category === "FOLIAIRE"
-                                  ? "bg-[#1164b4] text-white"
-                                  : "bg-[#c83e0b] text-white";
-
+                        if (!row.isPassageDay || row.events.length === 0) {
+                          if (isFri) {
+                            const friDetail: GridRowDetail = {
+                              date: row.date,
+                              dayLabel,
+                              hours: "—",
+                              category: "VENDREDI REPOS",
+                              officialLabel: "Jour de Repos",
+                              speciesLabel: "Toute la Ferme",
+                              parcelsLabel: "P1 à P8",
+                              events: [],
+                            };
                             renderedElements.push(
                               <tr
-                                key={line.key}
-                                className={`${rowBg} ${
-                                  isLastOfDay
-                                    ? "border-b-2 border-slate-700/50 dark:border-slate-500"
-                                    : "border-b border-slate-200/80 dark:border-slate-800"
-                                } text-center hover:brightness-95 transition`}
+                                key={`fri-${row.date}`}
+                                onClick={allowRowClick ? () => setSelectedGridRowDetail(friDetail) : undefined}
+                                className={`bg-rose-50/80 dark:bg-rose-950/25 border-b border-slate-300 dark:border-slate-700 text-[#8b1a1a] dark:text-rose-300 italic font-bold text-center ${allowRowClick ? "cursor-pointer active:opacity-80" : ""}`}
                               >
-                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 font-black text-foreground whitespace-nowrap">
-                                  {row.date}
+                                <td className={`py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap ${stickyTdBase} ${stickyDate ? "bg-rose-50 dark:bg-rose-950" : ""}`}>{row.date}</td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">{dayLabel}</td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">—</td>
+                                <td className="py-2 px-2 border-r border-slate-200 dark:border-slate-700 bg-[#9b1c1c] text-white not-italic font-black text-[10.5px] uppercase tracking-wide">
+                                  VENDREDI REPOS
                                 </td>
-                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 text-foreground/90 whitespace-nowrap">
-                                  {dayLabel}
-                                </td>
-                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 font-mono text-foreground/90 whitespace-nowrap">
-                                  {line.hours}
-                                </td>
-                                <td className={`py-2 px-2 border-r border-slate-200 dark:border-slate-700 font-black text-[10.5px] uppercase tracking-wide ${catBg}`}>
-                                  {line.category}
-                                </td>
-                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 font-black text-foreground">
-                                  {line.officialLabel}
-                                </td>
-                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 text-left font-semibold text-foreground">
-                                  {line.speciesLabel}
-                                </td>
-                                <td className="py-2 px-2.5 font-semibold text-foreground/90 whitespace-nowrap">
-                                  {line.parcelsLabel}
-                                </td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Jour de Repos</td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Toute la Ferme</td>
+                                <td className="py-2 px-2.5">P1 à P8</td>
                               </tr>
                             );
+                          } else {
+                            const restParcels = hasOliviersActive ? "P1 à P8" : "P5, P6, P7, P8";
+                            const restDetail: GridRowDetail = {
+                              date: row.date,
+                              dayLabel,
+                              hours: "—",
+                              category: "REPOS",
+                              officialLabel: "Eau claire / Repos",
+                              speciesLabel: "Toutes Parcelles",
+                              parcelsLabel: restParcels,
+                              events: [],
+                            };
+                            renderedElements.push(
+                              <tr
+                                key={`rest-${row.date}`}
+                                onClick={allowRowClick ? () => setSelectedGridRowDetail(restDetail) : undefined}
+                                className={`bg-slate-50/70 dark:bg-slate-900/30 border-b border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 italic text-center ${allowRowClick ? "cursor-pointer active:opacity-80" : ""}`}
+                              >
+                                <td className={`py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap ${stickyTdBase} ${stickyDate ? "bg-slate-50 dark:bg-slate-900" : ""}`}>{row.date}</td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 whitespace-nowrap">{dayLabel}</td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">—</td>
+                                <td className="py-2 px-2 border-r border-slate-200 dark:border-slate-700 bg-[#5a6b7c] text-white not-italic font-black text-[10.5px] uppercase tracking-wide">
+                                  REPOS
+                                </td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Eau claire / Repos</td>
+                                <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700">Toutes Parcelles</td>
+                                <td className="py-2 px-2.5">{restParcels}</td>
+                              </tr>
+                            );
+                          }
+                          return;
+                        }
+
+                        // Construire les lignes du jour (fusionner Nablara + Redix 25 sur Foliaire / Phyto identique)
+                        type ExcelLine = {
+                          key: string;
+                          hours: string;
+                          category: "FERTIGATION" | "FOLIAIRE" | "PHYTO";
+                          officialLabel: string;
+                          speciesLabel: string;
+                          parcelsLabel: string;
+                          events: ScheduledDayEvent[];
+                        };
+
+                        const lines: ExcelLine[] = [];
+                        const fertDayEvs = row.events.filter((e) => e.type === "fertigation" || e.type === "pure_irrigation");
+                        const sprayDayEvs = row.events.filter((e) => e.type === "pulverisation" || e.type === "phyto");
+
+                        fertDayEvs.forEach((ev, idx) => {
+                          const badge = getEventBadgeInfo(ev);
+                          lines.push({
+                            key: `f-${row.date}-${idx}-${ev.speciesId}`,
+                            hours: ev.hours,
+                            category: "FERTIGATION",
+                            officialLabel: badge.text,
+                            speciesLabel: ev.speciesName,
+                            parcelsLabel: getParcelLabel(ev.speciesId, false),
+                            events: [ev],
                           });
                         });
-                      });
 
-                      return renderedElements;
-                    })()
-                  )}
-                </tbody>
-              </table>
+                        // Fusionner Nablara + Redix 25 (ou Oliviers S1 + S2) si même type + même libellé le même jour
+                        const mergedSprayMap = new Map<string, ScheduledDayEvent[]>();
+                        sprayDayEvs.forEach((ev) => {
+                          const badge = getEventBadgeInfo(ev);
+                          const fam =
+                            ev.speciesId === "nablara" || ev.speciesId === "redix25"
+                              ? "nectarines"
+                              : ev.speciesId.startsWith("oliviers")
+                                ? "oliviers"
+                                : ev.speciesId;
+                          const mKey = `${ev.type}::${badge.text}::${fam}`;
+                          if (!mergedSprayMap.has(mKey)) mergedSprayMap.set(mKey, []);
+                          mergedSprayMap.get(mKey)!.push(ev);
+                        });
+
+                        Array.from(mergedSprayMap.entries()).forEach(([mKey, groupEvs]) => {
+                          const firstEv = groupEvs[0];
+                          const badge = getEventBadgeInfo(firstEv);
+                          const isNectPair =
+                            groupEvs.some((e) => e.speciesId === "nablara") &&
+                            groupEvs.some((e) => e.speciesId === "redix25");
+                          const isOlivPair =
+                            groupEvs.some((e) => e.speciesId === "oliviers_s1") &&
+                            groupEvs.some((e) => e.speciesId === "oliviers_s2");
+
+                          lines.push({
+                            key: `s-${row.date}-${mKey}`,
+                            hours: firstEv.hours,
+                            category: firstEv.type === "pulverisation" ? "FOLIAIRE" : "PHYTO",
+                            officialLabel: badge.text,
+                            speciesLabel: isNectPair
+                              ? "Nectarines (P5, P6)"
+                              : isOlivPair
+                                ? "Oliviers (P1 à P4)"
+                                : firstEv.speciesName,
+                            parcelsLabel: isNectPair
+                              ? "P5 puis P6"
+                              : isOlivPair
+                                ? "P1-P2 puis P3-P4"
+                                : getParcelLabel(firstEv.speciesId, true),
+                            events: groupEvs,
+                          });
+                        });
+
+                        lines.forEach((line, lIdx) => {
+                          const isLastOfDay = lIdx === lines.length - 1;
+                          const rowBg =
+                            line.category === "FERTIGATION"
+                              ? "bg-[#eef7ee]/70 dark:bg-emerald-950/20"
+                              : line.category === "FOLIAIRE"
+                                ? "bg-[#edf4fc]/80 dark:bg-blue-950/20"
+                                : "bg-[#fef2eb]/80 dark:bg-orange-950/20";
+                          const stickyRowBg =
+                            line.category === "FERTIGATION"
+                              ? "bg-[#eef7ee] dark:bg-emerald-950"
+                              : line.category === "FOLIAIRE"
+                                ? "bg-[#edf4fc] dark:bg-blue-950"
+                                : "bg-[#fef2eb] dark:bg-orange-950";
+                          const catBg =
+                            line.category === "FERTIGATION"
+                              ? "bg-[#226b2c] text-white"
+                              : line.category === "FOLIAIRE"
+                                ? "bg-[#1164b4] text-white"
+                                : "bg-[#c83e0b] text-white";
+
+                          const rowDetail: GridRowDetail = {
+                            date: row.date,
+                            dayLabel,
+                            hours: line.hours,
+                            category: line.category,
+                            officialLabel: line.officialLabel,
+                            speciesLabel: line.speciesLabel,
+                            parcelsLabel: line.parcelsLabel,
+                            events: line.events,
+                          };
+
+                          renderedElements.push(
+                            <tr
+                              key={line.key}
+                              onClick={allowRowClick ? () => setSelectedGridRowDetail(rowDetail) : undefined}
+                              className={`${rowBg} ${
+                                isLastOfDay
+                                  ? "border-b-2 border-slate-700/50 dark:border-slate-500"
+                                  : "border-b border-slate-200/80 dark:border-slate-800"
+                              } text-center hover:brightness-95 transition ${allowRowClick ? "cursor-pointer active:brightness-90" : ""}`}
+                            >
+                              <td className={`py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 font-black text-foreground whitespace-nowrap ${stickyTdBase} ${stickyDate ? stickyRowBg : ""}`}>
+                                {row.date}
+                              </td>
+                              <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 text-foreground/90 whitespace-nowrap">
+                                {dayLabel}
+                              </td>
+                              <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 font-mono text-foreground/90 whitespace-nowrap">
+                                {line.hours}
+                              </td>
+                              <td className={`py-2 px-2 border-r border-slate-200 dark:border-slate-700 font-black text-[10.5px] uppercase tracking-wide ${catBg}`}>
+                                {line.category}
+                              </td>
+                              <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 font-black text-foreground">
+                                {line.officialLabel}
+                              </td>
+                              <td className="py-2 px-2.5 border-r border-slate-200 dark:border-slate-700 text-left font-semibold text-foreground">
+                                {line.speciesLabel}
+                              </td>
+                              <td className="py-2 px-2.5 font-semibold text-foreground/90 whitespace-nowrap">
+                                {line.parcelsLabel}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      });
+                    });
+
+                    return renderedElements;
+                  })()
+                )}
+              </tbody>
+            </table>
+          );
+        };
+
+        const isMobileFitActive = isMobileViewport && mobileGridZoomMode === "fit";
+        const isMobileFullActive = isMobileViewport && mobileGridZoomMode === "full";
+
+        return (
+          <div className="space-y-3">
+            <div className="rounded-xl border bg-card p-3 text-xs flex flex-wrap items-center justify-between gap-2">
+              <span className="font-bold text-foreground flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-primary" />
+                <span>Planning Officiel par Cycles Hebdomadaires (Format Excel)</span>
+              </span>
+              <span className="text-[11px] font-bold text-muted-foreground">
+                Cycle 7 jours (J1 ➔ J7) · Vendredi Repos · 1 seul pulvérisateur
+              </span>
             </div>
+
+            {/* Barre de contrôle Mobile uniquement (< 768px, masquée sur desktop et impression) */}
+            <div className="md:hidden print:hidden flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/40 px-2.5 py-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setMobileGridZoomMode((m) => (m === "fit" ? "full" : "fit"))}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#14453d] text-white px-2.5 py-1.5 text-[11px] font-black shadow-2xs active:scale-95 transition cursor-pointer"
+                >
+                  <span>{mobileGridZoomMode === "fit" ? "🔍 Agrandir (100%)" : "📐 Vue complète"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFullscreenZoom(1);
+                    setGridFullscreenOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border bg-card text-foreground px-2.5 py-1.5 text-[11px] font-black shadow-2xs active:scale-95 transition cursor-pointer"
+                >
+                  <span>⛶ Plein écran</span>
+                </button>
+              </div>
+              <span className="text-[10px] font-semibold text-muted-foreground">
+                👆 Touchez une ligne pour agrandir
+              </span>
+            </div>
+
+            <div className="border rounded-2xl bg-card overflow-hidden shadow-xs">
+              <div
+                ref={gridViewportRef}
+                className={isMobileFitActive ? "overflow-hidden print:overflow-visible" : "overflow-x-auto print:overflow-visible"}
+                style={
+                  isMobileFitActive && scaledTableHeight
+                    ? { height: `${scaledTableHeight}px` }
+                    : undefined
+                }
+              >
+                <div
+                  style={
+                    isMobileFitActive
+                      ? {
+                          transform: `scale(${fitScale})`,
+                          transformOrigin: "top left",
+                          width: "760px",
+                        }
+                      : undefined
+                  }
+                >
+                  {renderExcelGridTable({
+                    stickyDate: isMobileFullActive,
+                    tableRef: gridTableRef,
+                    allowRowClick: isMobileViewport,
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Modale Plein écran (scrollable et zoomable) */}
+            {gridFullscreenOpen && (
+              <div className="fixed inset-0 z-50 bg-background flex flex-col print:hidden">
+                <div className="flex items-center justify-between gap-2 bg-[#14453d] text-white px-3 py-2.5 shadow-md shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Maximize2 className="h-4 w-4 text-emerald-300 shrink-0" />
+                    <span className="text-xs font-black truncate">Planning Excel — Plein écran</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setFullscreenZoom((z) => Math.max(0.5, Math.round((z - 0.15) * 100) / 100))}
+                      className="h-8 w-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center cursor-pointer"
+                      aria-label="Dézoomer"
+                    >
+                      <ZoomOut className="h-4 w-4" />
+                    </button>
+                    <span className="text-[11px] font-mono font-black w-11 text-center">
+                      {Math.round(fullscreenZoom * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setFullscreenZoom((z) => Math.min(1.6, Math.round((z + 0.15) * 100) / 100))}
+                      className="h-8 w-8 rounded-lg bg-white/15 hover:bg-white/25 flex items-center justify-center cursor-pointer"
+                      aria-label="Zoomer"
+                    >
+                      <ZoomIn className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGridFullscreenOpen(false)}
+                      className="inline-flex items-center gap-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1.5 text-xs font-black cursor-pointer ml-1"
+                    >
+                      <span>Fermer</span>
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-auto p-2 bg-muted/20">
+                  <div
+                    style={{
+                      transform: `scale(${fullscreenZoom})`,
+                      transformOrigin: "top left",
+                      width: fullscreenZoom < 1 ? `${Math.round(760 / fullscreenZoom)}px` : "max-content",
+                    }}
+                  >
+                    <div className="rounded-xl border bg-card overflow-hidden shadow-xs">
+                      {renderExcelGridTable({
+                        stickyDate: fullscreenZoom >= 1,
+                        allowRowClick: true,
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Modale Détails agrandis au clic sur une ligne (Mobile & Plein écran) */}
+            {selectedGridRowDetail && (
+              <div
+                className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-3 print:hidden"
+                onClick={() => setSelectedGridRowDetail(null)}
+              >
+                <div
+                  className="w-full max-w-md max-h-[85vh] overflow-y-auto rounded-3xl border bg-card shadow-2xl animate-in fade-in-50 zoom-in-95 duration-150"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* En-tête coloré par catégorie */}
+                  <div
+                    className={`px-4 py-3.5 text-white flex items-center justify-between gap-2 ${
+                      selectedGridRowDetail.category === "FERTIGATION"
+                        ? "bg-[#226b2c]"
+                        : selectedGridRowDetail.category === "FOLIAIRE"
+                          ? "bg-[#1164b4]"
+                          : selectedGridRowDetail.category === "PHYTO"
+                            ? "bg-[#c83e0b]"
+                            : selectedGridRowDetail.category === "VENDREDI REPOS"
+                              ? "bg-[#9b1c1c]"
+                              : "bg-[#5a6b7c]"
+                    }`}
+                  >
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider opacity-90 block">
+                        {selectedGridRowDetail.category}
+                      </span>
+                      <h3 className="text-base font-black leading-tight">
+                        {selectedGridRowDetail.officialLabel}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedGridRowDetail(null)}
+                      className="h-8 w-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer shrink-0"
+                      aria-label="Fermer"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Détails complets de la ligne */}
+                  <div className="p-4 space-y-3 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-xl border bg-muted/30 p-2.5">
+                        <span className="text-[10px] font-bold text-muted-foreground block">Date & Jour</span>
+                        <p className="font-black text-foreground mt-0.5">{selectedGridRowDetail.date}</p>
+                        <p className="text-[11px] font-semibold text-muted-foreground">{selectedGridRowDetail.dayLabel}</p>
+                      </div>
+                      <div className="rounded-xl border bg-muted/30 p-2.5">
+                        <span className="text-[10px] font-bold text-muted-foreground block">Créneau Horaire</span>
+                        <p className="font-mono font-black text-foreground text-sm mt-1">
+                          {selectedGridRowDetail.hours}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border bg-muted/30 p-2.5">
+                        <span className="text-[10px] font-bold text-muted-foreground block">Espèce / Groupe</span>
+                        <p className="font-black text-foreground mt-0.5">{selectedGridRowDetail.speciesLabel}</p>
+                      </div>
+                      <div className="rounded-xl border bg-muted/30 p-2.5">
+                        <span className="text-[10px] font-bold text-muted-foreground block">Parcelles</span>
+                        <p className="font-black text-foreground mt-0.5">{selectedGridRowDetail.parcelsLabel}</p>
+                      </div>
+                    </div>
+
+                    {/* Produits & Bacs associés */}
+                    {selectedGridRowDetail.events.length > 0 && (
+                      <div className="space-y-2 pt-1 border-t">
+                        <p className="text-[11px] font-black uppercase tracking-wide text-muted-foreground">
+                          Produits & Bacs associés
+                        </p>
+                        {selectedGridRowDetail.events.map((ev, evIdx) => (
+                          <div key={evIdx} className="rounded-2xl border bg-muted/20 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-black text-foreground flex items-center gap-1.5">
+                                <span>{ev.cropConfig.icon}</span>
+                                <span>{ev.speciesName}</span>
+                              </span>
+                              {ev.irrigationDuration && (ev.type === "fertigation" || ev.type === "pure_irrigation") && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                                  ⏱ {ev.irrigationDuration}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Bacs Fertigation */}
+                            {ev.bacs && ev.bacs.length > 0 && (
+                              <div className="space-y-1.5">
+                                {ev.bacs.map((b) => (
+                                  <div key={b.bac} className="rounded-xl border bg-background p-2 space-y-1">
+                                    <span className="text-[10px] font-black uppercase text-emerald-700 dark:text-emerald-300 block">
+                                      🧪 Bac {b.bac}
+                                    </span>
+                                    {b.items.map((it, i) => (
+                                      <div key={i} className="flex items-center justify-between gap-2 text-[11px]">
+                                        <span className="font-semibold text-foreground">{it.name}</span>
+                                        <span className="font-black text-emerald-700 dark:text-emerald-300 shrink-0">
+                                          {it.totalParcel.toFixed(1)} {it.unit}{" "}
+                                          <span className="text-[10px] font-normal text-muted-foreground">
+                                            ({it.doseHa}/ha)
+                                          </span>
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Produits Foliaire / Phyto */}
+                            {ev.products && ev.products.length > 0 && (
+                              <div className="rounded-xl border bg-background p-2 space-y-1.5">
+                                {ev.products.map((it, i) => (
+                                  <div key={i} className="flex items-start justify-between gap-2 text-[11px] border-b last:border-0 pb-1 last:pb-0">
+                                    <div className="min-w-0">
+                                      <p className="font-bold text-foreground">{it.name}</p>
+                                      {(it.cible || it.dar) && (
+                                        <p className="text-[10px] text-muted-foreground">
+                                          {it.cible ? `Cible : ${it.cible}` : ""}
+                                          {it.cible && it.dar ? " · " : ""}
+                                          {it.dar ? `DAR : ${it.dar}` : ""}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <span className="font-black text-primary shrink-0">
+                                      {it.totalParcel.toFixed(1)} {it.unit}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setSelectedGridRowDetail(null)}
+                      className="w-full rounded-xl font-black text-xs h-10"
+                    >
+                      Fermer
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ======================================================== */}
       {/* VUE 2 : FICHES HORAIRES DÉTAILLÉES (AVEC BACS & DOSES)    */}
