@@ -26,6 +26,7 @@ import {
   Activity,
   Shield,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import { PestVisualGalleryDialog } from './PestVisualGalleryDialog';
 import { useTranslation } from '@/lib/i18n';
@@ -41,6 +42,8 @@ import {
   TANK_MIX_COMPATIBILITY_RULES,
   getPestVisualAsset,
   checkProductBlockedForGrowthStage,
+  checkMultiSpeciesProductStage,
+  SPECIES_LABELS,
   isFruitBearingStage,
   getDefaultPhenologicalStage,
   TreatmentActionRule,
@@ -59,13 +62,22 @@ import {
 import { useAllModuleRecords } from '@/lib/modules-store';
 import { useRecommendations } from '@/lib/cloud/recommendations';
 import { getRainForecast48h, RainForecast48h } from '@/lib/weather-forecast';
-import { getEstimatedHarvestDateISO, computeDaysBeforeHarvest } from '@/lib/safety-checks';
+import {
+  getEstimatedHarvestDateISO,
+  computeDaysBeforeHarvest,
+  getSavedHarvestDate,
+  saveHarvestDate,
+  resetSavedHarvestDate,
+  syncHarvestDatesFromCloud,
+} from '@/lib/safety-checks';
 
 interface PhytoAdvisorModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cropGroup?: string; // ex: "oliviers", "pommiers", "nectarinier"
   initialSpecies?: PhytoCultureKey; // "olivier" | "nectarinier" | "pommier"
+  selectedSpecies?: PhytoCultureKey[]; // 1 à 3 espèces cochées dans RecommendationForm
+  estimatedSprayVolumeL?: number; // Volume cumulé estimé (500 L/parc. Olivier & Pommier, 1000 L/parc. Nectarine)
   onSelectIngredient?: (ingredient: ActiveIngredient, pest: PestTarget) => void;
 }
 
@@ -74,6 +86,8 @@ export function PhytoAdvisorModal({
   onOpenChange,
   cropGroup = 'nectarinier',
   initialSpecies,
+  selectedSpecies,
+  estimatedSprayVolumeL,
   onSelectIngredient,
 }: PhytoAdvisorModalProps) {
   const { lang } = useTranslation();
@@ -141,38 +155,104 @@ export function PhytoAdvisorModal({
   const [isRapidShootsGrowth, setIsRapidShootsGrowth] = useState<boolean>(
     selectedStage === 'gonflement_bourgeons' || selectedStage === 'floraison' || selectedStage === 'chute_petales_nouaison' || selectedStage === 'grossissement_fruit'
   );
-  // Date de récolte prévisionnelle calculée automatiquement selon l'espèce (modifiable par l'utilisateur)
+  // Date de récolte prévisionnelle persistante (localStorage + Supabase) par espèce & campagne
   const [customHarvestDate, setCustomHarvestDate] = useState<string>(() =>
     getEstimatedHarvestDateISO(initialCrop)
   );
+  const [harvestSavedFlag, setHarvestSavedFlag] = useState<boolean>(false);
+  const [hasCustomSavedHarvest, setHasCustomSavedHarvest] = useState<boolean>(() =>
+    Boolean(getSavedHarvestDate(initialCrop))
+  );
+
+  // Hydrater depuis Supabase à l'ouverture, puis recharger la date sauvegardée de l'espèce active
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    void syncHarvestDatesFromCloud().then(() => {
+      if (!active) return;
+      setCustomHarvestDate(getEstimatedHarvestDateISO(currentCrop));
+      setHasCustomSavedHarvest(Boolean(getSavedHarvestDate(currentCrop)));
+    });
+    return () => {
+      active = false;
+    };
+  }, [open, currentCrop]);
+
   useEffect(() => {
     setCustomHarvestDate(getEstimatedHarvestDateISO(currentCrop));
+    setHasCustomSavedHarvest(Boolean(getSavedHarvestDate(currentCrop)));
+    setHarvestSavedFlag(false);
   }, [currentCrop]);
 
+  const activeSpeciesList: PhytoCultureKey[] = useMemo(() => {
+    if (Array.isArray(selectedSpecies) && selectedSpecies.length > 0) {
+      return selectedSpecies;
+    }
+    return [resolvedInitialSpecies];
+  }, [selectedSpecies, resolvedInitialSpecies]);
+
+  const isMultiSpecies = activeSpeciesList.length > 1;
+
+  const currentCropAsCultureKey: PhytoCultureKey =
+    currentCrop === 'olive' ? 'olivier' : currentCrop === 'pomme' ? 'pommier' : 'nectarinier';
+
+  const speciesStages = useMemo(() => {
+    const now = new Date();
+    return activeSpeciesList.map((sp) => ({
+      species: sp,
+      stage: sp === currentCropAsCultureKey ? selectedStage : getDefaultPhenologicalStage(sp, now),
+    }));
+  }, [activeSpeciesList, currentCropAsCultureKey, selectedStage]);
+
   const daysBeforeHarvest = useMemo(() => {
-    const computed = computeDaysBeforeHarvest(currentCrop, new Date(), customHarvestDate);
+    const now = new Date();
+    if (isMultiSpecies) {
+      // En multi-espèces : retenir la récolte la plus proche parmi les espèces en stade fruitier (ou toutes si hors fruits)
+      const fruitEntries = speciesStages.filter((s) => isFruitBearingStage(s.stage));
+      const pool = fruitEntries.length > 0 ? fruitEntries : speciesStages;
+      const diffs = pool.map((entry) => {
+        const overrideIso =
+          entry.species === currentCropAsCultureKey
+            ? customHarvestDate
+            : getEstimatedHarvestDateISO(entry.species, '', now);
+        return Math.max(0, computeDaysBeforeHarvest(entry.species, now, overrideIso));
+      });
+      return diffs.length > 0 ? Math.min(...diffs) : 0;
+    }
+    const computed = computeDaysBeforeHarvest(currentCrop, now, customHarvestDate);
     return Math.max(0, computed);
-  }, [currentCrop, customHarvestDate]);
+  }, [isMultiSpecies, speciesStages, currentCrop, currentCropAsCultureKey, customHarvestDate]);
+
+  const cumulativeVolumeL = useMemo(() => {
+    if (estimatedSprayVolumeL && estimatedSprayVolumeL > 0) return estimatedSprayVolumeL;
+    return activeSpeciesList.reduce((sum, sp) => {
+      if (sp === 'olivier') return sum + 4 * 500;
+      if (sp === 'pommier') return sum + 2 * 500;
+      return sum + 2 * 1000;
+    }, 0);
+  }, [estimatedSprayVolumeL, activeSpeciesList]);
 
   // État du calculateur de cuve
   const [tankVolume, setTankVolume] = useState<number>(1000);
   const [calcDose100L, setCalcDose100L] = useState<number>(40);
   const [calcUnit, setCalcUnit] = useState<'g' | 'cc'>('cc');
 
-  // Recherche, filtre espèce (pommier / nectarinier / olivier) et masquage des produits bloqués (Onglet 3)
+  // Recherche, filtre espèce (multi / all / pommier / nectarinier / olivier) et masquage des produits bloqués (Onglet 3)
   const [catalogSearch, setCatalogSearch] = useState('');
-  const [catalogCropFilter, setCatalogCropFilter] = useState<'all' | PhytoCultureKey>(resolvedInitialSpecies);
+  const [catalogCropFilter, setCatalogCropFilter] = useState<'multi' | 'all' | PhytoCultureKey>(
+    isMultiSpecies ? 'multi' : resolvedInitialSpecies
+  );
   const [hideBlockedInCatalog, setHideBlockedInCatalog] = useState<boolean>(false);
 
-  // À chaque ouverture de PhytoAdvisorModal, synchroniser Onglet 1 + Onglet 3 sur initialSpecies
+  // À chaque ouverture de PhytoAdvisorModal, synchroniser Onglet 1 + Onglet 3 sur initialSpecies / multi-espèces
   // et positionner automatiquement le stade phénologique selon la date courante
   useEffect(() => {
     if (!open) return;
     setCurrentCrop(initialCrop);
-    setCatalogCropFilter(resolvedInitialSpecies);
+    setCatalogCropFilter(isMultiSpecies ? 'multi' : resolvedInitialSpecies);
     setSelectedStage(getDefaultPhenologicalStage(resolvedInitialSpecies, new Date()));
     setSelectedPestId(null);
-  }, [open, initialCrop, resolvedInitialSpecies]);
+  }, [open, initialCrop, resolvedInitialSpecies, isMultiSpecies]);
 
   // Traitements historiques passés pour détecter les résistances
   const { data: recos = [] } = useRecommendations();
@@ -291,7 +371,13 @@ export function PhytoAdvisorModal({
     return eligiblePests.find(p => p.id === selectedPestId) || eligiblePests[0] || null;
   }, [selectedPestId, eligiblePests]);
 
-  const isFruitStage = useMemo(() => isFruitBearingStage(selectedStage), [selectedStage]);
+  const isFruitStage = useMemo(
+    () =>
+      isMultiSpecies
+        ? speciesStages.some((s) => isFruitBearingStage(s.stage))
+        : isFruitBearingStage(selectedStage),
+    [isMultiSpecies, speciesStages, selectedStage]
+  );
 
   // Conditions terrain pour l'arbre de décision Contact vs Systémique + DAR automatique (y compris Huile d'Olive 28j)
   const actionConditions: TreatmentActionRule = useMemo(() => ({
@@ -299,15 +385,15 @@ export function PhytoAdvisorModal({
     hasVisibleSymptoms,
     isRapidShootsGrowth,
     daysBeforeHarvest,
-    oliveDestination: currentCrop === 'olive' ? 'huile' : undefined,
-    growthStage: selectedStage,
-  }), [isRainExpectedSoon, hasVisibleSymptoms, isRapidShootsGrowth, daysBeforeHarvest, currentCrop, selectedStage]);
+    oliveDestination: currentCrop === 'olive' || (isMultiSpecies && activeSpeciesList.includes('olivier')) ? 'huile' : undefined,
+    growthStage: isFruitStage ? 'grossissement_fruit' : selectedStage,
+  }), [isRainExpectedSoon, hasVisibleSymptoms, isRapidShootsGrowth, daysBeforeHarvest, currentCrop, isMultiSpecies, activeSpeciesList, isFruitStage, selectedStage]);
 
   const modeRecommendation: ModeOfActionRecommendation = useMemo(() => {
     return PhytosanitaryEngine.recommendModeOfAction(actionConditions);
   }, [actionConditions]);
 
-  // Évaluation scientifique des matières actives (IRAC / FRAC) avec recommandation situationnelle & sécurité abeilles
+  // Évaluation scientifique des matières actives (IRAC / FRAC) avec recommandation situationnelle, sécurité abeilles & multi-espèces
   const evaluatedOptions = useMemo(() => {
     if (!activePest) return [];
     return PhytosanitaryEngine.evaluateTreatmentOptions({
@@ -319,8 +405,10 @@ export function PhytoAdvisorModal({
       conditions: actionConditions,
       growthStage: selectedStage,
       crop: currentCrop,
+      selectedSpecies: isMultiSpecies ? activeSpeciesList : undefined,
+      speciesStages: isMultiSpecies ? speciesStages : undefined,
     });
-  }, [activePest, historyLogs, actionConditions, selectedStage, currentCrop]);
+  }, [activePest, historyLogs, actionConditions, selectedStage, currentCrop, isMultiSpecies, activeSpeciesList, speciesStages]);
 
   // Calcul du dosage pour la cuve
   const tankCalculation = useMemo(() => {
@@ -331,19 +419,24 @@ export function PhytoAdvisorModal({
     });
   }, [tankVolume, calcDose100L, calcUnit]);
 
-  // Filtrage du catalogue officiel (165 spécialités PHYTO_DATABASE) par espèce, recherche & blocage stade phénologique
+  // Filtrage du catalogue officiel (165 spécialités PHYTO_DATABASE) par espèce (ou INTERSECTION multi-espèces), recherche & blocage stade
   const filteredCatalog = useMemo(() => {
     return PHYTO_DATABASE
       .map((prod) => ({
         prod,
-        stageCheck: checkProductBlockedForGrowthStage(prod, selectedStage),
+        stageCheck:
+          isMultiSpecies && catalogCropFilter === 'multi'
+            ? checkMultiSpeciesProductStage(prod, speciesStages)
+            : checkProductBlockedForGrowthStage(prod, selectedStage),
       }))
       .filter(({ prod, stageCheck }) => {
         if (hideBlockedInCatalog && stageCheck.blocked) return false;
         const matchCrop =
-          catalogCropFilter === 'all'
-            ? true
-            : !prod.cultures || prod.cultures.length === 0 || prod.cultures.includes(catalogCropFilter);
+          catalogCropFilter === 'multi'
+            ? Boolean(prod.cultures && activeSpeciesList.every((sp) => prod.cultures!.includes(sp)))
+            : catalogCropFilter === 'all'
+              ? true
+              : !prod.cultures || prod.cultures.length === 0 || prod.cultures.includes(catalogCropFilter);
         if (!matchCrop) return false;
         if (!catalogSearch.trim()) return true;
         const q = catalogSearch.toLowerCase();
@@ -498,6 +591,45 @@ export function PhytoAdvisorModal({
                     ))}
                   </div>
                 </div>
+
+                {/* Bannière Multi-espèces + Volume cumulé (1 seul pulvérisateur) */}
+                {isMultiSpecies && (
+                  <div className="rounded-2xl border-2 border-indigo-500/40 bg-indigo-500/10 p-3.5 space-y-2 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 text-white px-3 py-1 text-[11px] font-black shadow-xs">
+                        🔀 {isAr ? `معاملة مشتركة (${activeSpeciesList.length} أصناف)` : `Traitement commun (${activeSpeciesList.length} espèces)`}
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {activeSpeciesList.map((sp) => (
+                          <span
+                            key={sp}
+                            className="inline-flex items-center gap-1 rounded-full bg-background border border-indigo-500/30 px-2.5 py-0.5 text-[11px] font-bold text-indigo-800 dark:text-indigo-200"
+                          >
+                            {SPECIES_LABELS[sp].icon} {isAr ? SPECIES_LABELS[sp].ar : SPECIES_LABELS[sp].fr}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-indigo-900 dark:text-indigo-200 leading-relaxed">
+                      {isAr
+                        ? "التصفية بالتقاطع الإجباري : تُعرض فقط المواد المعتمدة لجميع الأصناف المختارة، مع تطبيق أشد قاعدة أمان (الحظر عند أدنى طور حساس وأطول فترة أمان DAR تشمل 28 يوماً لزيت الزيتون)."
+                        : "Filtrage par INTERSECTION stricte : seules les spécialités homologuées sur TOUTES les espèces sélectionnées sont proposées, avec application de la règle la plus stricte (stade bloquant + DAR le plus long dont 28 j Huile d'Olive)."}
+                    </p>
+                    <div className="rounded-xl bg-background/80 border border-indigo-500/25 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                      <span className="font-bold text-foreground">
+                        🚜 {isAr ? "الحجم التراكمي التقديري للصهريج (رشاش واحد بالمزرعة) :" : "Volume cumulé estimé (contrainte 1 seul pulvérisateur) :"}
+                      </span>
+                      <span dir="ltr" className="inline-block font-mono font-black text-indigo-700 dark:text-indigo-300">
+                        {cumulativeVolumeL.toLocaleString('fr-FR')} L
+                      </span>
+                      <span className="text-[10px] text-muted-foreground w-full">
+                        {isAr
+                          ? "المرجع : 500 لتر / قطعة (زيتون وتفاح) · 1000 لتر / قطعة (نكتارين)"
+                          : "Référence : 500 L/parcelle (Olivier & Pommier) · 1 000 L/parcelle (Nectarine)"}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* ÉTAPE 1 : CHOIX DU STADE PHÉNOLOGIQUE */}
                 <div>
@@ -836,9 +968,16 @@ export function PhytoAdvisorModal({
                         <div className="flex items-start gap-2">
                           <Clock className={`h-4 w-4 shrink-0 mt-0.5 ${isFruitStage && daysBeforeHarvest < 15 ? 'text-amber-600' : 'text-muted-foreground'}`} />
                           <div className="min-w-0 flex-1">
-                            <p className="text-[11px] font-bold leading-tight">
-                              {isAr ? "تاريخ الجني المتوقع" : "Récolte estimée"}
-                            </p>
+                            <div className="flex items-center justify-between gap-1">
+                              <p className="text-[11px] font-bold leading-tight">
+                                {isAr ? "تاريخ الجني المتوقع" : "Récolte estimée"}
+                              </p>
+                              {harvestSavedFlag && (
+                                <span className="text-[9px] font-black text-emerald-700 dark:text-emerald-300 bg-emerald-500/15 px-1.5 py-0.5 rounded-full">
+                                  ✓ {isAr ? "محفوظ" : "Enregistré"}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-[9.5px] font-bold mt-0.5">
                               {!isFruitStage ? (
                                 <span className="text-muted-foreground font-semibold">
@@ -855,14 +994,39 @@ export function PhytoAdvisorModal({
                             </p>
                           </div>
                         </div>
-                        <input
-                          type="date"
-                          dir="ltr"
-                          value={customHarvestDate}
-                          onChange={(e) => setCustomHarvestDate(e.target.value)}
-                          className="w-full rounded-lg border bg-background/80 px-2 py-1 text-[10px] font-mono font-bold text-foreground"
-                          title={isAr ? "تعديل تاريخ الجني المتوقع لحساب فترة الأمان DAR" : "Ajuster la date de récolte prévisionnelle"}
-                        />
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="date"
+                            dir="ltr"
+                            value={customHarvestDate}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCustomHarvestDate(val);
+                              if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                                saveHarvestDate(currentCrop, val);
+                                setHasCustomSavedHarvest(true);
+                                setHarvestSavedFlag(true);
+                              }
+                            }}
+                            className="flex-1 min-w-0 rounded-lg border bg-background/80 px-2 py-1 text-[10px] font-mono font-bold text-foreground"
+                            title={isAr ? "تعديل تاريخ الجني المتوقع (يُحفظ تلقائياً)" : "Ajuster la date de récolte prévisionnelle (sauvegarde auto)"}
+                          />
+                          {hasCustomSavedHarvest && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const defIso = resetSavedHarvestDate(currentCrop);
+                                setCustomHarvestDate(defIso);
+                                setHasCustomSavedHarvest(false);
+                                setHarvestSavedFlag(false);
+                              }}
+                              className="p-1 rounded-lg border bg-background hover:bg-muted text-muted-foreground hover:text-foreground transition cursor-pointer shrink-0"
+                              title={isAr ? "إعادة تعيين التاريخ الافتراضي" : "Réinitialiser la date par défaut"}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -1219,6 +1383,23 @@ export function PhytoAdvisorModal({
                 {/* Filtre par espèce (الكل / زيتون / تفاح / نكتارين) + contrôle du stade sélectionné */}
                 <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl border bg-muted/20">
                   <div className="flex flex-wrap items-center gap-1.5">
+                    {isMultiSpecies && (
+                      <button
+                        type="button"
+                        onClick={() => setCatalogCropFilter('multi')}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black border transition flex items-center gap-1 cursor-pointer ${catalogCropFilter === 'multi'
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                          : 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/20'
+                          }`}
+                      >
+                        <span>🔀</span>
+                        <span>
+                          {isAr
+                            ? `معاملة مشتركة (${activeSpeciesList.length})`
+                            : `Traitement commun (${activeSpeciesList.length})`}
+                        </span>
+                      </button>
+                    )}
                     {([
                       { id: 'all' as const, icon: '🌿', fr: 'Toutes', ar: 'الكل' },
                       { id: 'olivier' as const, icon: '🫒', fr: 'Olivier', ar: 'زيتون' },

@@ -2413,6 +2413,31 @@ export function RecommendationForm({
           }
           return "nectarinier";
         })()}
+        selectedSpecies={(() => {
+          const list: Array<"olivier" | "pommier" | "nectarinier"> = [];
+          for (const g of cropGroups) {
+            const s = String(g).toLowerCase();
+            if ((s.includes("oliv") || /^p[1-4]$/.test(s)) && !list.includes("olivier")) list.push("olivier");
+            if ((s.includes("pomm") || /^p[78]$/.test(s)) && !list.includes("pommier")) list.push("pommier");
+            if ((s.includes("nablara") || s.includes("redix") || s.includes("nectar") || /^p[56]$/.test(s)) && !list.includes("nectarinier")) {
+              list.push("nectarinier");
+            }
+          }
+          return list;
+        })()}
+        estimatedSprayVolumeL={(() => {
+          let vol = 0;
+          for (const g of cropGroups) {
+            const s = String(g).toLowerCase();
+            if (s === "oliviers") vol += 4 * 500; // P1–P4 : 4 parcelles × 500 L
+            else if (s === "pommiers") vol += 2 * 500; // P7–P8 : 2 parcelles × 500 L
+            else if (s === "nablara" || s === "redix25") vol += 1000; // 1 parcelle × 1 000 L
+            else if (s === "nectarinier") vol += 2 * 1000;
+            else if (/^p[1-4]$/.test(s) || /^p[78]$/.test(s)) vol += 500;
+            else if (/^p[56]$/.test(s)) vol += 1000;
+          }
+          return vol;
+        })()}
         onSelectIngredient={handleSelectFromAdvisor}
       />
     </>

@@ -8,6 +8,7 @@ import {
   PHYTO_DATABASE,
   isProductBlockedAtStage,
   type BlockedStageKey,
+  type PhytoCultureKey,
   type PhytoProductInfo,
 } from '@/data/phytosanitaires';
 
@@ -38,6 +39,41 @@ export function checkProductBlockedForGrowthStage(
     return { blocked: true, reason: product.blockedReason };
   }
   return { blocked: false };
+}
+
+export const SPECIES_LABELS: Record<PhytoCultureKey, { fr: string; ar: string; icon: string }> = {
+  olivier: { fr: 'Olivier', ar: 'زيتون', icon: '🫒' },
+  pommier: { fr: 'Pommier', ar: 'تفاح', icon: '🍎' },
+  nectarinier: { fr: 'Nectarinier', ar: 'نكتارين', icon: '🍑' },
+};
+
+/**
+ * Contrôle multi-espèces strict : bloque un produit si AU MOINS UNE des espèces sélectionnées
+ * est dans un stade bloqué (en précisant quelles espèces bloquent).
+ */
+export function checkMultiSpeciesProductStage(
+  product: PhytoProductInfo,
+  speciesStages: Array<{ species: PhytoCultureKey; stage: GrowthStage }>
+): { blocked: boolean; blockingSpecies: PhytoCultureKey[]; reason?: string } {
+  const blockingSpecies: PhytoCultureKey[] = [];
+  let firstReason: string | undefined;
+  for (const item of speciesStages) {
+    const res = checkProductBlockedForGrowthStage(product, item.stage);
+    if (res.blocked) {
+      if (!blockingSpecies.includes(item.species)) blockingSpecies.push(item.species);
+      if (!firstReason && res.reason) firstReason = res.reason;
+    }
+  }
+  if (blockingSpecies.length > 0) {
+    const namesFr = blockingSpecies.map((s) => SPECIES_LABELS[s].fr).join(', ');
+    const namesAr = blockingSpecies.map((s) => SPECIES_LABELS[s].ar).join('، ');
+    return {
+      blocked: true,
+      blockingSpecies,
+      reason: `${firstReason || 'Bloqué au stade actuel'} (${namesFr} / ${namesAr})`,
+    };
+  }
+  return { blocked: false, blockingSpecies: [] };
 }
 
 export type CropType = 'peche' | 'nectarine' | 'pomme' | 'olive';
@@ -406,8 +442,22 @@ export class PhytosanitaryEngine {
     conditions?: TreatmentActionRule;
     growthStage?: GrowthStage;
     crop?: CropType;
+    selectedSpecies?: PhytoCultureKey[];
+    speciesStages?: Array<{ species: PhytoCultureKey; stage: GrowthStage }>;
   }) {
-    const { targetPest, parcelHistory, allIngredients, currentSeasonYear, currentDate = new Date(), conditions, growthStage, crop } = params;
+    const {
+      targetPest,
+      parcelHistory,
+      allIngredients,
+      currentSeasonYear,
+      currentDate = new Date(),
+      conditions,
+      growthStage,
+      crop,
+      selectedSpecies,
+      speciesStages,
+    } = params;
+    const isMultiSpecies = Array.isArray(selectedSpecies) && selectedSpecies.length > 1;
 
     const modeRecommendation = conditions ? PhytosanitaryEngine.recommendModeOfAction(conditions) : null;
 
@@ -427,10 +477,23 @@ export class PhytosanitaryEngine {
       ? Math.floor((currentDate.getTime() - new Date(lastApplication.date).getTime()) / (1000 * 60 * 60 * 24))
       : 999;
 
-    // Matières actives homologuées pour la cible
-    const candidateIngredients = allIngredients.filter((ing) =>
-      targetPest.compatibleActiveIngredients.includes(ing.id)
-    );
+    // Matières actives homologuées pour la cible (et en mode multi-espèces : INTERSECTION stricte sur PHYTO_DATABASE)
+    const candidateIngredients = allIngredients.filter((ing) => {
+      if (!targetPest.compatibleActiveIngredients.includes(ing.id)) return false;
+      if (!isMultiSpecies || !selectedSpecies) return true;
+      const ingNameNorm = ing.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const ingCode = (ing.codeGroup || '').toUpperCase().trim();
+      const hasSharedSpecialty = PHYTO_DATABASE.some((p) => {
+        if (!p.cultures || !selectedSpecies.every((sp) => p.cultures!.includes(sp))) return false;
+        const pAct = (p.matiereActive || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const pCode = (p.codeGroup || '').toUpperCase().trim();
+        return (
+          (pAct && (pAct.includes(ingNameNorm) || ingNameNorm.includes(pAct.split('·')[0].trim()))) ||
+          (pCode && pCode === ingCode)
+        );
+      });
+      return hasSharedSpecialty;
+    });
 
     return candidateIngredients.map((ingredient) => {
       let isAllowed = true;
@@ -506,6 +569,7 @@ export class PhytosanitaryEngine {
       const PYRETHROID_3A_REGEX = /deltam[eé]thrin|cyperm[eé]thrin|lambda-?cyhalothrin|alpha-?cyperm[eé]thrin|esfenval[eé]rat|bifenthrin/i;
       const isOliveCrop =
         crop === 'olive' ||
+        (isMultiSpecies && selectedSpecies?.includes('olivier')) ||
         conditions?.oliveDestination === 'huile' ||
         (crop === undefined && targetPest.crops.includes('olive'));
       const isPyrethroid3ALipophilic =
@@ -529,8 +593,12 @@ export class PhytosanitaryEngine {
       let darBlocked = false;
       const daysToHarvest = conditions?.daysBeforeHarvest;
       const effectiveStage = growthStage ?? conditions?.growthStage;
+      const anyFruitStage =
+        isMultiSpecies && speciesStages && speciesStages.length > 0
+          ? speciesStages.some((s) => isFruitBearingStage(s.stage))
+          : isFruitBearingStage(effectiveStage);
       if (
-        isFruitBearingStage(effectiveStage) &&
+        anyFruitStage &&
         daysToHarvest !== undefined &&
         Number.isFinite(daysToHarvest) &&
         effectiveDar > daysToHarvest
@@ -543,40 +611,59 @@ export class PhytosanitaryEngine {
         priorityScore = 0;
       }
 
-      // 4. SÉCURITÉ ABEILLES EN FLORAISON (التزهير) + CONTRÔLE STADE PHÉNOLOGIQUE (PHYTO_DATABASE)
+      // 4. SÉCURITÉ ABEILLES EN FLORAISON (التزهير) + CONTRÔLE STADE PHÉNOLOGIQUE (PHYTO_DATABASE, multi-espèces strict)
       let beeBlock = false;
       let beeWarning = '';
       let stageBlocked = false;
-      if (growthStage === 'floraison') {
+      const floweringSpecies =
+        isMultiSpecies && speciesStages && speciesStages.length > 0
+          ? speciesStages.filter((s) => s.stage === 'floraison').map((s) => s.species)
+          : growthStage === 'floraison'
+            ? [crop === 'olive' ? 'olivier' : crop === 'pomme' ? 'pommier' : 'nectarinier'] as PhytoCultureKey[]
+            : [];
+      if (floweringSpecies.length > 0) {
         const isPyrethroid3A = ingredientCodes.includes('3A');
         const isNeonic4A = ingredientCodes.includes('4A');
+        const spSuffix = isMultiSpecies
+          ? ` (${floweringSpecies.map((s) => `${SPECIES_LABELS[s].fr}/${SPECIES_LABELS[s].ar}`).join(', ')})`
+          : '';
         if (isPyrethroid3A) {
           isAllowed = false;
           beeBlock = true;
-          blockReason = 'ممنوع وقت التزهير — خطر على النحل | Interdit en floraison : Pyréthrinoïde (IRAC 3A) hautement toxique pour les abeilles et pollinisateurs.';
+          blockReason = `ممنوع وقت التزهير — خطر على النحل${spSuffix} | Interdit en floraison : Pyréthrinoïde (IRAC 3A) hautement toxique pour les abeilles${spSuffix}.`;
           priorityScore = 0;
         } else if (isNeonic4A) {
-          beeWarning = 'تحذير نحل (IRAC 4A) : مادة حساسة وقت التزهير — تجنب الرش نهاراً أثناء نشاط النحل (رش ليلاً فقط أو استبدلها بمبيد انتقائي).';
+          beeWarning = `تحذير نحل (IRAC 4A)${spSuffix} : مادة حساسة وقت التزهير — تجنب الرش نهاراً أثناء نشاط النحل (رش ليلاً فقط أو استبدلها بمبيد انتقائي).`;
           priorityScore = Math.max(10, priorityScore - 25);
         }
       }
 
-      // Vérification complémentaire via PHYTO_DATABASE & isProductBlockedAtStage()
-      if (isAllowed && growthStage) {
+      // Vérification complémentaire via PHYTO_DATABASE & isProductBlockedAtStage() (multi-espèces : le plus strict prime)
+      const stagesToCheck: Array<{ species: PhytoCultureKey; stage: GrowthStage }> =
+        isMultiSpecies && speciesStages && speciesStages.length > 0
+          ? speciesStages
+          : growthStage
+            ? [{ species: (crop === 'olive' ? 'olivier' : crop === 'pomme' ? 'pommier' : 'nectarinier'), stage: growthStage }]
+            : [];
+
+      if (isAllowed && stagesToCheck.length > 0) {
         const ingNameNorm = ingredient.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const matchingDbProducts = PHYTO_DATABASE.filter((p) => {
+          if (isMultiSpecies && selectedSpecies && (!p.cultures || !selectedSpecies.every((sp) => p.cultures!.includes(sp)))) {
+            return false;
+          }
           const pAct = (p.matiereActive || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
           const pCode = (p.codeGroup || '').toUpperCase().trim();
           const ingCode = (ingredient.codeGroup || '').toUpperCase().trim();
           return (pAct && (pAct.includes(ingNameNorm) || ingNameNorm.includes(pAct.split('·')[0].trim()))) || (pCode && pCode === ingCode);
         });
         if (matchingDbProducts.length > 0) {
-          const blockedChecks = matchingDbProducts.map((p) => checkProductBlockedForGrowthStage(p, growthStage));
+          const blockedChecks = matchingDbProducts.map((p) => checkMultiSpeciesProductStage(p, stagesToCheck));
           if (blockedChecks.every((c) => c.blocked)) {
             const firstReason = blockedChecks.find((c) => c.reason)?.reason;
             isAllowed = false;
             stageBlocked = true;
-            blockReason = firstReason || `Produit bloqué au stade phénologique sélectionné (${growthStage}).`;
+            blockReason = firstReason || `Produit bloqué au stade phénologique sélectionné.`;
             priorityScore = 0;
           }
         }

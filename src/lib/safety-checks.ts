@@ -11,6 +11,7 @@ import { FERTILIZER_DATABASE } from "@/data/fertilizers";
 import { getIracFracCode } from "@/data/phytosanitaires";
 import type { Parcel } from "@/data/parcels";
 import type { Recommendation } from "@/lib/cloud/recommendations";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface DARCheckResult {
   isCompliant: boolean;
@@ -63,15 +64,114 @@ export function resolveHarvestSpeciesKey(parcelIdOrSpecies: string, parcelType =
   return "olivier";
 }
 
+export const HARVEST_DATES_STORAGE_KEY = "doula_harvest_dates";
+
+export function loadSavedHarvestDates(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(HARVEST_DATES_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getSavedHarvestDate(
+  parcelIdOrSpecies: string,
+  parcelType = ""
+): string | null {
+  const key = resolveHarvestSpeciesKey(parcelIdOrSpecies, parcelType);
+  const map = loadSavedHarvestDates();
+  const val = map[key];
+  return typeof val === "string" && /^\d{4}-\d{2}-\d{2}$/.test(val) ? val : null;
+}
+
+export function saveHarvestDate(
+  parcelIdOrSpecies: string,
+  isoDate: string,
+  parcelType = ""
+): void {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return;
+  const key = resolveHarvestSpeciesKey(parcelIdOrSpecies, parcelType);
+  const year = isoDate.slice(0, 4);
+  const map = loadSavedHarvestDates();
+  map[key] = isoDate;
+  map[`${key}_${year}`] = isoDate;
+  try {
+    localStorage.setItem(HARVEST_DATES_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore storage errors
+  }
+  // Synchronisation asynchrone vers Supabase (user_metadata, silencieux hors ligne)
+  try {
+    void supabase.auth.updateUser({
+      data: { doula_harvest_dates: map },
+    }).catch(() => {});
+  } catch {
+    // offline safe
+  }
+}
+
+export function resetSavedHarvestDate(
+  parcelIdOrSpecies: string,
+  parcelType = ""
+): string {
+  const key = resolveHarvestSpeciesKey(parcelIdOrSpecies, parcelType);
+  const map = loadSavedHarvestDates();
+  delete map[key];
+  for (const k of Object.keys(map)) {
+    if (k.startsWith(`${key}_`)) delete map[k];
+  }
+  try {
+    localStorage.setItem(HARVEST_DATES_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // ignore
+  }
+  try {
+    void supabase.auth.updateUser({
+      data: { doula_harvest_dates: map },
+    }).catch(() => {});
+  } catch {
+    // offline safe
+  }
+  return getEstimatedHarvestDateISO(key, "", new Date(), undefined, true);
+}
+
+/**
+ * Hydrate localStorage depuis Supabase user_metadata si disponible
+ */
+export async function syncHarvestDatesFromCloud(): Promise<Record<string, string>> {
+  const local = loadSavedHarvestDates();
+  try {
+    const { data } = await supabase.auth.getUser();
+    const remote = (data?.user?.user_metadata as any)?.doula_harvest_dates;
+    if (remote && typeof remote === "object") {
+      const merged = { ...remote, ...local };
+      localStorage.setItem(HARVEST_DATES_STORAGE_KEY, JSON.stringify(merged));
+      return merged;
+    }
+  } catch {
+    // offline safe
+  }
+  return local;
+}
+
 export function getEstimatedHarvestDateISO(
   parcelIdOrSpecies: string,
   parcelType = "",
   referenceDateOrYear: number | Date | string = new Date(),
-  customOverrides?: Partial<Record<HarvestSpeciesKey, string>>
+  customOverrides?: Partial<Record<HarvestSpeciesKey, string>>,
+  ignoreSaved = false
 ): string {
   const key = resolveHarvestSpeciesKey(parcelIdOrSpecies, parcelType);
   if (customOverrides && customOverrides[key]) {
     return customOverrides[key]!;
+  }
+  if (!ignoreSaved) {
+    const saved = getSavedHarvestDate(key);
+    if (saved) return saved;
   }
   const cfg = DEFAULT_HARVEST_DATES_BY_SPECIES[key];
 
