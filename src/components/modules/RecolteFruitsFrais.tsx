@@ -127,6 +127,23 @@ export function RecolteFruitsFrais({
   const { add, update, remove } = useModuleActions();
   const [editingHarvestId, setEditingHarvestId] = useState<string | null>(null);
 
+  const currentCalendarYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState<string>(String(currentCalendarYear));
+
+  const availableYears = useMemo(() => {
+    const s = new Set<string>([String(currentCalendarYear)]);
+    for (const r of records) {
+      const y = String(r.date || "").slice(0, 4);
+      if (/^\d{4}$/.test(y)) s.add(y);
+    }
+    return Array.from(s).sort((a, b) => b.localeCompare(a));
+  }, [records, currentCalendarYear]);
+
+  const filteredRecords = useMemo(() => {
+    if (selectedYear === "all") return records;
+    return records.filter((r) => String(r.date || "").slice(0, 4) === selectedYear);
+  }, [records, selectedYear]);
+
   const treeCount = useMemo(() => parseTreeCount(parcel), [parcel]);
 
   const [f, setF] = useState({
@@ -282,7 +299,7 @@ export function RecolteFruitsFrais({
         ? Math.max(0, mandataireGross - commissionAmount - (parseFloat(f.paidAmount) || 0))
         : 0;
 
-  // KPI cumulés de la campagne sur la parcelle
+  // KPI cumulés de la campagne sur la parcelle (filtrés par année sélectionnée)
   const campaignKpis = useMemo(() => {
     let sumKg = 0;
     let sumFrigoStockKg = 0;
@@ -290,7 +307,7 @@ export function RecolteFruitsFrais({
     let sumVentes = 0;
     let sumCharges = 0;
 
-    for (const r of records) {
+    for (const r of filteredRecords) {
       const rUnitWeight = r.unit === "Caisses" ? Math.max(0.1, parseFloat(r.avgCrateWeightKg || "15") || 15) : 1;
       const rQty = parseFloat(r.qty || "0") || 0;
       const rKg = typeof r.totalKg === "number" ? r.totalKg : rQty * rUnitWeight;
@@ -337,7 +354,7 @@ export function RecolteFruitsFrais({
       sumCharges,
       sumNet: sumVentes - sumCharges,
     };
-  }, [records, treeCount]);
+  }, [filteredRecords, treeCount]);
 
   function onPhoto(file?: File) {
     if (!file) return;
@@ -556,6 +573,40 @@ export function RecolteFruitsFrais({
 
   return (
     <div className="space-y-4" dir={isAr ? "rtl" : "ltr"}>
+      {/* SÉLECTEUR D'ANNÉE (Séparation stricte des résultats par année) */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2">
+        <span className="text-xs font-black text-muted-foreground">
+          📅 {isAr ? "نتائج الجني لسنة :" : "Résultats par année :"}
+        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {availableYears.map((yr) => (
+            <button
+              key={yr}
+              type="button"
+              onClick={() => setSelectedYear(yr)}
+              className={`rounded-lg px-3 py-1 text-xs font-black transition cursor-pointer ${
+                selectedYear === yr
+                  ? "bg-primary text-primary-foreground shadow-xs"
+                  : "bg-card border text-foreground hover:bg-muted"
+              }`}
+            >
+              <span dir="ltr">{yr}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setSelectedYear("all")}
+            className={`rounded-lg px-3 py-1 text-xs font-bold transition cursor-pointer ${
+              selectedYear === "all"
+                ? "bg-primary text-primary-foreground shadow-xs"
+                : "bg-card border text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {isAr ? "الكل" : "Toutes"}
+          </button>
+        </div>
+      </div>
+
       {/* KPI Cumulés Campagne Fruits Frais */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         <div className="rounded-xl border bg-card p-3">
@@ -1003,20 +1054,27 @@ export function RecolteFruitsFrais({
         </div>
       )}
 
-      {/* ARCHIVE DES LOTS + SORTIES FRIGO */}
+      {/* ARCHIVE DES LOTS + SORTIES FRIGO (filtrés par année) */}
       <div className="rounded-2xl border bg-card overflow-hidden">
-        <div className="flex items-center gap-2 border-b px-4 py-2.5 text-sm font-black">
-          <History className="h-4 w-4 text-primary" />
-          <span>{isAr ? `الأرشيف (${records.length})` : `Archive (${records.length})`}</span>
+        <div className="flex items-center justify-between gap-2 border-b px-4 py-2.5 text-sm font-black">
+          <span className="flex items-center gap-2">
+            <History className="h-4 w-4 text-primary" />
+            <span>{isAr ? `الأرشيف (${filteredRecords.length})` : `Archive (${filteredRecords.length})`}</span>
+          </span>
+          {selectedYear !== "all" && (
+            <span dir="ltr" className="rounded-full bg-primary/15 text-primary px-2.5 py-0.5 text-[11px] font-black">
+              {selectedYear}
+            </span>
+          )}
         </div>
 
-        {records.length === 0 ? (
+        {filteredRecords.length === 0 ? (
           <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-            {isAr ? "لا توجد عمليات جني مسجلة." : "Aucune récolte enregistrée."}
+            {isAr ? "لا توجد عمليات جني مسجلة لهذه السنة." : "Aucune récolte enregistrée pour cette année."}
           </p>
         ) : (
           <ul className="divide-y">
-            {records.map((r) => {
+            {filteredRecords.map((r) => {
               const rQty = parseFloat(r.qty || "0") || 0;
               const rUnitWeight = r.unit === "Caisses" ? Math.max(0.1, parseFloat(r.avgCrateWeightKg || "15") || 15) : 1;
               const rKg = typeof r.totalKg === "number" ? r.totalKg : rQty * rUnitWeight;

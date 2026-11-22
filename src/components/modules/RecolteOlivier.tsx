@@ -21,7 +21,7 @@ import { type Parcel } from "@/data/parcels";
 
 const CUVE_INOX_CAPACITY_L = 5000;
 const OLIVE_PARCEL_IDS = new Set(["p1", "p2", "p3", "p4"]);
-const CAMPAIGN_CHARGES_STORAGE_KEY = "doula_olive_campaign_charges_v1";
+const CAMPAIGN_CHARGES_STORAGE_KEY = "doula_olive_campaign_charges_by_year_v2";
 
 interface OliveManualCharges {
   taille?: string;
@@ -29,17 +29,27 @@ interface OliveManualCharges {
   engineer?: string;
 }
 
-function loadManualCampaignCharges(): OliveManualCharges {
+type OliveChargesByYear = Record<string, OliveManualCharges>;
+
+function loadManualCampaignChargesByYear(): OliveChargesByYear {
   if (typeof window === "undefined") return {};
   try {
     const raw = localStorage.getItem(CAMPAIGN_CHARGES_STORAGE_KEY);
-    if (raw) return JSON.parse(raw) as OliveManualCharges;
-    // Migration douce depuis l'ancienne clé frais ingénieur
+    if (raw) return JSON.parse(raw) as OliveChargesByYear;
+    // Migration douce depuis l'ancienne clé v1
+    const v1 = localStorage.getItem("doula_olive_campaign_charges_v1");
+    if (v1) {
+      const parsed = JSON.parse(v1) as OliveManualCharges;
+      return { [String(new Date().getFullYear())]: parsed };
+    }
     const legacy = localStorage.getItem("doula_olive_engineer_fees_v1");
     if (legacy) {
       const map = JSON.parse(legacy) as Record<string, number>;
-      const yrVal = map[String(new Date().getFullYear())];
-      if (yrVal) return { engineer: String(yrVal) };
+      const out: OliveChargesByYear = {};
+      for (const [yr, val] of Object.entries(map)) {
+        if (val) out[yr] = { engineer: String(val) };
+      }
+      return out;
     }
     return {};
   } catch {
@@ -47,7 +57,7 @@ function loadManualCampaignCharges(): OliveManualCharges {
   }
 }
 
-function saveManualCampaignCharges(next: OliveManualCharges) {
+function saveManualCampaignChargesByYear(next: OliveChargesByYear) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(CAMPAIGN_CHARGES_STORAGE_KEY, JSON.stringify(next));
@@ -188,19 +198,14 @@ export function RecolteOlivier({
   const [editingPackId, setEditingPackId] = useState<string | null>(null);
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
 
-  const activeYear = new Date().getFullYear();
-  const [manualCharges, setManualCharges] = useState<OliveManualCharges>(loadManualCampaignCharges);
+  const currentCalendarYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState<string>(String(currentCalendarYear));
+  const [manualChargesByYear, setManualChargesByYear] = useState<OliveChargesByYear>(
+    loadManualCampaignChargesByYear
+  );
 
-  const updateManualCharge = (field: keyof OliveManualCharges, value: string) => {
-    setManualCharges((prev) => {
-      const next = { ...prev, [field]: value };
-      saveManualCampaignCharges(next);
-      return next;
-    });
-  };
-
-  // Agrégation sur toute la campagne Oliviers (P1–P4) pour la Cuve Inox 5 000 L & stocks d'huile
-  const oliveCampaignRecords = useMemo(() => {
+  // Agrégation sur toute la campagne Oliviers (P1–P4)
+  const allOliveCampaignRecords = useMemo(() => {
     return allRecolteRecords.filter(
       (r) =>
         OLIVE_PARCEL_IDS.has(String(r.parcelId || "").toLowerCase()) ||
@@ -208,6 +213,44 @@ export function RecolteOlivier({
         r.recordMode === "olivier"
     );
   }, [allRecolteRecords, parcelId]);
+
+  // Liste des années disponibles (tri décroissant, inclut toujours l'année en cours)
+  const availableYears = useMemo(() => {
+    const s = new Set<string>([String(currentCalendarYear)]);
+    for (const r of allOliveCampaignRecords) {
+      const y = String(r.date || "").slice(0, 4);
+      if (/^\d{4}$/.test(y)) s.add(y);
+    }
+    return Array.from(s).sort((a, b) => b.localeCompare(a));
+  }, [allOliveCampaignRecords, currentCalendarYear]);
+
+  // Filtrage strict par année sélectionnée (séparation des résultats par année)
+  const oliveCampaignRecords = useMemo(() => {
+    if (selectedYear === "all") return allOliveCampaignRecords;
+    return allOliveCampaignRecords.filter((r) => String(r.date || "").slice(0, 4) === selectedYear);
+  }, [allOliveCampaignRecords, selectedYear]);
+
+  const filteredParcelRecords = useMemo(() => {
+    if (selectedYear === "all") return parcelRecords;
+    return parcelRecords.filter((r) => String(r.date || "").slice(0, 4) === selectedYear);
+  }, [parcelRecords, selectedYear]);
+
+  const activeYearKey = selectedYear === "all" ? String(currentCalendarYear) : selectedYear;
+  const manualCharges: OliveManualCharges = manualChargesByYear[activeYearKey] || {};
+
+  const updateManualCharge = (field: keyof OliveManualCharges, value: string) => {
+    setManualChargesByYear((prev) => {
+      const next: OliveChargesByYear = {
+        ...prev,
+        [activeYearKey]: {
+          ...(prev[activeYearKey] || {}),
+          [field]: value,
+        },
+      };
+      saveManualCampaignChargesByYear(next);
+      return next;
+    });
+  };
 
   // Stock global campagne oliviers (Cuve Inox 5 000 L + Bidons 5 L + Bouteilles 1 L) & KPIs
   const oliveStats = useMemo(() => {
@@ -263,15 +306,16 @@ export function RecolteOlivier({
       }
     }
 
-    const isOliveAndCurrentYear = (r: any) => {
+    const isOliveAndSelectedYear = (r: any) => {
       const pid = String(r?.parcelId || "").toLowerCase();
       if (!OLIVE_PARCEL_IDS.has(pid) && pid !== parcelId.toLowerCase()) return false;
+      if (selectedYear === "all") return true;
       const d = String(r?.date || r?.scheduled_at || "").slice(0, 4);
-      return d === String(activeYear);
+      return d === selectedYear;
     };
 
     const autoTailleYearDA = (allTailleRecords || [])
-      .filter(isOliveAndCurrentYear)
+      .filter(isOliveAndSelectedYear)
       .reduce((s, r) => s + computeGenericRecordCost(r), 0);
 
     const autoEngraisYearDA = [
@@ -280,7 +324,7 @@ export function RecolteOlivier({
       ...(allPhytoRecords || []),
       ...(allAmendRecords || []),
     ]
-      .filter(isOliveAndCurrentYear)
+      .filter(isOliveAndSelectedYear)
       .reduce((s, r) => s + computeGenericRecordCost(r), 0);
 
     const tailleYearDA =
@@ -334,7 +378,7 @@ export function RecolteOlivier({
       totalCollectedDA,
       netResultDA: totalCollectedDA - grandTotalChargesDA,
     };
-  }, [oliveCampaignRecords, allTailleRecords, allFertRecords, allPulvRecords, allPhytoRecords, allAmendRecords, parcelId, activeYear, manualCharges]);
+  }, [oliveCampaignRecords, allTailleRecords, allFertRecords, allPulvRecords, allPhytoRecords, allAmendRecords, parcelId, selectedYear, manualCharges]);
 
   // Formulaire Bloc 1 + Bloc 2 + Bloc 3 initial (Cueillette + Trituration + Conditionnement)
   const [f, setF] = useState({
@@ -696,6 +740,40 @@ export function RecolteOlivier({
 
   return (
     <div className="space-y-4" dir={isAr ? "rtl" : "ltr"}>
+      {/* SÉLECTEUR D'ANNÉE (Séparation stricte des résultats par année) */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2">
+        <span className="text-xs font-black text-muted-foreground">
+          📅 {isAr ? "نتائج حملة سنة :" : "Résultats par année :"}
+        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {availableYears.map((yr) => (
+            <button
+              key={yr}
+              type="button"
+              onClick={() => setSelectedYear(yr)}
+              className={`rounded-lg px-3 py-1 text-xs font-black transition cursor-pointer ${
+                selectedYear === yr
+                  ? "bg-emerald-700 text-white shadow-xs"
+                  : "bg-card border text-foreground hover:bg-muted"
+              }`}
+            >
+              <span dir="ltr">{yr}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setSelectedYear("all")}
+            className={`rounded-lg px-3 py-1 text-xs font-bold transition cursor-pointer ${
+              selectedYear === "all"
+                ? "bg-emerald-700 text-white shadow-xs"
+                : "bg-card border text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {isAr ? "الكل" : "Toutes"}
+          </button>
+        </div>
+      </div>
+
       {/* BLOC 3 : JAUGE CUVE INOX 5 000 L + CONDITIONNEMENT + VENTES RAPIDES */}
       <div className="rounded-2xl border-2 border-emerald-600/30 bg-gradient-to-br from-emerald-500/5 to-amber-500/5 p-4 space-y-3 shadow-xs">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1063,19 +1141,30 @@ export function RecolteOlivier({
         </div>
       </div>
 
-      {/* ARCHIVE DE LA PARCELLE (Cueillettes, Soutirages, Ventes d'huile) */}
+      {/* ARCHIVE DE LA PARCELLE (Cueillettes, Soutirages, Ventes d'huile — filtrées par année) */}
       <div className="rounded-2xl border bg-card overflow-hidden">
-        <div className="flex items-center gap-2 border-b px-4 py-2.5 text-sm font-black">
-          <History className="h-4 w-4 text-primary" />
-          <span>{isAr ? `سجل العمليات (${parcelRecords.length})` : `Journal & Archive (${parcelRecords.length})`}</span>
+        <div className="flex items-center justify-between gap-2 border-b px-4 py-2.5 text-sm font-black">
+          <span className="flex items-center gap-2">
+            <History className="h-4 w-4 text-primary" />
+            <span>
+              {isAr
+                ? `سجل العمليات (${filteredParcelRecords.length})`
+                : `Journal & Archive (${filteredParcelRecords.length})`}
+            </span>
+          </span>
+          {selectedYear !== "all" && (
+            <span dir="ltr" className="rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 px-2.5 py-0.5 text-[11px] font-black">
+              {selectedYear}
+            </span>
+          )}
         </div>
-        {parcelRecords.length === 0 ? (
+        {filteredParcelRecords.length === 0 ? (
           <p className="px-4 py-6 text-center text-xs text-muted-foreground">
-            {isAr ? "لا توجد عمليات مسجلة لهذه القطعة." : "Aucune opération enregistrée pour cette parcelle."}
+            {isAr ? "لا توجد عمليات مسجلة لهذه السنة." : "Aucune opération enregistrée pour cette année."}
           </p>
         ) : (
           <ul className="divide-y">
-            {parcelRecords.map((r) => {
+            {filteredParcelRecords.map((r) => {
               const rType = r.recordType || "olive_harvest";
               return (
                 <li key={r.id} className="p-3.5 text-xs space-y-1.5">
