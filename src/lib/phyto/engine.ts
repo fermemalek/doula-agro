@@ -165,16 +165,46 @@ export function isFruitBearingStage(stage?: GrowthStage): boolean {
 }
 
 /**
- * Détermine automatiquement le stade phénologique par défaut selon l'espèce et la date
- * (calibré sur le calendrier réel de Ferme Malek — Benhar / Djelfa).
+ * Détermine automatiquement le stade phénologique par défaut selon l'espèce, la date courante
+ * et la date de récolte prévue éventuelle (calibré sur Ferme Malek — Benhar / Djelfa).
+ * Si une date de récolte proche ou fraîchement passée est renseignée par l'utilisateur,
+ * le stade phénologique s'adapte dynamiquement (Maturation, Grossissement ou Post-récolte).
  */
 export function getDefaultPhenologicalStage(
   species: 'olivier' | 'olive' | 'pommier' | 'pomme' | 'nectarinier' | 'nectarine' | 'peche',
-  date: Date = new Date()
+  date: Date = new Date(),
+  harvestDateIso?: string
 ): GrowthStage {
+  const isOlive = species === 'olivier' || species === 'olive';
+
+  // 1. Si une date de récolte explicite est fournie, ajuster dynamiquement le stade physiologique
+  if (harvestDateIso && /^\d{4}-\d{2}-\d{2}$/.test(harvestDateIso.trim())) {
+    const todayNoon = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+    const harvestNoon = new Date(`${harvestDateIso.trim()}T12:00:00`);
+    if (!Number.isNaN(harvestNoon.getTime())) {
+      const diffDays = Math.round((harvestNoon.getTime() - todayNoon.getTime()) / (1000 * 60 * 60 * 24));
+      const maturationWindow = isOlive ? 40 : 35;
+      const sizingWindow = isOlive ? 110 : 75;
+
+      // Récolte imminente ou en cours (0 à 35–40 j avant récolte) → Maturation pré-récolte (DAR actif)
+      if (diffDays >= 0 && diffDays <= maturationWindow) {
+        return 'maturation';
+      }
+      // Grossissement du fruit (36–41 j à 75–110 j avant récolte) → Grossissement (DAR actif)
+      if (diffDays > maturationWindow && diffDays <= sizingWindow) {
+        return 'grossissement_fruit';
+      }
+      // Récolte tout juste terminée (dans les 35 derniers jours) → Post-récolte
+      if (diffDays < 0 && diffDays >= -35) {
+        return 'post_recolte';
+      }
+    }
+  }
+
+  // 2. Sinon, calendrier phénologique de référence par espèce
   const mmdd = (date.getMonth() + 1) * 100 + date.getDate();
 
-  if (species === 'olivier' || species === 'olive') {
+  if (isOlive) {
     if (mmdd <= 228) return 'dormance';
     if (mmdd <= 425) return 'gonflement_bourgeons';
     if (mmdd <= 531) return 'floraison';

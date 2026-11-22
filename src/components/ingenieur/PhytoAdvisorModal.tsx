@@ -171,8 +171,13 @@ export function PhytoAdvisorModal({
     let active = true;
     void syncHarvestDatesFromCloud().then(() => {
       if (!active) return;
-      setCustomHarvestDate(getEstimatedHarvestDateISO(currentCrop));
-      setHasCustomSavedHarvest(Boolean(getSavedHarvestDate(currentCrop)));
+      const resolvedHarvest = getEstimatedHarvestDateISO(currentCrop);
+      const saved = getSavedHarvestDate(currentCrop);
+      setCustomHarvestDate(resolvedHarvest);
+      setHasCustomSavedHarvest(Boolean(saved));
+      if (saved) {
+        setSelectedStage(getDefaultPhenologicalStage(currentCrop, new Date(), saved));
+      }
     });
     return () => {
       active = false;
@@ -180,9 +185,12 @@ export function PhytoAdvisorModal({
   }, [open, currentCrop]);
 
   useEffect(() => {
-    setCustomHarvestDate(getEstimatedHarvestDateISO(currentCrop));
-    setHasCustomSavedHarvest(Boolean(getSavedHarvestDate(currentCrop)));
+    const resolvedHarvest = getEstimatedHarvestDateISO(currentCrop);
+    const saved = getSavedHarvestDate(currentCrop);
+    setCustomHarvestDate(resolvedHarvest);
+    setHasCustomSavedHarvest(Boolean(saved));
     setHarvestSavedFlag(false);
+    setSelectedStage(getDefaultPhenologicalStage(currentCrop, new Date(), saved || resolvedHarvest));
   }, [currentCrop]);
 
   const activeSpeciesList: PhytoCultureKey[] = useMemo(() => {
@@ -201,7 +209,10 @@ export function PhytoAdvisorModal({
     const now = new Date();
     return activeSpeciesList.map((sp) => ({
       species: sp,
-      stage: sp === currentCropAsCultureKey ? selectedStage : getDefaultPhenologicalStage(sp, now),
+      stage:
+        sp === currentCropAsCultureKey
+          ? selectedStage
+          : getDefaultPhenologicalStage(sp, now, getSavedHarvestDate(sp) || getEstimatedHarvestDateISO(sp, '', now)),
     }));
   }, [activeSpeciesList, currentCropAsCultureKey, selectedStage]);
 
@@ -246,12 +257,13 @@ export function PhytoAdvisorModal({
   const [hideBlockedInCatalog, setHideBlockedInCatalog] = useState<boolean>(false);
 
   // À chaque ouverture de PhytoAdvisorModal, synchroniser Onglet 1 + Onglet 3 sur initialSpecies / multi-espèces
-  // et positionner automatiquement le stade phénologique selon la date courante
+  // et positionner automatiquement le stade phénologique selon la date courante et la date de récolte sauvegardée
   useEffect(() => {
     if (!open) return;
     setCurrentCrop(initialCrop);
     setCatalogCropFilter(isMultiSpecies ? 'multi' : resolvedInitialSpecies);
-    setSelectedStage(getDefaultPhenologicalStage(resolvedInitialSpecies, new Date()));
+    const savedOrDef = getSavedHarvestDate(resolvedInitialSpecies) || getEstimatedHarvestDateISO(resolvedInitialSpecies);
+    setSelectedStage(getDefaultPhenologicalStage(resolvedInitialSpecies, new Date(), savedOrDef));
     setSelectedPestId(null);
   }, [open, initialCrop, resolvedInitialSpecies, isMultiSpecies]);
 
@@ -1023,6 +1035,9 @@ export function PhytoAdvisorModal({
                                 saveHarvestDate(currentCrop, val);
                                 setHasCustomSavedHarvest(true);
                                 setHarvestSavedFlag(true);
+                                const nextStage = getDefaultPhenologicalStage(currentCrop, new Date(), val);
+                                setSelectedStage(nextStage);
+                                setSelectedPestId(null);
                               }
                             }}
                             className="flex-1 min-w-0 rounded-lg border bg-background/80 px-2 py-1 text-[10px] font-mono font-bold text-foreground"
@@ -1036,6 +1051,9 @@ export function PhytoAdvisorModal({
                                 setCustomHarvestDate(defIso);
                                 setHasCustomSavedHarvest(false);
                                 setHarvestSavedFlag(false);
+                                const nextStage = getDefaultPhenologicalStage(currentCrop, new Date(), defIso);
+                                setSelectedStage(nextStage);
+                                setSelectedPestId(null);
                               }}
                               className="p-1 rounded-lg border bg-background hover:bg-muted text-muted-foreground hover:text-foreground transition cursor-pointer shrink-0"
                               title={isAr ? "إعادة تعيين التاريخ الافتراضي" : "Réinitialiser la date par défaut"}
