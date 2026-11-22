@@ -12,6 +12,7 @@ import {
   X,
   TrendingUp,
   Gauge,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useModuleRecords, useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
@@ -97,6 +98,7 @@ export function RecolteOlivier({
   parcel,
   canEdit,
   showForm = false,
+  onOpenForm,
   onCloseForm,
   prefillDate,
   prefillNotes,
@@ -105,6 +107,7 @@ export function RecolteOlivier({
   parcel?: Parcel;
   canEdit: boolean;
   showForm?: boolean;
+  onOpenForm?: () => void;
   onCloseForm?: () => void;
   prefillDate?: string;
   prefillNotes?: string;
@@ -113,7 +116,10 @@ export function RecolteOlivier({
   const isAr = lang === "ar";
   const parcelRecords = useModuleRecords<OliveHarvestRecord>(parcelId, "recolte");
   const allRecolteRecords = useAllModuleRecords<OliveHarvestRecord>("recolte");
-  const { add, remove } = useModuleActions();
+  const { add, update, remove } = useModuleActions();
+  const [editingHarvestId, setEditingHarvestId] = useState<string | null>(null);
+  const [editingPackId, setEditingPackId] = useState<string | null>(null);
+  const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
 
   // Agrégation sur toute la campagne Oliviers (P1–P4) pour la Cuve Inox 5 000 L & stocks d'huile
   const oliveCampaignRecords = useMemo(() => {
@@ -358,8 +364,14 @@ export function RecolteOlivier({
       notes: f.notes,
     };
 
-    add(parcelId, "recolte", payload);
-    toast.success(isAr ? "تم تسجيل جني وعصر الزيتون بنجاح" : "Cueillette & trituration enregistrées !");
+    if (editingHarvestId) {
+      update(parcelId, "recolte", editingHarvestId, payload);
+      toast.success(isAr ? "تم تحديث الدفعة بنجاح" : "Cueillette & trituration mises à jour !");
+      setEditingHarvestId(null);
+    } else {
+      add(parcelId, "recolte", payload);
+      toast.success(isAr ? "تم تسجيل جني وعصر الزيتون بنجاح" : "Cueillette & trituration enregistrées !");
+    }
     onCloseForm?.();
     setF((prev) => ({
       ...prev,
@@ -416,8 +428,14 @@ export function RecolteOlivier({
       notes: packForm.notes,
     };
 
-    add(parcelId, "recolte", payload);
-    toast.success(isAr ? "تم التعبئة من خزان الإينوكس بنجاح" : "Soutirage & conditionnement enregistrés !");
+    if (editingPackId) {
+      update(parcelId, "recolte", editingPackId, payload);
+      toast.success(isAr ? "تم تحديث عملية التعبئة" : "Soutirage mis à jour !");
+      setEditingPackId(null);
+    } else {
+      add(parcelId, "recolte", payload);
+      toast.success(isAr ? "تم التعبئة من خزان الإينوكس بنجاح" : "Soutirage & conditionnement enregistrés !");
+    }
     setPackModalOpen(false);
     setPackForm({ date: new Date().toISOString().slice(0, 10), bidons5L: "", bouteilles1L: "", packagingCostDA: "", notes: "" });
   }
@@ -466,8 +484,14 @@ export function RecolteOlivier({
       notes: saleForm.notes,
     };
 
-    add(parcelId, "recolte", payload);
-    toast.success(isAr ? "تم تسجيل بيع زيت الزيتون بنجاح" : "Vente d'huile enregistrée !");
+    if (editingSaleId) {
+      update(parcelId, "recolte", editingSaleId, payload);
+      toast.success(isAr ? "تم تحديث عملية البيع" : "Vente d'huile mise à jour !");
+      setEditingSaleId(null);
+    } else {
+      add(parcelId, "recolte", payload);
+      toast.success(isAr ? "تم تسجيل بيع زيت الزيتون بنجاح" : "Vente d'huile enregistrée !");
+    }
     setSaleModalOpen(false);
     setSaleForm({
       date: new Date().toISOString().slice(0, 10),
@@ -479,6 +503,66 @@ export function RecolteOlivier({
       paidAmountDA: "",
       notes: "",
     });
+  }
+
+  function handleEditRecord(r: OliveHarvestRecord) {
+    const rType = r.recordType || "olive_harvest";
+    if (rType === "olive_packaging") {
+      setEditingPackId(r.id);
+      setPackForm({
+        date: r.date || new Date().toISOString().slice(0, 10),
+        bidons5L: r.addedBidons5L ? String(r.addedBidons5L) : "",
+        bouteilles1L: r.addedBouteilles1L ? String(r.addedBouteilles1L) : "",
+        packagingCostDA: r.packagingCostDA ? String(r.packagingCostDA) : "",
+        notes: r.notes || "",
+      });
+      setPackModalOpen(true);
+      return;
+    }
+    if (rType === "olive_sale") {
+      setEditingSaleId(r.id);
+      setSaleForm({
+        date: r.date || new Date().toISOString().slice(0, 10),
+        clientName: r.clientName || "",
+        format: r.oilFormat || "bidon_5l",
+        qty: r.saleQty ? String(r.saleQty) : "",
+        unitPriceDA: r.unitPriceDA ? String(r.unitPriceDA) : "",
+        paymentStatus: r.paymentStatus || "paye",
+        paidAmountDA: r.paidAmountDA ? String(r.paidAmountDA) : "",
+        notes: r.notes || "",
+      });
+      setSaleModalOpen(true);
+      return;
+    }
+    // olive_harvest
+    const wKg = r.weightKg ?? (parseFloat(r.qty || "0") || 0);
+    const unit = r.inputUnit || "Kg";
+    const displayedWeight = unit === "Quintaux" ? String(wKg / 100) : String(wKg);
+    setEditingHarvestId(r.id);
+    setF({
+      date: r.date || new Date().toISOString().slice(0, 10),
+      inputUnit: unit,
+      weightVal: displayedWeight,
+      destination: r.destination || "trituration",
+      rawOliveSoldKg: r.rawOliveSoldKg ? String(r.rawOliveSoldKg) : "",
+      rawOlivePricePerKg: r.rawOlivePricePerKg ? String(r.rawOlivePricePerKg) : "",
+      mainOeuvre: r.mainOeuvre || "",
+      transport: r.transport || "",
+      sacsCaisses: r.sacsCaisses || "",
+      autres: r.autres || "",
+      millName: r.millName || "",
+      triturationDate: r.triturationDate || r.date || "",
+      olivesTrituredKg: r.olivesTrituredKg ? String(r.olivesTrituredKg) : "",
+      oilObtainedL: r.oilObtainedL ? String(r.oilObtainedL) : "",
+      millFeeType: r.millFeeType || "da_quintal",
+      millFeeValue: r.millFeeValue ? String(r.millFeeValue) : "",
+      acidityPercent: r.acidityPercent !== undefined ? String(r.acidityPercent) : "0.5",
+      bidons5LCount: r.bidons5LCount ? String(r.bidons5LCount) : "",
+      bouteilles1LCount: r.bouteilles1LCount ? String(r.bouteilles1LCount) : "",
+      packagingCostDA: r.packagingCostDA ? String(r.packagingCostDA) : "",
+      notes: r.notes || "",
+    });
+    onOpenForm?.();
   }
 
   const cls = "rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs sm:text-sm w-full";
@@ -740,7 +824,15 @@ export function RecolteOlivier({
               className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 text-xs font-black disabled:opacity-50 cursor-pointer"
             >
               <Save className="h-3.5 w-3.5" />
-              <span>{isAr ? "تسجيل الدفعة" : "Enregistrer la cueillette"}</span>
+              <span>
+                {editingHarvestId
+                  ? isAr
+                    ? "تحديث الدفعة"
+                    : "Mettre à jour"
+                  : isAr
+                    ? "تسجيل الدفعة"
+                    : "Enregistrer la cueillette"}
+              </span>
             </button>
           </div>
         </div>
@@ -828,13 +920,24 @@ export function RecolteOlivier({
                         </span>
                       )}
                       {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => remove(parcelId, "recolte", r.id)}
-                          className="text-muted-foreground hover:text-destructive cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleEditRecord(r)}
+                            title={isAr ? "تعديل" : "Modifier"}
+                            className="p-1 rounded-md text-muted-foreground hover:text-emerald-700 hover:bg-emerald-500/10 transition cursor-pointer"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => remove(parcelId, "recolte", r.id)}
+                            title={isAr ? "حذف" : "Supprimer"}
+                            className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>

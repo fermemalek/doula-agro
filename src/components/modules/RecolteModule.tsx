@@ -169,6 +169,7 @@ export function RecolteModule({ parcelId, canEdit }: { parcelId: string; canEdit
           parcel={parcel}
           canEdit={canEdit}
           showForm={harvestFormOpen}
+          onOpenForm={() => setHarvestFormOpen(true)}
           onCloseForm={() => setHarvestFormOpen(false)}
           prefillDate={prefillDate}
           prefillNotes={prefillNotes}
@@ -179,6 +180,7 @@ export function RecolteModule({ parcelId, canEdit }: { parcelId: string; canEdit
           parcel={parcel}
           canEdit={canEdit}
           showForm={harvestFormOpen}
+          onOpenForm={() => setHarvestFormOpen(true)}
           onCloseForm={() => setHarvestFormOpen(false)}
           prefillDate={prefillDate}
           prefillNotes={prefillNotes}

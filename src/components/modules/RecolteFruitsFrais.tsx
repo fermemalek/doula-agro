@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Package,
   AlertCircle,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
@@ -106,6 +107,7 @@ export function RecolteFruitsFrais({
   parcel,
   canEdit,
   showForm = false,
+  onOpenForm,
   onCloseForm,
   prefillDate,
   prefillNotes,
@@ -114,6 +116,7 @@ export function RecolteFruitsFrais({
   parcel?: Parcel;
   canEdit: boolean;
   showForm?: boolean;
+  onOpenForm?: () => void;
   onCloseForm?: () => void;
   prefillDate?: string;
   prefillNotes?: string;
@@ -122,6 +125,7 @@ export function RecolteFruitsFrais({
   const isAr = lang === "ar";
   const records = useModuleRecords<FreshFruitHarvestRecord>(parcelId, "recolte");
   const { add, update, remove } = useModuleActions();
+  const [editingHarvestId, setEditingHarvestId] = useState<string | null>(null);
 
   const treeCount = useMemo(() => parseTreeCount(parcel), [parcel]);
 
@@ -397,8 +401,18 @@ export function RecolteFruitsFrais({
       photo: f.photo,
     };
 
-    add(parcelId, "recolte", payload);
-    toast.success(isAr ? "تم تسجيل الجني بنجاح" : "Récolte enregistrée !");
+    if (editingHarvestId) {
+      const existingRec = records.find((r) => r.id === editingHarvestId);
+      update(parcelId, "recolte", editingHarvestId, {
+        ...payload,
+        frigoExits: existingRec?.frigoExits || [],
+      });
+      toast.success(isAr ? "تم تحديث الجني بنجاح" : "Récolte mise à jour !");
+      setEditingHarvestId(null);
+    } else {
+      add(parcelId, "recolte", payload);
+      toast.success(isAr ? "تم تسجيل الجني بنجاح" : "Récolte enregistrée !");
+    }
     onCloseForm?.();
     setF((prev) => ({
       ...prev,
@@ -496,6 +510,46 @@ export function RecolteFruitsFrais({
       paymentStatus: "paye",
       paidAmount: "",
     });
+  }
+
+  function handleEditRecord(r: FreshFruitHarvestRecord) {
+    setEditingHarvestId(r.id);
+    setF({
+      date: r.date || new Date().toISOString().slice(0, 10),
+      unit: r.unit === "Caisses" ? "Caisses" : "Kg",
+      avgCrateWeightKg: r.avgCrateWeightKg || "15",
+      choix1Qty: r.choix1Qty || "",
+      choix1Price: r.choix1Price || "",
+      choix2Qty: r.choix2Qty || "",
+      choix2Price: r.choix2Price || "",
+      choix3Qty: r.choix3Qty || "",
+      choix3Price: r.choix3Price || "",
+      choix4Qty: r.choix4Qty || "",
+      choix4Price: r.choix4Price || "",
+      rebutQty: r.rebutQty || "",
+      destination: r.destination || "mandataire",
+      mandataireName: r.mandataireName || "",
+      mandataireQty: r.mandataireQty || "",
+      mandatairePrice: r.mandatairePrice || "",
+      commissionType: r.commissionType || "percent",
+      commissionValue: r.commissionValue || "8",
+      paymentStatus: r.paymentStatus || "paye",
+      paidAmount: r.paidAmount || "",
+      frigoName: r.frigoName || "",
+      frigoEntryDate: r.frigoEntryDate || r.date || new Date().toISOString().slice(0, 10),
+      frigoQty: r.frigoQty || "",
+      frigoRateType: r.frigoRateType || "per_crate",
+      frigoRateValue: r.frigoRateValue || "",
+      directQty: r.directQty || "",
+      directPrice: r.directPrice || "",
+      mainOeuvre: r.mainOeuvre || "",
+      emballages: r.emballages || "",
+      transport: r.transport || "",
+      autres: r.autres || "",
+      notes: r.notes || "",
+      photo: r.photo,
+    });
+    onOpenForm?.();
   }
 
   const cls = "rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs sm:text-sm w-full";
@@ -935,7 +989,15 @@ export function RecolteFruitsFrais({
               className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-black text-primary-foreground disabled:opacity-50 cursor-pointer"
             >
               <Save className="h-3.5 w-3.5" />
-              <span>{isAr ? "حفظ الجني" : "Enregistrer la récolte"}</span>
+              <span>
+                {editingHarvestId
+                  ? isAr
+                    ? "تحديث الجني"
+                    : "Mettre à jour"
+                  : isAr
+                    ? "حفظ الجني"
+                    : "Enregistrer la récolte"}
+              </span>
             </button>
           </div>
         </div>
@@ -1021,14 +1083,24 @@ export function RecolteFruitsFrais({
                         Net {netVal.toFixed(0)} DA
                       </span>
                       {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => remove(parcelId, "recolte", r.id)}
-                          className="text-muted-foreground hover:text-destructive cursor-pointer"
-                          title={isAr ? "حذف" : "Supprimer"}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleEditRecord(r)}
+                            className="p-1 rounded-md text-muted-foreground hover:text-emerald-700 hover:bg-emerald-500/10 transition cursor-pointer"
+                            title={isAr ? "تعديل" : "Modifier"}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => remove(parcelId, "recolte", r.id)}
+                            className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition cursor-pointer"
+                            title={isAr ? "حذف" : "Supprimer"}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
