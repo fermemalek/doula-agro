@@ -59,12 +59,29 @@ export type ActionCodeType = 'FRAC' | 'IRAC';
 
 export type SystemicType = 'contact' | 'systemique' | 'translaminaire';
 
+/**
+ * Stades phénologiques portant des fruits (seuls stades où le contrôle DAR / "Récolte proche" s'applique).
+ * Les stades sans fruits (dormance, gonflement bourgeons, floraison, post-récolte, chute des feuilles)
+ * ne doivent jamais déclencher d'alerte HARVEST ni de blocage DAR.
+ */
+export const FRUIT_BEARING_STAGES: GrowthStage[] = [
+  'chute_petales_nouaison',
+  'grossissement_fruit',
+  'maturation',
+];
+
+export function isFruitBearingStage(stage?: GrowthStage): boolean {
+  if (!stage) return true;
+  return FRUIT_BEARING_STAGES.includes(stage);
+}
+
 export interface TreatmentActionRule {
   isRainExpectedSoon: boolean;    // Pluie > 20 mm prévue sous 48h (lessivage)
   hasVisibleSymptoms: boolean;    // Maladie déjà installée (action curative requise)
   isRapidShootsGrowth: boolean;   // Débourrement / Pousse rapide du printemps
   daysBeforeHarvest: number;      // Proximité de la récolte (< 15j pour sécurité DAR)
   oliveDestination?: 'huile' | 'table'; // Destination de la récolte (conflit de lipophilie)
+  growthStage?: GrowthStage;      // Stade phénologique actif (désactive DAR hors stades fruitiers)
 }
 
 export interface ModeOfActionRecommendation {
@@ -242,9 +259,9 @@ export class PhytosanitaryEngine {
    * Contact vs Systémique vs Translaminaire
    */
   static recommendModeOfAction(conditions: TreatmentActionRule): ModeOfActionRecommendation {
-    // 1. SÉCURITÉ ABSOLUE PRÉ-RÉCOLTE : Cueillette imminente (< 15 jours)
+    // 1. SÉCURITÉ ABSOLUE PRÉ-RÉCOLTE : Cueillette imminente (< 15 jours) — UNIQUEMENT sur stades avec fruits
     // Primauté de la santé publique et des LMR : éviter à tout prix les résidus chimiques
-    if (conditions.daysBeforeHarvest < 15) {
+    if (isFruitBearingStage(conditions.growthStage) && conditions.daysBeforeHarvest < 15) {
       return {
         recommendedType: ['contact', 'translaminaire'],
         dominantReason: 'harvest',
@@ -466,7 +483,13 @@ export class PhytosanitaryEngine {
 
       let darBlocked = false;
       const daysToHarvest = conditions?.daysBeforeHarvest;
-      if (daysToHarvest !== undefined && Number.isFinite(daysToHarvest) && effectiveDar > daysToHarvest) {
+      const effectiveStage = growthStage ?? conditions?.growthStage;
+      if (
+        isFruitBearingStage(effectiveStage) &&
+        daysToHarvest !== undefined &&
+        Number.isFinite(daysToHarvest) &&
+        effectiveDar > daysToHarvest
+      ) {
         isAllowed = false;
         darBlocked = true;
         const frMsg = `⛔ DAR dépassé (DAR ${effectiveDar} j > ${daysToHarvest} j avant récolte)`;

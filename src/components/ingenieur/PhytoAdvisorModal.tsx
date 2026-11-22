@@ -41,6 +41,7 @@ import {
   TANK_MIX_COMPATIBILITY_RULES,
   getPestVisualAsset,
   checkProductBlockedForGrowthStage,
+  isFruitBearingStage,
   TreatmentActionRule,
   SystemicType,
   ModeOfActionRecommendation,
@@ -272,6 +273,8 @@ export function PhytoAdvisorModal({
     return eligiblePests.find(p => p.id === selectedPestId) || eligiblePests[0] || null;
   }, [selectedPestId, eligiblePests]);
 
+  const isFruitStage = useMemo(() => isFruitBearingStage(selectedStage), [selectedStage]);
+
   // Conditions terrain pour l'arbre de décision Contact vs Systémique + DAR automatique (y compris Huile d'Olive 28j)
   const actionConditions: TreatmentActionRule = useMemo(() => ({
     isRainExpectedSoon,
@@ -279,7 +282,8 @@ export function PhytoAdvisorModal({
     isRapidShootsGrowth,
     daysBeforeHarvest,
     oliveDestination: currentCrop === 'olive' ? 'huile' : undefined,
-  }), [isRainExpectedSoon, hasVisibleSymptoms, isRapidShootsGrowth, daysBeforeHarvest, currentCrop]);
+    growthStage: selectedStage,
+  }), [isRainExpectedSoon, hasVisibleSymptoms, isRapidShootsGrowth, daysBeforeHarvest, currentCrop, selectedStage]);
 
   const modeRecommendation: ModeOfActionRecommendation = useMemo(() => {
     return PhytosanitaryEngine.recommendModeOfAction(actionConditions);
@@ -803,24 +807,33 @@ export function PhytoAdvisorModal({
                         </div>
                       </button>
 
-                      {/* Bascule 4 : Cueillette imminente (calculée automatiquement selon date de récolte de l'espèce, ajustable) */}
+                      {/* Bascule 4 : Cueillette imminente (calculée automatiquement selon prochaine campagne, active uniquement sur stades fruitiers) */}
                       <div
-                        className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-1.5 ${daysBeforeHarvest < 15
-                          ? 'bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500'
-                          : 'bg-background border-input text-muted-foreground'
-                          }`}
+                        className={`p-2.5 rounded-xl border text-left transition-all flex flex-col gap-1.5 ${
+                          isFruitStage && daysBeforeHarvest < 15
+                            ? 'bg-amber-500/15 border-amber-500 text-amber-900 dark:text-amber-200 ring-1 ring-amber-500'
+                            : 'bg-background border-input text-muted-foreground'
+                        }`}
                       >
                         <div className="flex items-start gap-2">
-                          <Clock className={`h-4 w-4 shrink-0 mt-0.5 ${daysBeforeHarvest < 15 ? 'text-amber-600' : 'text-muted-foreground'}`} />
+                          <Clock className={`h-4 w-4 shrink-0 mt-0.5 ${isFruitStage && daysBeforeHarvest < 15 ? 'text-amber-600' : 'text-muted-foreground'}`} />
                           <div className="min-w-0 flex-1">
                             <p className="text-[11px] font-bold leading-tight">
                               {isAr ? "تاريخ الجني المتوقع" : "Récolte estimée"}
                             </p>
                             <p className="text-[9.5px] font-bold mt-0.5">
-                              <span dir="ltr" className="inline-block font-mono">{daysBeforeHarvest} j</span>{" "}
-                              {daysBeforeHarvest < 15
-                                ? isAr ? "(< 15 يوم — حرج)" : "(< 15 j — critique)"
-                                : isAr ? "قبل الجني" : "avant récolte"}
+                              {!isFruitStage ? (
+                                <span className="text-muted-foreground font-semibold">
+                                  {isAr ? "خارج طور الإثمار (فحص DAR غير مفعّل)" : "Hors stade fruitier (DAR inactif)"}
+                                </span>
+                              ) : (
+                                <>
+                                  <span dir="ltr" className="inline-block font-mono">{daysBeforeHarvest} j</span>{" "}
+                                  {daysBeforeHarvest < 15
+                                    ? isAr ? "(< 15 يوم — حرج)" : "(< 15 j — critique)"
+                                    : isAr ? "قبل الجني" : "avant récolte"}
+                                </>
+                              )}
                             </p>
                           </div>
                         </div>

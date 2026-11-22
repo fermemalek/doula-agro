@@ -66,7 +66,7 @@ export function resolveHarvestSpeciesKey(parcelIdOrSpecies: string, parcelType =
 export function getEstimatedHarvestDateISO(
   parcelIdOrSpecies: string,
   parcelType = "",
-  year = new Date().getFullYear(),
+  referenceDateOrYear: number | Date | string = new Date(),
   customOverrides?: Partial<Record<HarvestSpeciesKey, string>>
 ): string {
   const key = resolveHarvestSpeciesKey(parcelIdOrSpecies, parcelType);
@@ -74,11 +74,28 @@ export function getEstimatedHarvestDateISO(
     return customOverrides[key]!;
   }
   const cfg = DEFAULT_HARVEST_DATES_BY_SPECIES[key];
-  return `${year}-${String(cfg.month).padStart(2, "0")}-${String(cfg.day).padStart(2, "0")}`;
+
+  // Si on reçoit une date de référence (traitement / aujourd'hui), avancer automatiquement à année + 1 si déjà passée
+  if (typeof referenceDateOrYear === "number") {
+    const today = new Date();
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const candidate = new Date(referenceDateOrYear, cfg.month - 1, cfg.day);
+    const targetYear = candidate.getTime() < todayMidnight.getTime() ? referenceDateOrYear + 1 : referenceDateOrYear;
+    return `${targetYear}-${String(cfg.month).padStart(2, "0")}-${String(cfg.day).padStart(2, "0")}`;
+  }
+
+  const refDate =
+    typeof referenceDateOrYear === "string"
+      ? new Date(`${referenceDateOrYear.slice(0, 10)}T00:00:00`)
+      : new Date(referenceDateOrYear.getFullYear(), referenceDateOrYear.getMonth(), referenceDateOrYear.getDate());
+  const baseYear = isNaN(refDate.getTime()) ? new Date().getFullYear() : refDate.getFullYear();
+  const candidate = new Date(baseYear, cfg.month - 1, cfg.day);
+  const targetYear = !isNaN(refDate.getTime()) && candidate.getTime() < refDate.getTime() ? baseYear + 1 : baseYear;
+  return `${targetYear}-${String(cfg.month).padStart(2, "0")}-${String(cfg.day).padStart(2, "0")}`;
 }
 
-export function getEstimatedHarvestDate(parcelId: string, parcelType: string, year = new Date().getFullYear()): Date {
-  const iso = getEstimatedHarvestDateISO(parcelId, parcelType, year);
+export function getEstimatedHarvestDate(parcelId: string, parcelType: string, yearOrDate: number | Date | string = new Date()): Date {
+  const iso = getEstimatedHarvestDateISO(parcelId, parcelType, yearOrDate);
   return new Date(`${iso}T00:00:00`);
 }
 
@@ -94,10 +111,9 @@ export function computeDaysBeforeHarvest(
   const tDate = typeof treatmentDate === "string"
     ? new Date(`${treatmentDate.slice(0, 10)}T00:00:00`)
     : new Date(treatmentDate.getFullYear(), treatmentDate.getMonth(), treatmentDate.getDate());
-  const year = isNaN(tDate.getTime()) ? new Date().getFullYear() : tDate.getFullYear();
   const harvestIso = customHarvestDateISO && customHarvestDateISO.length >= 10
     ? customHarvestDateISO.slice(0, 10)
-    : getEstimatedHarvestDateISO(parcelIdOrSpecies, parcelType, year);
+    : getEstimatedHarvestDateISO(parcelIdOrSpecies, parcelType, tDate);
   const hDate = new Date(`${harvestIso}T00:00:00`);
   if (isNaN(hDate.getTime()) || isNaN(tDate.getTime())) return 45;
   return Math.round((hDate.getTime() - tDate.getTime()) / 86400000);
