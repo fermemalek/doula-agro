@@ -21,6 +21,59 @@ import { type Parcel } from "@/data/parcels";
 
 const CUVE_INOX_CAPACITY_L = 5000;
 const OLIVE_PARCEL_IDS = new Set(["p1", "p2", "p3", "p4"]);
+const ENGINEER_FEE_STORAGE_KEY = "doula_olive_engineer_fees_v1";
+
+function loadEngineerFeeForYear(year: number): number {
+  if (typeof window === "undefined") return 0;
+  try {
+    const raw = localStorage.getItem(ENGINEER_FEE_STORAGE_KEY);
+    if (!raw) return 0;
+    const map = JSON.parse(raw) as Record<string, number>;
+    return Number(map[String(year)]) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveEngineerFeeForYear(year: number, amount: number) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(ENGINEER_FEE_STORAGE_KEY);
+    const map: Record<string, number> = raw ? JSON.parse(raw) : {};
+    map[String(year)] = amount;
+    localStorage.setItem(ENGINEER_FEE_STORAGE_KEY, JSON.stringify(map));
+  } catch { }
+}
+
+function computeGenericRecordCost(r: any): number {
+  const t = Number(r?.total ?? r?.total_cost ?? 0);
+  if (Number.isFinite(t) && t > 0) return t;
+  const mo = parseFloat(String(r?.mainOeuvre ?? "0").replace(",", ".")) || 0;
+  const eq = parseFloat(String(r?.equipements ?? "0").replace(",", ".")) || 0;
+  if (mo + eq > 0) return mo + eq;
+  let sum = 0;
+  if (Array.isArray(r?.entries)) {
+    for (const e of r.entries) {
+      for (const it of e?.items || []) {
+        const q = parseFloat(String(it?.qty ?? it?.quantity ?? "0").replace(",", ".")) || 0;
+        const p = parseFloat(String(it?.price ?? "0").replace(",", ".")) || 0;
+        sum += q * p;
+      }
+    }
+  }
+  const items = Array.isArray(r?.items) ? r.items : Array.isArray(r?.products) ? r.products : [];
+  for (const it of items) {
+    const sub = Number(it?.cost ?? it?.total ?? 0);
+    if (Number.isFinite(sub) && sub > 0) {
+      sum += sub;
+    } else {
+      const q = parseFloat(String(it?.qty ?? it?.quantity ?? it?.volume ?? "0").replace(",", ".")) || 0;
+      const p = parseFloat(String(it?.price ?? "0").replace(",", ".")) || 0;
+      sum += q * p;
+    }
+  }
+  return Number.isFinite(sum) ? sum : 0;
+}
 
 export type OliveDestination = "trituration" | "vente_brut" | "mixte";
 export type OlivePaymentStatus = "paye" | "en_attente" | "partiel";
@@ -116,10 +169,22 @@ export function RecolteOlivier({
   const isAr = lang === "ar";
   const parcelRecords = useModuleRecords<OliveHarvestRecord>(parcelId, "recolte");
   const allRecolteRecords = useAllModuleRecords<OliveHarvestRecord>("recolte");
+  const allTailleRecords = useAllModuleRecords<any>("taille");
+  const allFertRecords = useAllModuleRecords<any>("fertilisation");
+  const allPulvRecords = useAllModuleRecords<any>("pulverisation");
+  const allPhytoRecords = useAllModuleRecords<any>("phytosanitaire");
+  const allAmendRecords = useAllModuleRecords<any>("amendement");
   const { add, update, remove } = useModuleActions();
   const [editingHarvestId, setEditingHarvestId] = useState<string | null>(null);
   const [editingPackId, setEditingPackId] = useState<string | null>(null);
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
+
+  const activeYear = new Date().getFullYear();
+  const [engineerFeeInput, setEngineerFeeInput] = useState<string>(() => {
+    const v = loadEngineerFeeForYear(activeYear);
+    return v > 0 ? String(v) : "";
+  });
+  const engineerFeeDA = parseFloat(engineerFeeInput.replace(",", ".")) || 0;
 
   // Agrégation sur toute la campagne Oliviers (P1–P4) pour la Cuve Inox 5 000 L & stocks d'huile
   const oliveCampaignRecords = useMemo(() => {
@@ -185,13 +250,36 @@ export function RecolteOlivier({
       }
     }
 
+    const isOliveAndCurrentYear = (r: any) => {
+      const pid = String(r?.parcelId || "").toLowerCase();
+      if (!OLIVE_PARCEL_IDS.has(pid) && pid !== parcelId.toLowerCase()) return false;
+      const d = String(r?.date || r?.scheduled_at || "").slice(0, 4);
+      return d === String(activeYear);
+    };
+
+    const tailleYearDA = (allTailleRecords || [])
+      .filter(isOliveAndCurrentYear)
+      .reduce((s, r) => s + computeGenericRecordCost(r), 0);
+
+    const engraisYearDA = [
+      ...(allFertRecords || []),
+      ...(allPulvRecords || []),
+      ...(allPhytoRecords || []),
+      ...(allAmendRecords || []),
+    ]
+      .filter(isOliveAndCurrentYear)
+      .reduce((s, r) => s + computeGenericRecordCost(r), 0);
+
+    const harvestAndMillChargesDA = totalChargesDA;
+    const grandTotalChargesDA = harvestAndMillChargesDA + tailleYearDA + engraisYearDA + engineerFeeDA;
+
     const safeCuveL = Math.max(0, cuveL);
     const safeBidons5L = Math.max(0, bidons5L);
     const safeBouteilles1L = Math.max(0, bouteilles1L);
     const totalRemainingOilL = safeCuveL + safeBidons5L * 5 + safeBouteilles1L;
     const cuvePct = Math.min(100, Math.round((safeCuveL / CUVE_INOX_CAPACITY_L) * 100));
     const avgYieldLPerQ = totalOlivesTrituredKg > 0 ? (totalOilGrossL / totalOlivesTrituredKg) * 100 : 0;
-    const costPerLiterDA = totalNetOilL > 0 ? totalChargesDA / totalNetOilL : 0;
+    const costPerLiterDA = totalNetOilL > 0 ? grandTotalChargesDA / totalNetOilL : 0;
     const avgSalePricePerL = soldOilLiters > 0 ? soldOilRevenueDA / soldOilLiters : 950;
     const estimatedStockValueDA = totalRemainingOilL * avgSalePricePerL;
 
@@ -207,12 +295,16 @@ export function RecolteOlivier({
       costPerLiterDA,
       avgSalePricePerL,
       estimatedStockValueDA,
-      totalChargesDA,
+      harvestAndMillChargesDA,
+      tailleYearDA,
+      engraisYearDA,
+      engineerFeeDA,
+      totalChargesDA: grandTotalChargesDA,
       totalRevenueDA,
       totalCollectedDA,
-      netResultDA: totalCollectedDA - totalChargesDA,
+      netResultDA: totalCollectedDA - grandTotalChargesDA,
     };
-  }, [oliveCampaignRecords]);
+  }, [oliveCampaignRecords, allTailleRecords, allFertRecords, allPulvRecords, allPhytoRecords, allAmendRecords, parcelId, activeYear, engineerFeeDA]);
 
   // Formulaire Bloc 1 + Bloc 2 + Bloc 3 initial (Cueillette + Trituration + Conditionnement)
   const [f, setF] = useState({
@@ -872,6 +964,68 @@ export function RecolteOlivier({
           <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold">
             +{oliveStats.totalCollectedDA.toFixed(0)} / −{oliveStats.totalChargesDA.toFixed(0)}
           </span>
+        </div>
+      </div>
+
+      {/* DÉCOMPOSITION COMPLÈTE DU COÛT DE REVIENT (Cueillette/Huilerie + Taille + Engrais + Frais Ingénieur) */}
+      <div className="rounded-2xl border bg-card p-3.5 space-y-2.5 text-xs shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
+          <span className="font-black text-foreground">
+            📊 {isAr ? `تفصيل تكلفة إنتاج الزيت (${activeYear})` : `Décomposition du Coût de Revient (${activeYear})`}
+          </span>
+          <span dir="ltr" className="text-[11px] font-black text-emerald-700 dark:text-emerald-300">
+            {oliveStats.totalChargesDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
+            {oliveStats.totalNetOilL > 0 ? ` ÷ ${oliveStats.totalNetOilL.toFixed(0)} L = ${oliveStats.costPerLiterDA.toFixed(0)} DA/L` : ""}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="rounded-xl bg-muted/30 border p-2.5">
+            <span className="text-[10px] font-bold text-muted-foreground block">
+              🫒 {isAr ? "الجني والمعصرة والتعبئة" : "Cueillette & Huilerie"}
+            </span>
+            <p dir="ltr" className="font-black text-foreground mt-0.5">
+              {oliveStats.harvestAndMillChargesDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-muted/30 border p-2.5">
+            <span className="text-[10px] font-bold text-muted-foreground block">
+              ✂️ {isAr ? `التقليم (${activeYear})` : `Taille (${activeYear})`}
+            </span>
+            <p dir="ltr" className="font-black text-foreground mt-0.5">
+              {oliveStats.tailleYearDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-muted/30 border p-2.5">
+            <span className="text-[10px] font-bold text-muted-foreground block">
+              🌱 {isAr ? `الأسمدة والمدخلات (${activeYear})` : `Engrais & Intrants (${activeYear})`}
+            </span>
+            <p dir="ltr" className="font-black text-foreground mt-0.5">
+              {oliveStats.engraisYearDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-amber-500/5 border border-amber-500/30 p-2.5">
+            <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
+              👨‍🌾 {isAr ? `أتعاب المهندس (${activeYear})` : `Frais Ingénieur (${activeYear})`}
+            </label>
+            <input
+              type="number"
+              dir="ltr"
+              inputMode="decimal"
+              disabled={!canEdit}
+              value={engineerFeeInput}
+              onChange={(e) => {
+                setEngineerFeeInput(e.target.value);
+                const val = parseFloat(e.target.value.replace(",", ".")) || 0;
+                saveEngineerFeeForYear(activeYear, val);
+              }}
+              placeholder="0 DA"
+              className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs font-black text-foreground"
+            />
+          </div>
         </div>
       </div>
 
