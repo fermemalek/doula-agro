@@ -1,8 +1,15 @@
 import { useMemo, useState } from "react";
-import { Save, Trash2, History, Image as ImageIcon, Scissors, Calendar, Flower2, Clock, Copy } from "lucide-react";
+import { Save, Trash2, History, Image as ImageIcon, Scissors, Calendar, Flower2, Clock, Copy, Plus, Pencil, X } from "lucide-react";
+import { toast } from "sonner";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
-import { getVarietyProfileForParcel, computePruningToBloomDays } from "@/lib/chilling/varietiesConfig";
+import {
+  getVarietyProfileForParcel,
+  computePruningToBloomDays,
+  saveVarietyCampaignRecord,
+  deleteVarietyCampaignRecord,
+  type PhenologyRecord,
+} from "@/lib/chilling/varietiesConfig";
 
 type Record = {
   id: string;
@@ -28,7 +35,73 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
   const { add, remove } = useModuleActions();
   const parcels = useParcels();
   const parcel = useMemo(() => parcels.find((p) => p.id === parcelId), [parcels, parcelId]);
-  const varietyProfile = useMemo(() => getVarietyProfileForParcel(parcel), [parcel]);
+  const [catalogTick, setCatalogTick] = useState(0);
+  const varietyProfile = useMemo(() => {
+    void catalogTick;
+    return getVarietyProfileForParcel(parcel);
+  }, [parcel, catalogTick]);
+
+  // Ajout / Modification d'une campagne de taille dans le référentiel variétal
+  const [campaignFormOpen, setCampaignFormOpen] = useState(false);
+  const [editingYear, setEditingYear] = useState<number | null>(null);
+  const [cYear, setCYear] = useState<number>(new Date().getFullYear());
+  const [cPruningDate, setCPruningDate] = useState("");
+  const [cBloomDate, setCBloomDate] = useState("");
+  const [cHarvestDate, setCHarvestDate] = useState("");
+  const [cNotes, setCNotes] = useState("");
+
+  function openAddCampaign() {
+    setEditingYear(null);
+    setCYear(new Date().getFullYear());
+    setCPruningDate("");
+    setCBloomDate("");
+    setCHarvestDate("");
+    setCNotes("");
+    setCampaignFormOpen(true);
+  }
+
+  function openEditCampaign(h: PhenologyRecord) {
+    setEditingYear(h.year);
+    setCYear(h.year);
+    setCPruningDate(h.pruningDate || "");
+    setCBloomDate(h.bloomStartDate || "");
+    setCHarvestDate(h.harvestStartDate || "");
+    setCNotes(h.notes || "");
+    setCampaignFormOpen(true);
+  }
+
+  function handleSaveCampaign() {
+    if (!varietyProfile) return;
+    if (!cPruningDate) {
+      toast.error("Veuillez indiquer la date de taille.");
+      return;
+    }
+    const existing = varietyProfile.campaignHistory.find((h) => h.year === (editingYear ?? cYear));
+    saveVarietyCampaignRecord(
+      varietyProfile.id,
+      {
+        ...existing,
+        year: Number(cYear) || new Date().getFullYear(),
+        pruningDate: cPruningDate,
+        bloomStartDate: cBloomDate,
+        harvestStartDate: cHarvestDate || existing?.harvestStartDate,
+        notes: cNotes.trim() || undefined,
+      },
+      editingYear ?? undefined
+    );
+    setCatalogTick((n) => n + 1);
+    setCampaignFormOpen(false);
+    setEditingYear(null);
+    toast.success(editingYear ? "Campagne de taille modifiée !" : "Campagne de taille ajoutée !");
+  }
+
+  function handleDeleteCampaign(year: number) {
+    if (!varietyProfile) return;
+    if (!window.confirm(`Supprimer l'historique de taille de la campagne ${year} ?`)) return;
+    deleteVarietyCampaignRecord(varietyProfile.id, year);
+    setCatalogTick((n) => n + 1);
+    toast.success(`Campagne ${year} supprimée.`);
+  }
   const [f, setF] = useState({
     date: "",
     typeTaille: TYPES_TAILLE[0],
@@ -65,7 +138,7 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
   return (
     <div className="space-y-4">
       {/* Historique de taille issu du référentiel variétal de l'espèce */}
-      {varietyProfile && varietyProfile.campaignHistory.length > 0 && (
+      {varietyProfile && (
         <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/15 pb-2">
             <h3 className="text-xs font-black uppercase tracking-wider text-primary flex items-center gap-1.5">
@@ -74,10 +147,95 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
                 {varietyProfile.icon} Historique des tailles — {varietyProfile.nameFr}
               </span>
             </h3>
-            <span className="text-[10px] font-bold text-muted-foreground">
-              {varietyProfile.campaignHistory.length} campagne{varietyProfile.campaignHistory.length > 1 ? "s" : ""} enregistrée{varietyProfile.campaignHistory.length > 1 ? "s" : ""}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-muted-foreground">
+                {varietyProfile.campaignHistory.filter((h) => h.pruningDate).length} campagne{varietyProfile.campaignHistory.filter((h) => h.pruningDate).length > 1 ? "s" : ""}
+              </span>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={openAddCampaign}
+                  className="inline-flex items-center gap-1 rounded-lg bg-primary text-primary-foreground px-2.5 py-1 text-[10px] font-bold hover:opacity-90 transition cursor-pointer"
+                >
+                  <Plus className="h-3 w-3" />
+                  Ajouter
+                </button>
+              )}
+            </div>
           </div>
+
+          {campaignFormOpen && canEdit && (
+            <div className="rounded-xl border border-primary/30 bg-card p-3 space-y-2.5 text-xs shadow-sm">
+              <div className="flex items-center justify-between border-b pb-1.5">
+                <span className="font-bold text-foreground">
+                  {editingYear ? `Modifier la campagne ${editingYear}` : "Ajouter une campagne de taille"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCampaignFormOpen(false)}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-muted cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Année</label>
+                  <input
+                    type="number"
+                    value={cYear}
+                    onChange={(e) => setCYear(Number(e.target.value) || new Date().getFullYear())}
+                    className={cls}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Date de taille</label>
+                  <input
+                    type="date"
+                    value={cPruningDate}
+                    onChange={(e) => setCPruningDate(e.target.value)}
+                    className={cls}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Début floraison</label>
+                  <input
+                    type="date"
+                    value={cBloomDate}
+                    onChange={(e) => setCBloomDate(e.target.value)}
+                    className={cls}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Observations</label>
+                <input
+                  type="text"
+                  value={cNotes}
+                  onChange={(e) => setCNotes(e.target.value)}
+                  placeholder="Ex : Taille de fructification, bonne vigueur..."
+                  className={cls}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCampaignFormOpen(false)}
+                  className="rounded-lg border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCampaign}
+                  className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1 text-xs font-bold text-primary-foreground cursor-pointer"
+                >
+                  <Save className="h-3 w-3" />
+                  {editingYear ? "Mettre à jour" : "Enregistrer"}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             {[...varietyProfile.campaignHistory]
@@ -110,20 +268,39 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
                         )}
                       </div>
                       {canEdit && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setF((prev) => ({
-                              ...prev,
-                              date: h.pruningDate || prev.date,
-                              notes: h.notes || prev.notes,
-                            }))
-                          }
-                          className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 px-2 py-1 text-[10px] font-bold text-primary transition cursor-pointer"
-                        >
-                          <Copy className="h-3 w-3" />
-                          Pré-remplir
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setF((prev) => ({
+                                ...prev,
+                                date: h.pruningDate || prev.date,
+                                notes: h.notes || prev.notes,
+                              }))
+                            }
+                            className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 px-2 py-1 text-[10px] font-bold text-primary transition cursor-pointer"
+                            title="Pré-remplir le formulaire"
+                          >
+                            <Copy className="h-3 w-3" />
+                            Pré-remplir
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEditCampaign(h)}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition cursor-pointer"
+                            title="Modifier cette campagne"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCampaign(h.year)}
+                            className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition cursor-pointer"
+                            title="Supprimer cette campagne"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       )}
                     </div>
                     {h.notes && (

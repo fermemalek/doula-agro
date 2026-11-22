@@ -1,8 +1,14 @@
 import { useMemo, useState } from "react";
-import { Save, Trash2, History, Image as ImageIcon, CalendarCheck, Flower2, Copy } from "lucide-react";
+import { Save, Trash2, History, Image as ImageIcon, CalendarCheck, Flower2, Copy, Plus, Pencil, X } from "lucide-react";
+import { toast } from "sonner";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
-import { getVarietyProfileForParcel } from "@/lib/chilling/varietiesConfig";
+import {
+  getVarietyProfileForParcel,
+  saveVarietyCampaignRecord,
+  deleteVarietyCampaignRecord,
+  type PhenologyRecord,
+} from "@/lib/chilling/varietiesConfig";
 
 type Record = {
   id: string;
@@ -32,7 +38,70 @@ export function RecolteModule({ parcelId, canEdit }: { parcelId: string; canEdit
   const { add, remove } = useModuleActions();
   const parcels = useParcels();
   const parcel = useMemo(() => parcels.find((p) => p.id === parcelId), [parcels, parcelId]);
-  const varietyProfile = useMemo(() => getVarietyProfileForParcel(parcel), [parcel]);
+  const [catalogTick, setCatalogTick] = useState(0);
+  const varietyProfile = useMemo(() => {
+    void catalogTick;
+    return getVarietyProfileForParcel(parcel);
+  }, [parcel, catalogTick]);
+
+  // Ajout / Modification d'une campagne de récolte dans le référentiel variétal
+  const [campaignFormOpen, setCampaignFormOpen] = useState(false);
+  const [editingYear, setEditingYear] = useState<number | null>(null);
+  const [cYear, setCYear] = useState<number>(new Date().getFullYear());
+  const [cHarvestDate, setCHarvestDate] = useState("");
+  const [cBloomDate, setCBloomDate] = useState("");
+  const [cNotes, setCNotes] = useState("");
+
+  function openAddCampaign() {
+    setEditingYear(null);
+    setCYear(new Date().getFullYear());
+    setCHarvestDate("");
+    setCBloomDate("");
+    setCNotes("");
+    setCampaignFormOpen(true);
+  }
+
+  function openEditCampaign(h: PhenologyRecord) {
+    setEditingYear(h.year);
+    setCYear(h.year);
+    setCHarvestDate(h.harvestStartDate || "");
+    setCBloomDate(h.bloomStartDate || "");
+    setCNotes(h.notes || "");
+    setCampaignFormOpen(true);
+  }
+
+  function handleSaveCampaign() {
+    if (!varietyProfile) return;
+    if (!cHarvestDate) {
+      toast.error("Veuillez indiquer la date de début de récolte.");
+      return;
+    }
+    const existing = varietyProfile.campaignHistory.find((h) => h.year === (editingYear ?? cYear));
+    saveVarietyCampaignRecord(
+      varietyProfile.id,
+      {
+        ...existing,
+        year: Number(cYear) || new Date().getFullYear(),
+        pruningDate: existing?.pruningDate || "",
+        bloomStartDate: cBloomDate || existing?.bloomStartDate || "",
+        harvestStartDate: cHarvestDate,
+        notes: cNotes.trim() || undefined,
+      },
+      editingYear ?? undefined
+    );
+    setCatalogTick((n) => n + 1);
+    setCampaignFormOpen(false);
+    setEditingYear(null);
+    toast.success(editingYear ? "Campagne de récolte modifiée !" : "Campagne de récolte ajoutée !");
+  }
+
+  function handleDeleteCampaign(year: number) {
+    if (!varietyProfile) return;
+    if (!window.confirm(`Supprimer l'historique de récolte de la campagne ${year} ?`)) return;
+    deleteVarietyCampaignRecord(varietyProfile.id, year);
+    setCatalogTick((n) => n + 1);
+    toast.success(`Campagne ${year} supprimée.`);
+  }
   const [f, setF] = useState({
     date: "",
     unit: "Kg",
@@ -108,7 +177,7 @@ export function RecolteModule({ parcelId, canEdit }: { parcelId: string; canEdit
   return (
     <div className="space-y-4">
       {/* Historique & dates de récolte issus du référentiel variétal de l'espèce */}
-      {varietyProfile && varietyProfile.campaignHistory.length > 0 && (
+      {varietyProfile && (
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-500/15 pb-2">
             <div>
@@ -122,10 +191,95 @@ export function RecolteModule({ parcelId, canEdit }: { parcelId: string; canEdit
                 Époque de maturité de référence : <strong className="text-foreground">{varietyProfile.phenologyReference.maturityPeriodFr}</strong>
               </p>
             </div>
-            <span className="text-[10px] font-bold text-muted-foreground">
-              {varietyProfile.campaignHistory.length} campagne{varietyProfile.campaignHistory.length > 1 ? "s" : ""}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-muted-foreground">
+                {varietyProfile.campaignHistory.filter((h) => h.harvestStartDate).length} campagne{varietyProfile.campaignHistory.filter((h) => h.harvestStartDate).length > 1 ? "s" : ""}
+              </span>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={openAddCampaign}
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 text-white px-2.5 py-1 text-[10px] font-bold hover:bg-emerald-700 transition cursor-pointer"
+                >
+                  <Plus className="h-3 w-3" />
+                  Ajouter
+                </button>
+              )}
+            </div>
           </div>
+
+          {campaignFormOpen && canEdit && (
+            <div className="rounded-xl border border-emerald-500/30 bg-card p-3 space-y-2.5 text-xs shadow-sm">
+              <div className="flex items-center justify-between border-b pb-1.5">
+                <span className="font-bold text-foreground">
+                  {editingYear ? `Modifier la campagne ${editingYear}` : "Ajouter une campagne de récolte"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCampaignFormOpen(false)}
+                  className="rounded p-0.5 text-muted-foreground hover:bg-muted cursor-pointer"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Année</label>
+                  <input
+                    type="number"
+                    value={cYear}
+                    onChange={(e) => setCYear(Number(e.target.value) || new Date().getFullYear())}
+                    className={cls}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Début récolte</label>
+                  <input
+                    type="date"
+                    value={cHarvestDate}
+                    onChange={(e) => setCHarvestDate(e.target.value)}
+                    className={cls}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Début floraison</label>
+                  <input
+                    type="date"
+                    value={cBloomDate}
+                    onChange={(e) => setCBloomDate(e.target.value)}
+                    className={cls}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">Observations</label>
+                <input
+                  type="text"
+                  value={cNotes}
+                  onChange={(e) => setCNotes(e.target.value)}
+                  placeholder="Ex : Bonne charge de fruits, calibre homogène..."
+                  className={cls}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCampaignFormOpen(false)}
+                  className="rounded-lg border px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:bg-muted cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCampaign}
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1 text-xs font-bold text-white hover:bg-emerald-700 cursor-pointer"
+                >
+                  <Save className="h-3 w-3" />
+                  {editingYear ? "Mettre à jour" : "Enregistrer"}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             {[...varietyProfile.campaignHistory]
@@ -150,20 +304,39 @@ export function RecolteModule({ parcelId, canEdit }: { parcelId: string; canEdit
                       )}
                     </div>
                     {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setF((prev) => ({
-                            ...prev,
-                            date: h.harvestStartDate || prev.date,
-                            notes: h.notes || prev.notes,
-                          }))
-                        }
-                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 transition cursor-pointer"
-                      >
-                        <Copy className="h-3 w-3" />
-                        Utiliser cette date
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setF((prev) => ({
+                              ...prev,
+                              date: h.harvestStartDate || prev.date,
+                              notes: h.notes || prev.notes,
+                            }))
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 transition cursor-pointer"
+                          title="Utiliser cette date dans le formulaire"
+                        >
+                          <Copy className="h-3 w-3" />
+                          Utiliser cette date
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEditCampaign(h)}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-emerald-600 hover:bg-emerald-500/10 transition cursor-pointer"
+                          title="Modifier cette campagne"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteCampaign(h.year)}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition cursor-pointer"
+                          title="Supprimer cette campagne"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     )}
                   </div>
                   {h.notes && (

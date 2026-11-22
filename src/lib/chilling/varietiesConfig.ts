@@ -42,6 +42,8 @@ export interface VarietyProfile {
 
   // Historique annuel réel de la ferme (enrichi chaque saison)
   campaignHistory: PhenologyRecord[];
+  // Années par défaut explicitement supprimées par l'utilisateur
+  deletedYears?: number[];
 }
 
 export const VARIETIES_CATALOG: VarietyProfile[] = [
@@ -273,12 +275,17 @@ export function deleteSeasonPhenology(
 ): VarietyProfile[] {
   return catalog.map((variety) => {
     if (variety.id !== varietyId) return variety;
+    const prevDeleted = Array.isArray(variety.deletedYears) ? variety.deletedYears : [];
+    const deletedYears = prevDeleted.includes(year) ? prevDeleted : [...prevDeleted, year];
     return {
       ...variety,
+      deletedYears,
       campaignHistory: variety.campaignHistory.filter((h) => h.year !== year),
     };
   });
 }
+
+const VARIETIES_STORAGE_KEY = 'doula_varieties_catalog';
 
 /**
  * Retourne le catalogue variétal en fusionnant les observations locales (doula_varieties_catalog)
@@ -287,35 +294,74 @@ export function deleteSeasonPhenology(
 export function getMergedVarietiesCatalog(): VarietyProfile[] {
   if (typeof window === 'undefined') return VARIETIES_CATALOG;
   try {
-    const raw = localStorage.getItem('doula_varieties_catalog');
+    const raw = localStorage.getItem(VARIETIES_STORAGE_KEY);
     if (!raw) return VARIETIES_CATALOG;
     const parsed: VarietyProfile[] = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) return VARIETIES_CATALOG;
     return VARIETIES_CATALOG.map((v) => {
       const found = parsed.find((p) => p.id === v.id);
       if (!found) return v;
+      const deletedSet = new Set<number>(Array.isArray(found.deletedYears) ? found.deletedYears : []);
       const savedHistory: PhenologyRecord[] = Array.isArray(found.campaignHistory) ? found.campaignHistory : [];
       const savedYears = new Set(savedHistory.map((h) => h.year));
-      const merged: PhenologyRecord[] = savedHistory.map((ch) => {
-        const def = v.campaignHistory.find((dh) => dh.year === ch.year);
-        return {
-          ...def,
-          ...ch,
-          harvestStartDate: ch.harvestStartDate || def?.harvestStartDate,
-        };
-      });
+      const merged: PhenologyRecord[] = savedHistory
+        .filter((ch) => !deletedSet.has(ch.year))
+        .map((ch) => {
+          const def = v.campaignHistory.find((dh) => dh.year === ch.year);
+          return {
+            ...def,
+            ...ch,
+            harvestStartDate: ch.harvestStartDate || def?.harvestStartDate,
+          };
+        });
       v.campaignHistory.forEach((dh) => {
-        if (!savedYears.has(dh.year)) merged.push(dh);
+        if (!savedYears.has(dh.year) && !deletedSet.has(dh.year)) merged.push(dh);
       });
       return {
         ...v,
         ...found,
+        deletedYears: Array.from(deletedSet),
         campaignHistory: merged.sort((a, b) => b.year - a.year),
       };
     });
   } catch {
     return VARIETIES_CATALOG;
   }
+}
+
+export function saveVarietyCampaignRecord(
+  varietyId: string,
+  record: PhenologyRecord,
+  previousYear?: number
+): VarietyProfile[] {
+  let catalog = getMergedVarietiesCatalog();
+  if (previousYear !== undefined && previousYear !== record.year) {
+    catalog = deleteSeasonPhenology(catalog, varietyId, previousYear);
+  }
+  const updated = recordSeasonPhenology(catalog, varietyId, record).map((v) => {
+    if (v.id !== varietyId) return v;
+    return {
+      ...v,
+      deletedYears: (v.deletedYears || []).filter((y) => y !== record.year),
+    };
+  });
+  try {
+    localStorage.setItem(VARIETIES_STORAGE_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage quota errors
+  }
+  return updated;
+}
+
+export function deleteVarietyCampaignRecord(varietyId: string, year: number): VarietyProfile[] {
+  const catalog = getMergedVarietiesCatalog();
+  const updated = deleteSeasonPhenology(catalog, varietyId, year);
+  try {
+    localStorage.setItem(VARIETIES_STORAGE_KEY, JSON.stringify(updated));
+  } catch {
+    // ignore storage quota errors
+  }
+  return updated;
 }
 
 /**
