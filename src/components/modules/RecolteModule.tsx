@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { Save, Trash2, History, Image as ImageIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Save, Trash2, History, Image as ImageIcon, CalendarCheck, Flower2, Copy } from "lucide-react";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
+import { useParcels } from "@/lib/parcel-store";
+import { getVarietyProfileForParcel } from "@/lib/chilling/varietiesConfig";
 
 type Record = {
   id: string;
@@ -28,6 +30,9 @@ type Record = {
 export function RecolteModule({ parcelId, canEdit }: { parcelId: string; canEdit: boolean }) {
   const records = useModuleRecords<Record>(parcelId, "recolte");
   const { add, remove } = useModuleActions();
+  const parcels = useParcels();
+  const parcel = useMemo(() => parcels.find((p) => p.id === parcelId), [parcels, parcelId]);
+  const varietyProfile = useMemo(() => getVarietyProfileForParcel(parcel), [parcel]);
   const [f, setF] = useState({
     date: "",
     unit: "Kg",
@@ -102,6 +107,76 @@ export function RecolteModule({ parcelId, canEdit }: { parcelId: string; canEdit
 
   return (
     <div className="space-y-4">
+      {/* Historique & dates de récolte issus du référentiel variétal de l'espèce */}
+      {varietyProfile && varietyProfile.campaignHistory.length > 0 && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-500/15 pb-2">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5">
+                <CalendarCheck className="h-4 w-4" />
+                <span>
+                  {varietyProfile.icon} Historique des récoltes — {varietyProfile.nameFr}
+                </span>
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Époque de maturité de référence : <strong className="text-foreground">{varietyProfile.phenologyReference.maturityPeriodFr}</strong>
+              </p>
+            </div>
+            <span className="text-[10px] font-bold text-muted-foreground">
+              {varietyProfile.campaignHistory.length} campagne{varietyProfile.campaignHistory.length > 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {[...varietyProfile.campaignHistory]
+              .sort((a, b) => b.year - a.year)
+              .filter((h) => h.harvestStartDate)
+              .map((h) => (
+                <div key={h.year} className="rounded-xl border bg-card p-3 text-xs space-y-1.5 shadow-2xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md bg-emerald-600 text-white font-black text-[10px] px-2 py-0.5">
+                        {h.year}
+                      </span>
+                      <span className="font-bold text-foreground flex items-center gap-1">
+                        <CalendarCheck className="h-3.5 w-3.5 text-emerald-600" />
+                        Début récolte : <span dir="ltr" className="font-mono">{h.harvestStartDate}</span>
+                      </span>
+                      {h.bloomStartDate && (
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <Flower2 className="h-3.5 w-3.5 text-rose-500" />
+                          Floraison : <span dir="ltr" className="font-mono font-semibold text-foreground">{h.bloomStartDate}</span>
+                        </span>
+                      )}
+                    </div>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setF((prev) => ({
+                            ...prev,
+                            date: h.harvestStartDate || prev.date,
+                            notes: h.notes || prev.notes,
+                          }))
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 transition cursor-pointer"
+                      >
+                        <Copy className="h-3 w-3" />
+                        Utiliser cette date
+                      </button>
+                    )}
+                  </div>
+                  {h.notes && (
+                    <p className="text-[11px] text-muted-foreground italic bg-muted/40 rounded-lg px-2.5 py-1.5">
+                      « {h.notes} »
+                    </p>
+                  )}
+                </div>
+              ))}
+          </div>
+        </div>
+      )}
+
       {canEdit && (
         <div className="space-y-3 rounded-xl border bg-card p-4">
           <h3 className="text-sm font-semibold text-foreground">Nouvelle récolte (Salle de tri)</h3>

@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { Save, Trash2, History, Image as ImageIcon, Scissors } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Save, Trash2, History, Image as ImageIcon, Scissors, Calendar, Flower2, Clock, Copy } from "lucide-react";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
+import { useParcels } from "@/lib/parcel-store";
+import { getVarietyProfileForParcel, computePruningToBloomDays } from "@/lib/chilling/varietiesConfig";
 
 type Record = {
   id: string;
@@ -24,6 +26,9 @@ const TYPES_TAILLE = [
 export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit: boolean }) {
   const records = useModuleRecords<Record>(parcelId, "taille");
   const { add, remove } = useModuleActions();
+  const parcels = useParcels();
+  const parcel = useMemo(() => parcels.find((p) => p.id === parcelId), [parcels, parcelId]);
+  const varietyProfile = useMemo(() => getVarietyProfileForParcel(parcel), [parcel]);
   const [f, setF] = useState({
     date: "",
     typeTaille: TYPES_TAILLE[0],
@@ -59,6 +64,80 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
 
   return (
     <div className="space-y-4">
+      {/* Historique de taille issu du référentiel variétal de l'espèce */}
+      {varietyProfile && varietyProfile.campaignHistory.length > 0 && (
+        <div className="rounded-xl border border-primary/25 bg-primary/5 p-4 space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-primary/15 pb-2">
+            <h3 className="text-xs font-black uppercase tracking-wider text-primary flex items-center gap-1.5">
+              <Calendar className="h-4 w-4" />
+              <span>
+                {varietyProfile.icon} Historique des tailles — {varietyProfile.nameFr}
+              </span>
+            </h3>
+            <span className="text-[10px] font-bold text-muted-foreground">
+              {varietyProfile.campaignHistory.length} campagne{varietyProfile.campaignHistory.length > 1 ? "s" : ""} enregistrée{varietyProfile.campaignHistory.length > 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            {[...varietyProfile.campaignHistory]
+              .sort((a, b) => b.year - a.year)
+              .filter((h) => h.pruningDate)
+              .map((h) => {
+                const delay = computePruningToBloomDays(h.pruningDate, h.bloomStartDate);
+                return (
+                  <div key={h.year} className="rounded-xl border bg-card p-3 text-xs space-y-1.5 shadow-2xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-md bg-primary text-primary-foreground font-black text-[10px] px-2 py-0.5">
+                          {h.year}
+                        </span>
+                        <span className="font-bold text-foreground flex items-center gap-1">
+                          <Scissors className="h-3.5 w-3.5 text-primary" />
+                          Taille : <span dir="ltr" className="font-mono">{h.pruningDate}</span>
+                        </span>
+                        {h.bloomStartDate && (
+                          <span className="text-muted-foreground flex items-center gap-1">
+                            <Flower2 className="h-3.5 w-3.5 text-rose-500" />
+                            Floraison : <span dir="ltr" className="font-mono font-semibold text-foreground">{h.bloomStartDate}</span>
+                          </span>
+                        )}
+                        {delay !== null && (
+                          <span className="rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-800 dark:text-amber-300 font-bold text-[10px] px-2 py-0.5 inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            Délai taille → floraison : {delay} j
+                          </span>
+                        )}
+                      </div>
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setF((prev) => ({
+                              ...prev,
+                              date: h.pruningDate || prev.date,
+                              notes: h.notes || prev.notes,
+                            }))
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 px-2 py-1 text-[10px] font-bold text-primary transition cursor-pointer"
+                        >
+                          <Copy className="h-3 w-3" />
+                          Pré-remplir
+                        </button>
+                      )}
+                    </div>
+                    {h.notes && (
+                      <p className="text-[11px] text-muted-foreground italic bg-muted/40 rounded-lg px-2.5 py-1.5">
+                        « {h.notes} »
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
       {canEdit && (
         <div className="space-y-3 rounded-xl border bg-card p-4">
           <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">

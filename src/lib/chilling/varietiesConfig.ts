@@ -280,3 +280,73 @@ export function deleteSeasonPhenology(
   });
 }
 
+/**
+ * Retourne le catalogue variétal en fusionnant les observations locales (doula_varieties_catalog)
+ * avec les données de référence VARIETIES_CATALOG.
+ */
+export function getMergedVarietiesCatalog(): VarietyProfile[] {
+  if (typeof window === 'undefined') return VARIETIES_CATALOG;
+  try {
+    const raw = localStorage.getItem('doula_varieties_catalog');
+    if (!raw) return VARIETIES_CATALOG;
+    const parsed: VarietyProfile[] = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return VARIETIES_CATALOG;
+    return VARIETIES_CATALOG.map((v) => {
+      const found = parsed.find((p) => p.id === v.id);
+      if (!found) return v;
+      const savedHistory: PhenologyRecord[] = Array.isArray(found.campaignHistory) ? found.campaignHistory : [];
+      const savedYears = new Set(savedHistory.map((h) => h.year));
+      const merged: PhenologyRecord[] = savedHistory.map((ch) => {
+        const def = v.campaignHistory.find((dh) => dh.year === ch.year);
+        return {
+          ...def,
+          ...ch,
+          harvestStartDate: ch.harvestStartDate || def?.harvestStartDate,
+        };
+      });
+      v.campaignHistory.forEach((dh) => {
+        if (!savedYears.has(dh.year)) merged.push(dh);
+      });
+      return {
+        ...v,
+        ...found,
+        campaignHistory: merged.sort((a, b) => b.year - a.year),
+      };
+    });
+  } catch {
+    return VARIETIES_CATALOG;
+  }
+}
+
+/**
+ * Associe automatiquement une parcelle de la ferme à son profil variétal
+ * (historique Taille, Floraison & Récolte).
+ */
+export function getVarietyProfileForParcel(parcel?: {
+  id?: string;
+  name?: string;
+  type?: string;
+  info?: { espece?: string };
+}): VarietyProfile | null {
+  if (!parcel) return null;
+  const catalog = getMergedVarietiesCatalog();
+  const id = (parcel.id || '').toLowerCase();
+  const name = (parcel.name || '').toLowerCase();
+  const espece = (parcel.info?.espece || '').toLowerCase();
+  const type = (parcel.type || '').toLowerCase();
+
+  if (type === 'olivier' || id.startsWith('p1') || name.includes('olivier')) {
+    return catalog.find((v) => v.id === 'oli_chemlal') || null;
+  }
+  if (type === 'pommier' || id.includes('pommier') || name.includes('pommier') || name.includes('gala')) {
+    return catalog.find((v) => v.id === 'pom_gala_one') || null;
+  }
+  if (type === 'nectarinier' || name.includes('nectar') || name.includes('nablara') || name.includes('redix') || id.includes('nablara') || id.includes('redix')) {
+    if (id.includes('redix') || name.includes('redix') || espece.includes('redix')) {
+      return catalog.find((v) => v.id === 'nec_redix25') || null;
+    }
+    return catalog.find((v) => v.id === 'nec_nablara') || null;
+  }
+  return null;
+}
+
