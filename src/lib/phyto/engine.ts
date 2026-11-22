@@ -78,6 +78,59 @@ export function checkMultiSpeciesProductStage(
 
 export type CropType = 'peche' | 'nectarine' | 'pomme' | 'olive';
 
+export interface AgriculturalSeason {
+  label: string;
+  startYear: number;
+  endYear: number;
+  startDate: string;
+  endDate: string;
+}
+
+/**
+ * Calcule la campagne agricole réelle selon l'espèce :
+ * - Pommier & Nectarinier : du 1er novembre (N) au 31 octobre (N+1)
+ * - Olivier : du 1er décembre (N) au 30 novembre (N+1) (après récolte)
+ */
+export function getAgriculturalSeason(
+  species?: string,
+  date: Date | string = new Date()
+): AgriculturalSeason {
+  const d =
+    typeof date === 'string'
+      ? /^\d{4}-\d{2}-\d{2}$/.test(date.trim())
+        ? new Date(`${date.trim()}T12:00:00`)
+        : new Date(date)
+      : date;
+  const safeDate = Number.isNaN(d.getTime()) ? new Date() : d;
+  const year = safeDate.getFullYear();
+  const month = safeDate.getMonth(); // 0 = Jan, 10 = Nov, 11 = Dec
+
+  const sp = (species || '').toLowerCase();
+  const isOlive = sp.includes('oliv');
+
+  if (isOlive) {
+    const startYear = month >= 11 ? year : year - 1;
+    const endYear = startYear + 1;
+    return {
+      label: `${startYear}–${endYear}`,
+      startYear,
+      endYear,
+      startDate: `${startYear}-12-01`,
+      endDate: `${endYear}-11-30`,
+    };
+  }
+
+  const startYear = month >= 10 ? year : year - 1;
+  const endYear = startYear + 1;
+  return {
+    label: `${startYear}–${endYear}`,
+    startYear,
+    endYear,
+    startDate: `${startYear}-11-01`,
+    endDate: `${endYear}-10-31`,
+  };
+}
+
 export type GrowthStage =
   | 'dormance'
   | 'gonflement_bourgeons'
@@ -461,10 +514,17 @@ export class PhytosanitaryEngine {
 
     const modeRecommendation = conditions ? PhytosanitaryEngine.recommendModeOfAction(conditions) : null;
 
-    // Récupérer les traitements appliqués cette saison sur la parcelle contre cette cible
+    // Campagne agricole réelle par espèce (Pommier/Nectarinier : 1 nov → 31 oct ; Olivier : 1 déc → 30 nov)
+    const effectiveSpeciesForSeason: string =
+      crop ||
+      selectedSpecies?.[0] ||
+      (targetPest.crops.length === 1 ? targetPest.crops[0] : 'pommier');
+    const activeSeason = getAgriculturalSeason(effectiveSpeciesForSeason, currentDate);
+
+    // Récupérer les traitements appliqués durant cette campagne agricole sur la parcelle contre cette cible
     const currentSeasonLogs = parcelHistory.filter((log) => {
-      const logYear = new Date(log.date).getFullYear();
-      return logYear === currentSeasonYear && log.targetPestId === targetPest.id;
+      const logSeason = getAgriculturalSeason(effectiveSpeciesForSeason, log.date);
+      return logSeason.label === activeSeason.label && log.targetPestId === targetPest.id;
     });
 
     // Dernier traitement effectué contre cette cible
@@ -544,7 +604,7 @@ export class PhytosanitaryEngine {
       if (groupApplicationsCount >= effectiveMaxPerSeason) {
         isAllowed = false;
         quotaBlocked = true;
-        blockReason = `Quota annuel atteint (${groupApplicationsCount}/${effectiveMaxPerSeason}) — bloqué pour éviter la résistance | تم بلوغ الحد الأقصى السنوي (${groupApplicationsCount}/${effectiveMaxPerSeason}) — ممنوع لتفادي المقاومة`;
+        blockReason = `Quota campagne ${activeSeason.label} atteint (${groupApplicationsCount}/${effectiveMaxPerSeason}) — bloqué pour éviter la résistance | تم بلوغ الحد الأقصى لحملة ${activeSeason.label} (${groupApplicationsCount}/${effectiveMaxPerSeason}) — ممنوع لتفادي المقاومة`;
         priorityScore = 0;
       }
 
@@ -702,6 +762,7 @@ export class PhytosanitaryEngine {
         darLabelFr,
         darLabelAr,
         effectiveMaxPerSeason,
+        agriculturalSeason: activeSeason.label,
         priorityScore,
         currentSeasonUsageCount: groupApplicationsCount,
         lastUsedDate: hasDirectCodeConflict ? lastApplication?.date : null,

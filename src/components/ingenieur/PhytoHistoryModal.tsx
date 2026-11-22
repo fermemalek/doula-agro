@@ -17,6 +17,7 @@ import {
 import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
 import { useTranslation } from "@/lib/i18n";
+import { getAgriculturalSeason } from "@/lib/phyto/engine";
 import { 
   History, 
   ShieldAlert, 
@@ -77,6 +78,7 @@ export interface PhytoHistoryEntry {
   parcelId?: string;
   date: string;
   year: string;
+  season: string;
   month: string;
   period?: "matin" | "soir";
   productName: string;
@@ -133,7 +135,7 @@ export function PhytoHistoryModal({
     : "all";
 
   const [selectedCrop, setSelectedCrop] = useState<string>(defaultCropFilter);
-  const [selectedYear, setSelectedYear] = useState<string>("all");
+  const [selectedSeason, setSelectedSeason] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedActive, setSelectedActive] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -244,6 +246,7 @@ export function PhytoHistoryModal({
           parcelId: (r.parcel_ids && r.parcel_ids[0]) || undefined,
           date,
           year,
+          season: getAgriculturalSeason(cropKey, date).label,
           month,
           period,
           productName: p.product,
@@ -297,6 +300,7 @@ export function PhytoHistoryModal({
           parcelId: m.parcelId,
           date,
           year,
+          season: getAgriculturalSeason(cropKey, date).label,
           month,
           period: p.period,
           productName: prodName,
@@ -372,12 +376,24 @@ export function PhytoHistoryModal({
     } catch (e) {}
   };
 
-  // Années et matières actives uniques
-  const availableYears = useMemo(() => {
+  // Campagne agricole active selon la culture sélectionnée
+  const activeSeasonForCrop = useMemo(() => {
+    const sp = selectedCrop === "all" ? "pommier" : selectedCrop;
+    return getAgriculturalSeason(sp, new Date()).label;
+  }, [selectedCrop]);
+
+  // Campagnes agricoles et matières actives uniques
+  const availableSeasons = useMemo(() => {
     const s = new Set<string>();
-    allTreatments.forEach((t) => s.add(t.year));
+    const today = new Date();
+    s.add(getAgriculturalSeason("pommier", today).label);
+    s.add(getAgriculturalSeason("olivier", today).label);
+    s.add(activeSeasonForCrop);
+    allTreatments.forEach((t) => {
+      if (t.season) s.add(t.season);
+    });
     return Array.from(s).sort((a, b) => b.localeCompare(a));
-  }, [allTreatments]);
+  }, [allTreatments, activeSeasonForCrop]);
 
   const availableActives = useMemo(() => {
     const s = new Set<string>();
@@ -385,30 +401,30 @@ export function PhytoHistoryModal({
     return Array.from(s).sort();
   }, [allTreatments]);
 
-  // Fréquence d'utilisation par matière active sur l'année choisie ET FILTRÉE PAR CULTURE !
-  const currentYearRef = selectedYear !== "all" ? selectedYear : new Date().getFullYear().toString();
+  // Fréquence d'utilisation par matière active sur la campagne agricole choisie ET FILTRÉE PAR CULTURE !
+  const currentSeasonRef = selectedSeason !== "all" ? selectedSeason : activeSeasonForCrop;
   const activeUsageCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const item of allTreatments) {
-      // Filtrer par année
-      if (item.year !== currentYearRef) continue;
+      // Filtrer par campagne agricole réelle
+      if (item.season !== currentSeasonRef) continue;
       // FILTRER PAR CULTURE SÉLECTIONNÉE (Ne pas mélanger pommier, olivier, etc.)
       if (selectedCrop !== "all" && item.cropKey !== "all" && item.cropKey !== selectedCrop) continue;
 
       counts[item.activeSubstance] = (counts[item.activeSubstance] || 0) + 1;
     }
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  }, [allTreatments, currentYearRef, selectedCrop]);
+  }, [allTreatments, currentSeasonRef, selectedCrop]);
 
-  // Filtrage combiné : Culture (Espèce), Année, Mois, Matière Active et Recherche
+  // Filtrage combiné : Culture (Espèce), Campagne, Mois, Matière Active et Recherche
   const filteredTreatments = useMemo(() => {
     return allTreatments.filter((item) => {
       // 1. FILTRE CRUCIAL PAR CULTURE (Espèce elle-même)
       if (selectedCrop !== "all" && item.cropKey !== "all" && item.cropKey !== selectedCrop) {
         return false;
       }
-      // 2. Année
-      if (selectedYear !== "all" && item.year !== selectedYear) return false;
+      // 2. Campagne agricole
+      if (selectedSeason !== "all" && item.season !== selectedSeason) return false;
       // 3. Mois
       if (selectedMonth !== "all" && item.month !== selectedMonth) return false;
       // 4. Matière active
@@ -425,7 +441,7 @@ export function PhytoHistoryModal({
       }
       return true;
     });
-  }, [allTreatments, selectedCrop, selectedYear, selectedMonth, selectedActive, searchTerm]);
+  }, [allTreatments, selectedCrop, selectedSeason, selectedMonth, selectedActive, searchTerm]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -448,9 +464,17 @@ export function PhytoHistoryModal({
           {/* Bloc Vigilance et Résumé de Rotation des Matières Actives (Calculé pour la culture filtrée) */}
           <div className="rounded-2xl border bg-muted/30 p-3.5 space-y-2.5">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <ShieldAlert className="h-4 w-4 text-amber-600" />
-                {t("reco.phyto.activeUsage", "Utilisation des matières actives")} ({currentYearRef})
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5 flex-wrap">
+                <ShieldAlert className="h-4 w-4 text-amber-600 shrink-0" />
+                {isAr ? (
+                  <>
+                    عدد مرات استخدام المواد الفعالة (حملة <span dir="ltr">{currentSeasonRef}</span>)
+                  </>
+                ) : (
+                  <>
+                    Utilisations (Campagne <span dir="ltr">{currentSeasonRef}</span>)
+                  </>
+                )}
                 {selectedCrop !== "all" && (
                   <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-500/30">
                     🌱 {selectedCrop === "olivier" ? (isAr ? "الزيتون" : "Olivier") : selectedCrop === "pommier" ? (isAr ? "التفاح" : "Pommier") : (isAr ? "الخوخ / النكتارين" : "Pêcher / Nectarine")}
@@ -465,8 +489,8 @@ export function PhytoHistoryModal({
             {activeUsageCounts.length === 0 ? (
               <p className="text-xs text-muted-foreground italic">
                 {isAr 
-                  ? "لا توجد معاملات مسجلة لهذه السنة على المحصول المختار." 
-                  : "Aucun traitement enregistré pour cette année sur cette culture."}
+                  ? "لا توجد معاملات مسجلة لهذه الحملة على المحصول المختار." 
+                  : "Aucun traitement enregistré pour cette campagne sur cette culture."}
               </p>
             ) : (
               <div className="flex flex-wrap gap-2">
@@ -511,17 +535,17 @@ export function PhytoHistoryModal({
             )}
           </div>
 
-          {/* Filtres par Espèce / Culture, Année, Mois, Matière Active et Recherche */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {/* Filtres par Espèce / Culture, Campagne, Mois, Matière Active et Recherche */}
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
             {/* FILTRE 1 : CULTURE / ESPÈCE */}
-            <div>
+            <div className="col-span-2 sm:col-span-2 min-w-[190px]">
               <label className="text-[10px] font-bold text-muted-foreground block mb-1">
                 {isAr ? "المحصول / النوع" : "Espèce / Culture"}
               </label>
               <select
                 value={selectedCrop}
                 onChange={(e) => setSelectedCrop(e.target.value)}
-                className="w-full rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200 px-2.5 py-1.5 text-xs font-bold"
+                className="w-full min-w-[180px] rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200 px-3 py-1.5 text-xs font-bold"
               >
                 <option value="all">{isAr ? "جميع المحاصيل (الكل)" : "Toutes les cultures"}</option>
                 <option value="olivier">🫒 {isAr ? "الزيتون (Olivier)" : "Olivier"}</option>
@@ -530,20 +554,20 @@ export function PhytoHistoryModal({
               </select>
             </div>
 
-            {/* FILTRE 2 : ANNÉE */}
+            {/* FILTRE 2 : CAMPAGNE AGRICOLE */}
             <div>
               <label className="text-[10px] font-bold text-muted-foreground block mb-1">
-                {t("reco.phyto.filterYear", "Année")}
+                {isAr ? "السنة / الحملة" : "Campagne"}
               </label>
               <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
+                value={selectedSeason}
+                onChange={(e) => setSelectedSeason(e.target.value)}
                 className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs font-semibold"
               >
-                <option value="all">{t("reco.phyto.allYears", "Toutes les années")}</option>
-                {availableYears.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
+                <option value="all">{isAr ? "جميع الحملات" : "Toutes"}</option>
+                {availableSeasons.map((s) => (
+                  <option key={s} value={s} dir="ltr">
+                    {s}
                   </option>
                 ))}
               </select>
@@ -620,12 +644,12 @@ export function PhytoHistoryModal({
                   </span>
                 )}
               </span>
-              {(selectedCrop !== defaultCropFilter || selectedYear !== "all" || selectedMonth !== "all" || selectedActive !== "all" || searchTerm) && (
+              {(selectedCrop !== defaultCropFilter || selectedSeason !== "all" || selectedMonth !== "all" || selectedActive !== "all" || searchTerm) && (
                 <button
                   type="button"
                   onClick={() => {
                     setSelectedCrop(defaultCropFilter);
-                    setSelectedYear("all");
+                    setSelectedSeason("all");
                     setSelectedMonth("all");
                     setSelectedActive("all");
                     setSearchTerm("");
