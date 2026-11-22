@@ -21,27 +21,36 @@ import { type Parcel } from "@/data/parcels";
 
 const CUVE_INOX_CAPACITY_L = 5000;
 const OLIVE_PARCEL_IDS = new Set(["p1", "p2", "p3", "p4"]);
-const ENGINEER_FEE_STORAGE_KEY = "doula_olive_engineer_fees_v1";
+const CAMPAIGN_CHARGES_STORAGE_KEY = "doula_olive_campaign_charges_v1";
 
-function loadEngineerFeeForYear(year: number): number {
-  if (typeof window === "undefined") return 0;
+interface OliveManualCharges {
+  taille?: string;
+  engrais?: string;
+  engineer?: string;
+}
+
+function loadManualCampaignCharges(): OliveManualCharges {
+  if (typeof window === "undefined") return {};
   try {
-    const raw = localStorage.getItem(ENGINEER_FEE_STORAGE_KEY);
-    if (!raw) return 0;
-    const map = JSON.parse(raw) as Record<string, number>;
-    return Number(map[String(year)]) || 0;
+    const raw = localStorage.getItem(CAMPAIGN_CHARGES_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as OliveManualCharges;
+    // Migration douce depuis l'ancienne clé frais ingénieur
+    const legacy = localStorage.getItem("doula_olive_engineer_fees_v1");
+    if (legacy) {
+      const map = JSON.parse(legacy) as Record<string, number>;
+      const yrVal = map[String(new Date().getFullYear())];
+      if (yrVal) return { engineer: String(yrVal) };
+    }
+    return {};
   } catch {
-    return 0;
+    return {};
   }
 }
 
-function saveEngineerFeeForYear(year: number, amount: number) {
+function saveManualCampaignCharges(next: OliveManualCharges) {
   if (typeof window === "undefined") return;
   try {
-    const raw = localStorage.getItem(ENGINEER_FEE_STORAGE_KEY);
-    const map: Record<string, number> = raw ? JSON.parse(raw) : {};
-    map[String(year)] = amount;
-    localStorage.setItem(ENGINEER_FEE_STORAGE_KEY, JSON.stringify(map));
+    localStorage.setItem(CAMPAIGN_CHARGES_STORAGE_KEY, JSON.stringify(next));
   } catch { }
 }
 
@@ -180,11 +189,15 @@ export function RecolteOlivier({
   const [editingSaleId, setEditingSaleId] = useState<string | null>(null);
 
   const activeYear = new Date().getFullYear();
-  const [engineerFeeInput, setEngineerFeeInput] = useState<string>(() => {
-    const v = loadEngineerFeeForYear(activeYear);
-    return v > 0 ? String(v) : "";
-  });
-  const engineerFeeDA = parseFloat(engineerFeeInput.replace(",", ".")) || 0;
+  const [manualCharges, setManualCharges] = useState<OliveManualCharges>(loadManualCampaignCharges);
+
+  const updateManualCharge = (field: keyof OliveManualCharges, value: string) => {
+    setManualCharges((prev) => {
+      const next = { ...prev, [field]: value };
+      saveManualCampaignCharges(next);
+      return next;
+    });
+  };
 
   // Agrégation sur toute la campagne Oliviers (P1–P4) pour la Cuve Inox 5 000 L & stocks d'huile
   const oliveCampaignRecords = useMemo(() => {
@@ -257,11 +270,11 @@ export function RecolteOlivier({
       return d === String(activeYear);
     };
 
-    const tailleYearDA = (allTailleRecords || [])
+    const autoTailleYearDA = (allTailleRecords || [])
       .filter(isOliveAndCurrentYear)
       .reduce((s, r) => s + computeGenericRecordCost(r), 0);
 
-    const engraisYearDA = [
+    const autoEngraisYearDA = [
       ...(allFertRecords || []),
       ...(allPulvRecords || []),
       ...(allPhytoRecords || []),
@@ -269,6 +282,21 @@ export function RecolteOlivier({
     ]
       .filter(isOliveAndCurrentYear)
       .reduce((s, r) => s + computeGenericRecordCost(r), 0);
+
+    const tailleYearDA =
+      manualCharges.taille !== undefined && manualCharges.taille.trim() !== ""
+        ? parseFloat(manualCharges.taille.replace(",", ".")) || 0
+        : autoTailleYearDA;
+
+    const engraisYearDA =
+      manualCharges.engrais !== undefined && manualCharges.engrais.trim() !== ""
+        ? parseFloat(manualCharges.engrais.replace(",", ".")) || 0
+        : autoEngraisYearDA;
+
+    const engineerFeeDA =
+      manualCharges.engineer !== undefined && manualCharges.engineer.trim() !== ""
+        ? parseFloat(manualCharges.engineer.replace(",", ".")) || 0
+        : 0;
 
     const harvestAndMillChargesDA = totalChargesDA;
     const grandTotalChargesDA = harvestAndMillChargesDA + tailleYearDA + engraisYearDA + engineerFeeDA;
@@ -296,6 +324,8 @@ export function RecolteOlivier({
       avgSalePricePerL,
       estimatedStockValueDA,
       harvestAndMillChargesDA,
+      autoTailleYearDA,
+      autoEngraisYearDA,
       tailleYearDA,
       engraisYearDA,
       engineerFeeDA,
@@ -304,7 +334,7 @@ export function RecolteOlivier({
       totalCollectedDA,
       netResultDA: totalCollectedDA - grandTotalChargesDA,
     };
-  }, [oliveCampaignRecords, allTailleRecords, allFertRecords, allPulvRecords, allPhytoRecords, allAmendRecords, parcelId, activeYear, engineerFeeDA]);
+  }, [oliveCampaignRecords, allTailleRecords, allFertRecords, allPulvRecords, allPhytoRecords, allAmendRecords, parcelId, activeYear, manualCharges]);
 
   // Formulaire Bloc 1 + Bloc 2 + Bloc 3 initial (Cueillette + Trituration + Conditionnement)
   const [f, setF] = useState({
@@ -903,50 +933,60 @@ export function RecolteOlivier({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-xs font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
                 {isAr
-                  ? `3. تكاليف الحملة السنوية (${activeYear}) — التقليم · الأسمدة · أتعاب المهندس`
-                  : `3. Charges Annuelles Campagne (${activeYear}) — Taille · Engrais · Ingénieur`}
+                  ? "3. تكاليف الحملة — التقليم · الأسمدة · أتعاب المهندس"
+                  : "3. Charges Annuelles Campagne — Taille · Engrais · Ingénieur"}
               </h4>
               {netOilL > 0 && (
                 <span dir="ltr" className="text-[11px] font-black text-emerald-700 dark:text-emerald-300">
-                  {((formChargesDA + oliveStats.tailleYearDA + oliveStats.engraisYearDA + engineerFeeDA) / netOilL).toFixed(0)} DA/L
+                  {((formChargesDA + oliveStats.tailleYearDA + oliveStats.engraisYearDA + oliveStats.engineerFeeDA) / netOilL).toFixed(0)} DA/L
                 </span>
               )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="rounded-xl bg-muted/30 border p-2.5">
-                <span className="text-[10px] font-bold text-muted-foreground block">
-                  ✂️ {isAr ? `التقليم (${activeYear})` : `Taille (${activeYear})`}
-                </span>
-                <p dir="ltr" className="font-black text-sm text-foreground mt-0.5">
-                  {oliveStats.tailleYearDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-muted/30 border p-2.5">
-                <span className="text-[10px] font-bold text-muted-foreground block">
-                  🌱 {isAr ? `الأسمدة والمدخلات (${activeYear})` : `Engrais & Intrants (${activeYear})`}
-                </span>
-                <p dir="ltr" className="font-black text-sm text-foreground mt-0.5">
-                  {oliveStats.engraisYearDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
-                </p>
-              </div>
-
-              <div className="rounded-xl bg-amber-500/5 border border-amber-500/30 p-2.5">
-                <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
-                  👨‍🌾 {isAr ? `أتعاب المهندس (${activeYear})` : `Frais Ingénieur (${activeYear})`}
+                <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                  ✂️ {isAr ? "التقليم (دج)" : "Taille (DA)"}
                 </label>
                 <input
                   type="number"
                   dir="ltr"
                   inputMode="decimal"
                   disabled={!canEdit}
-                  value={engineerFeeInput}
-                  onChange={(e) => {
-                    setEngineerFeeInput(e.target.value);
-                    const val = parseFloat(e.target.value.replace(",", ".")) || 0;
-                    saveEngineerFeeForYear(activeYear, val);
-                  }}
+                  value={manualCharges.taille ?? (oliveStats.autoTailleYearDA > 0 ? String(oliveStats.autoTailleYearDA) : "")}
+                  onChange={(e) => updateManualCharge("taille", e.target.value)}
+                  placeholder={`${oliveStats.autoTailleYearDA} DA`}
+                  className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs font-black text-foreground"
+                />
+              </div>
+
+              <div className="rounded-xl bg-muted/30 border p-2.5">
+                <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                  🌱 {isAr ? "الأسمدة والمدخلات (دج)" : "Engrais & Intrants (DA)"}
+                </label>
+                <input
+                  type="number"
+                  dir="ltr"
+                  inputMode="decimal"
+                  disabled={!canEdit}
+                  value={manualCharges.engrais ?? (oliveStats.autoEngraisYearDA > 0 ? String(oliveStats.autoEngraisYearDA) : "")}
+                  onChange={(e) => updateManualCharge("engrais", e.target.value)}
+                  placeholder={`${oliveStats.autoEngraisYearDA} DA`}
+                  className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs font-black text-foreground"
+                />
+              </div>
+
+              <div className="rounded-xl bg-amber-500/5 border border-amber-500/30 p-2.5">
+                <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
+                  👨‍🌾 {isAr ? "أتعاب المهندس (دج)" : "Frais Ingénieur (DA)"}
+                </label>
+                <input
+                  type="number"
+                  dir="ltr"
+                  inputMode="decimal"
+                  disabled={!canEdit}
+                  value={manualCharges.engineer ?? ""}
+                  onChange={(e) => updateManualCharge("engineer", e.target.value)}
                   placeholder="0 DA"
                   className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs font-black text-foreground"
                 />
