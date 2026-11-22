@@ -898,6 +898,62 @@ export function RecolteOlivier({
             </div>
           )}
 
+          {/* BLOC 3 FORMULAIRE — CHARGES ANNUELLES CAMPAGNE (Taille, Engrais & Intrants, Frais Ingénieur) */}
+          <div className="border-t pt-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-xs font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                {isAr
+                  ? `3. تكاليف الحملة السنوية (${activeYear}) — التقليم · الأسمدة · أتعاب المهندس`
+                  : `3. Charges Annuelles Campagne (${activeYear}) — Taille · Engrais · Ingénieur`}
+              </h4>
+              {netOilL > 0 && (
+                <span dir="ltr" className="text-[11px] font-black text-emerald-700 dark:text-emerald-300">
+                  {((formChargesDA + oliveStats.tailleYearDA + oliveStats.engraisYearDA + engineerFeeDA) / netOilL).toFixed(0)} DA/L
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div className="rounded-xl bg-muted/30 border p-2.5">
+                <span className="text-[10px] font-bold text-muted-foreground block">
+                  ✂️ {isAr ? `التقليم (${activeYear})` : `Taille (${activeYear})`}
+                </span>
+                <p dir="ltr" className="font-black text-sm text-foreground mt-0.5">
+                  {oliveStats.tailleYearDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-muted/30 border p-2.5">
+                <span className="text-[10px] font-bold text-muted-foreground block">
+                  🌱 {isAr ? `الأسمدة والمدخلات (${activeYear})` : `Engrais & Intrants (${activeYear})`}
+                </span>
+                <p dir="ltr" className="font-black text-sm text-foreground mt-0.5">
+                  {oliveStats.engraisYearDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-amber-500/5 border border-amber-500/30 p-2.5">
+                <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
+                  👨‍🌾 {isAr ? `أتعاب المهندس (${activeYear})` : `Frais Ingénieur (${activeYear})`}
+                </label>
+                <input
+                  type="number"
+                  dir="ltr"
+                  inputMode="decimal"
+                  disabled={!canEdit}
+                  value={engineerFeeInput}
+                  onChange={(e) => {
+                    setEngineerFeeInput(e.target.value);
+                    const val = parseFloat(e.target.value.replace(",", ".")) || 0;
+                    saveEngineerFeeForYear(activeYear, val);
+                  }}
+                  placeholder="0 DA"
+                  className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs font-black text-foreground"
+                />
+              </div>
+            </div>
+          </div>
+
           <textarea
             value={f.notes}
             onChange={(e) => setF({ ...f, notes: e.target.value })}
@@ -964,68 +1020,6 @@ export function RecolteOlivier({
           <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold">
             +{oliveStats.totalCollectedDA.toFixed(0)} / −{oliveStats.totalChargesDA.toFixed(0)}
           </span>
-        </div>
-      </div>
-
-      {/* DÉCOMPOSITION COMPLÈTE DU COÛT DE REVIENT (Cueillette/Huilerie + Taille + Engrais + Frais Ingénieur) */}
-      <div className="rounded-2xl border bg-card p-3.5 space-y-2.5 text-xs shadow-2xs">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2">
-          <span className="font-black text-foreground">
-            📊 {isAr ? `تفصيل تكلفة إنتاج الزيت (${activeYear})` : `Décomposition du Coût de Revient (${activeYear})`}
-          </span>
-          <span dir="ltr" className="text-[11px] font-black text-emerald-700 dark:text-emerald-300">
-            {oliveStats.totalChargesDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
-            {oliveStats.totalNetOilL > 0 ? ` ÷ ${oliveStats.totalNetOilL.toFixed(0)} L = ${oliveStats.costPerLiterDA.toFixed(0)} DA/L` : ""}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div className="rounded-xl bg-muted/30 border p-2.5">
-            <span className="text-[10px] font-bold text-muted-foreground block">
-              🫒 {isAr ? "الجني والمعصرة والتعبئة" : "Cueillette & Huilerie"}
-            </span>
-            <p dir="ltr" className="font-black text-foreground mt-0.5">
-              {oliveStats.harvestAndMillChargesDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-muted/30 border p-2.5">
-            <span className="text-[10px] font-bold text-muted-foreground block">
-              ✂️ {isAr ? `التقليم (${activeYear})` : `Taille (${activeYear})`}
-            </span>
-            <p dir="ltr" className="font-black text-foreground mt-0.5">
-              {oliveStats.tailleYearDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-muted/30 border p-2.5">
-            <span className="text-[10px] font-bold text-muted-foreground block">
-              🌱 {isAr ? `الأسمدة والمدخلات (${activeYear})` : `Engrais & Intrants (${activeYear})`}
-            </span>
-            <p dir="ltr" className="font-black text-foreground mt-0.5">
-              {oliveStats.engraisYearDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-amber-500/5 border border-amber-500/30 p-2.5">
-            <label className="text-[10px] font-bold text-amber-800 dark:text-amber-300 block mb-1">
-              👨‍🌾 {isAr ? `أتعاب المهندس (${activeYear})` : `Frais Ingénieur (${activeYear})`}
-            </label>
-            <input
-              type="number"
-              dir="ltr"
-              inputMode="decimal"
-              disabled={!canEdit}
-              value={engineerFeeInput}
-              onChange={(e) => {
-                setEngineerFeeInput(e.target.value);
-                const val = parseFloat(e.target.value.replace(",", ".")) || 0;
-                saveEngineerFeeForYear(activeYear, val);
-              }}
-              placeholder="0 DA"
-              className="w-full rounded-lg border border-input bg-background px-2 py-1 text-xs font-black text-foreground"
-            />
-          </div>
         </div>
       </div>
 
