@@ -105,12 +105,16 @@ export function RecolteFruitsFrais({
   parcelId,
   parcel,
   canEdit,
+  showForm = false,
+  onCloseForm,
   prefillDate,
   prefillNotes,
 }: {
   parcelId: string;
   parcel?: Parcel;
   canEdit: boolean;
+  showForm?: boolean;
+  onCloseForm?: () => void;
   prefillDate?: string;
   prefillNotes?: string;
 }) {
@@ -395,6 +399,7 @@ export function RecolteFruitsFrais({
 
     add(parcelId, "recolte", payload);
     toast.success(isAr ? "تم تسجيل الجني بنجاح" : "Récolte enregistrée !");
+    onCloseForm?.();
     setF((prev) => ({
       ...prev,
       choix1Qty: "",
@@ -543,18 +548,30 @@ export function RecolteFruitsFrais({
       </div>
 
       {/* FORMULAIRE SALLE DE TRI & DESTINATION */}
-      {canEdit && (
-        <div className="space-y-4 rounded-2xl border bg-card p-4 shadow-2xs">
+      {canEdit && showForm && (
+        <div className="space-y-4 rounded-2xl border-2 border-emerald-600/30 bg-card p-4 shadow-sm animate-in fade-in-50 duration-150">
           <div className="flex items-center justify-between gap-2 border-b pb-2.5">
             <h3 className="text-sm font-black text-foreground flex items-center gap-2">
               <Package className="h-4 w-4 text-primary" />
               <span>{isAr ? "جني جديد (قاعة الفرز — فواكه طازجة)" : "Nouvelle récolte (Salle de tri — Fruits frais)"}</span>
             </h3>
-            {treeCount > 0 && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                🌳 <span dir="ltr">{treeCount}</span> {isAr ? "شجرة" : "arbres"}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {treeCount > 0 && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                  🌳 <span dir="ltr">{treeCount}</span> {isAr ? "شجرة" : "arbres"}
+                </span>
+              )}
+              {onCloseForm && (
+                <button
+                  type="button"
+                  onClick={onCloseForm}
+                  className="p-1 rounded-lg text-muted-foreground hover:bg-muted cursor-pointer"
+                  aria-label={isAr ? "إغلاق" : "Fermer"}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Date, Unité & Poids moyen par caisse */}

@@ -96,12 +96,16 @@ export function RecolteOlivier({
   parcelId,
   parcel,
   canEdit,
+  showForm = false,
+  onCloseForm,
   prefillDate,
   prefillNotes,
 }: {
   parcelId: string;
   parcel?: Parcel;
   canEdit: boolean;
+  showForm?: boolean;
+  onCloseForm?: () => void;
   prefillDate?: string;
   prefillNotes?: string;
 }) {
@@ -356,6 +360,7 @@ export function RecolteOlivier({
 
     add(parcelId, "recolte", payload);
     toast.success(isAr ? "تم تسجيل جني وعصر الزيتون بنجاح" : "Cueillette & trituration enregistrées !");
+    onCloseForm?.();
     setF((prev) => ({
       ...prev,
       weightVal: "",
@@ -559,13 +564,25 @@ export function RecolteOlivier({
       </div>
 
       {/* FORMULAIRE BLOC 1 (CUEILLETTE) + BLOC 2 (TRITURATION) + CONDITIONNEMENT INITIAL */}
-      {canEdit && (
-        <div className="space-y-4 rounded-2xl border bg-card p-4 shadow-2xs">
-          <h3 className="text-sm font-black text-foreground flex items-center gap-2 border-b pb-2">
-            <span>🫒</span>
-            <span>{isAr ? "جني الزيتون والعصر في المعصرة" : "Cueillette & Trituration (Oléiculture)"}</span>
-            {parcel?.name && <span className="text-xs font-bold text-muted-foreground">· {parcel.name}</span>}
-          </h3>
+      {canEdit && showForm && (
+        <div className="space-y-4 rounded-2xl border-2 border-emerald-600/30 bg-card p-4 shadow-sm animate-in fade-in-50 duration-150">
+          <div className="flex items-center justify-between gap-2 border-b pb-2">
+            <h3 className="text-sm font-black text-foreground flex items-center gap-2">
+              <span>🫒</span>
+              <span>{isAr ? "جني الزيتون والعصر في المعصرة" : "Cueillette & Trituration (Oléiculture)"}</span>
+              {parcel?.name && <span className="text-xs font-bold text-muted-foreground">· {parcel.name}</span>}
+            </h3>
+            {onCloseForm && (
+              <button
+                type="button"
+                onClick={onCloseForm}
+                className="p-1 rounded-lg text-muted-foreground hover:bg-muted cursor-pointer"
+                aria-label={isAr ? "إغلاق" : "Fermer"}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
 
           {/* BLOC 1 — Cueillette (Olives brutes) */}
           <div className="space-y-2.5">
