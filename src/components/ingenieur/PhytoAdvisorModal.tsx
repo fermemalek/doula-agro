@@ -273,6 +273,19 @@ export function PhytoAdvisorModal({
 
   const historyLogs: SprayApplicationRecord[] = useMemo(() => {
     const logs: SprayApplicationRecord[] = [];
+    const handledRecoIds = new Set<string>();
+    const seenLogKeys = new Set<string>();
+
+    // Pré-indexer la date réelle d'exécution par reco_id depuis module_records
+    const moduleDateByRecoId = new Map<string, string>();
+    for (const rec of modulePhytoRecords) {
+      const rAny = rec as any;
+      if (!rAny?.reco_id) continue;
+      const d = String(rAny.executed_at || rAny.executedAt || rAny.date || rAny.scheduled_at || '').slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        moduleDateByRecoId.set(rAny.reco_id, d);
+      }
+    }
 
     // 1. Extraire UNIQUEMENT depuis les recommandations réellement EXÉCUTÉES ou ACCEPTÉES (jamais "envoyee" / "pending")
     for (const r of recos) {
@@ -311,19 +324,24 @@ export function PhytoAdvisorModal({
           }
         } catch { }
 
+        handledRecoIds.add(r.id);
+
         const prog = payload.program || {};
         const products = Array.isArray(prog.products)
           ? prog.products
           : Array.isArray(payload.products)
             ? payload.products
             : [];
-        const appDate = String(prog.date || r.created_at);
+        const appDate = String(moduleDateByRecoId.get(r.id) || prog.date || r.created_at).slice(0, 10);
         for (const p of products) {
           const pName = (p.product || p.name || '').toLowerCase();
           const matchIng = ACTIVE_INGREDIENTS_DATABASE.find(
-            ing => pName.includes(ing.name.toLowerCase()) || ing.commonNameFr.toLowerCase().includes(pName)
+            ing => pName && (pName.includes(ing.name.toLowerCase()) || ing.commonNameFr.toLowerCase().includes(pName))
           );
           if (matchIng) {
+            const lk = `${appDate}|${matchIng.id}|${currentCrop}`;
+            if (seenLogKeys.has(lk)) continue;
+            seenLogKeys.add(lk);
             logs.push({
               id: r.id,
               parcelId: (r.parcel_ids && r.parcel_ids[0]) || 'all',
@@ -340,8 +358,10 @@ export function PhytoAdvisorModal({
       }
     }
 
-    // 2. Extraire depuis les exécutions réelles (modules parcelles)
+    // 2. Extraire depuis les exécutions réelles (modules parcelles) — sans dupliquer les recos déjà comptées
     for (const rec of modulePhytoRecords) {
+      const rAny = rec as any;
+      if (rAny.reco_id && handledRecoIds.has(rAny.reco_id)) continue;
       if (rec.status && !isExecutedOrAcceptedStatus(rec.status) && String(rec.status).toLowerCase() !== 'planifie') {
         continue;
       }
@@ -350,11 +370,15 @@ export function PhytoAdvisorModal({
         ing => pName && (pName.includes(ing.name.toLowerCase()) || ing.commonNameFr.toLowerCase().includes(pName))
       );
       if (matchIng) {
+        const modDate = String(rAny.executed_at || rAny.executedAt || rec.date || new Date().toISOString()).slice(0, 10);
+        const lk = `${modDate}|${matchIng.id}|${currentCrop}`;
+        if (seenLogKeys.has(lk)) continue;
+        seenLogKeys.add(lk);
         logs.push({
           id: rec.id,
           parcelId: rec.parcel_id || rec.parcelId || 'all',
           crop: currentCrop,
-          date: rec.date || new Date().toISOString(),
+          date: modDate,
           targetPestId: selectedPestId || 'unknown',
           activeIngredientId: matchIng.id,
           codeGroup: matchIng.codeGroup,

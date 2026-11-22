@@ -8,11 +8,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { 
-  useRecommendations, 
-  useRecommendationActions, 
-  type Recommendation, 
-  type CropGroup 
+import {
+  useRecommendations,
+  useRecommendationActions,
+  type Recommendation,
+  type CropGroup
 } from "@/lib/cloud/recommendations";
 import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
@@ -20,17 +20,17 @@ import { useTranslation } from "@/lib/i18n";
 import { getAgriculturalSeason, isExecutedOrAcceptedStatus } from "@/lib/phyto/engine";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { 
-  History, 
-  ShieldAlert, 
-  AlertTriangle, 
-  CheckCircle2, 
-  Filter, 
-  Search, 
-  Calendar, 
-  Sparkles, 
-  Trash2, 
-  Sprout 
+import {
+  History,
+  ShieldAlert,
+  AlertTriangle,
+  CheckCircle2,
+  Filter,
+  Search,
+  Calendar,
+  Sparkles,
+  Trash2,
+  Sprout
 } from "lucide-react";
 
 export const PHYTO_ACTIVE_SUBSTANCES: Record<string, string> = {
@@ -245,7 +245,7 @@ export function PhytoHistoryModal({
           localStorage.setItem("doula-modules", JSON.stringify(parsed));
         }
       }
-    } catch {}
+    } catch { }
   }, []);
 
   // Synchroniser le filtre de culture à l'ouverture de la modale
@@ -256,9 +256,26 @@ export function PhytoHistoryModal({
   }, [open, currentCrops]);
 
   // Agréger tous les traitements phytosanitaires (recommandations + modules parcelles + exécutions)
+  // RÈGLE ANTI-DOUBLON : une recommandation programmée 1 fois n'apparaît QU'UNE SEULE FOIS,
+  // avec sa date réelle d'exécution / planification issue de module_records (via reco_id).
   const allTreatments = useMemo(() => {
     const list: PhytoHistoryEntry[] = [];
     const seen = new Set<string>();
+    const handledRecoIds = new Set<string>();
+
+    // Pré-indexer les dates réelles d'exécution par reco_id depuis module_records
+    const moduleDateByRecoId = new Map<string, string>();
+    for (const m of modulePhytoRecords) {
+      const p = m as any;
+      if (!p?.reco_id) continue;
+      const realDate = String(p.executed_at || p.executedAt || p.date || p.scheduled_at || "").slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(realDate)) {
+        const prev = moduleDateByRecoId.get(p.reco_id);
+        if (!prev || realDate > prev) {
+          moduleDateByRecoId.set(p.reco_id, realDate);
+        }
+      }
+    }
 
     // 1. Depuis les recommandations phytosanitaires
     for (const r of recos) {
@@ -296,12 +313,14 @@ export function PhytoHistoryModal({
       }
 
       const titleDateMatch = typeof r.title === "string" ? r.title.match(/\b(20\d{2}-\d{2}-\d{2})\b/) : null;
+      // Priorité absolue à la date réelle d'exécution enregistrée dans module_records (si la reco a été exécutée/planifiée)
       const date = String(
+        moduleDateByRecoId.get(r.id) ||
         prog.date ||
         (titleDateMatch ? titleDateMatch[1] : "") ||
         (r.created_at ? r.created_at.slice(0, 10) : "") ||
         new Date().toISOString().slice(0, 10)
-      );
+      ).slice(0, 10);
       const year = date.length >= 4 ? date.slice(0, 4) : new Date().getFullYear().toString();
       const month = date.length >= 7 ? date.slice(5, 7) : "01";
       const period = prog.period as "matin" | "soir" | undefined;
@@ -309,19 +328,21 @@ export function PhytoHistoryModal({
       const cropList = Array.isArray(payload.crop_group)
         ? payload.crop_group
         : payload.crop_group
-        ? [payload.crop_group]
-        : [];
+          ? [payload.crop_group]
+          : [];
       const cropKey = normalizeCropKey(cropList.join(" "), r.parcel_ids, r.title);
       const cropLabel =
         cropList.length > 0
           ? cropList.map((c: string) => t(`crop.${c}`, c)).join(", ")
           : cropKey === "nectarine"
-          ? (isAr ? "الخوخ / النكتارين" : "Nectarine (Nablara / Redix 25)")
-          : cropKey === "pommier"
-          ? (isAr ? "التفاح" : "Pommier")
-          : cropKey === "olivier"
-          ? (isAr ? "الزيتون" : "Olivier")
-          : (isAr ? "الضيعة" : "Ferme");
+            ? (isAr ? "الخوخ / النكتارين" : "Nectarine (Nablara / Redix 25)")
+            : cropKey === "pommier"
+              ? (isAr ? "التفاح" : "Pommier")
+              : cropKey === "olivier"
+                ? (isAr ? "الزيتون" : "Olivier")
+                : (isAr ? "الضيعة" : "Ferme");
+
+      handledRecoIds.add(r.id);
 
       for (let i = 0; i < prods.length; i++) {
         const p = prods[i];
@@ -360,13 +381,15 @@ export function PhytoHistoryModal({
       }
     }
 
-    // 2. Depuis les enregistrements modules locaux/cloud (uniquement exécutés / saisis)
+    // 2. Depuis les enregistrements modules locaux/cloud (uniquement les saisies directes NON issues d'une reco déjà listée)
     for (const m of modulePhytoRecords) {
       const p = m as any;
+      // Anti-doublon strict : si cet enregistrement provient d'une recommandation déjà présente en Source 1, ne pas le dupliquer !
+      if (p.reco_id && handledRecoIds.has(p.reco_id)) continue;
       if (p.status && !isExecutedOrAcceptedStatus(p.status) && String(p.status).toLowerCase() !== "planifie") {
         continue;
       }
-      const date = p.date || p.scheduled_at?.slice(0, 10) || "";
+      const date = String(p.executed_at || p.executedAt || p.date || p.scheduled_at || "").slice(0, 10);
       if (!date) continue;
       const year = date.slice(0, 4);
       const month = date.slice(5, 7);
@@ -396,6 +419,19 @@ export function PhytoHistoryModal({
 
         const rawKey = `${date}|${prodName.toLowerCase()}|${cropKey}`;
         if (seen.has(rawKey)) continue;
+
+        // Filet de sécurité anti-doublon pour anciens enregistrements sans reco_id :
+        // même produit + même espèce à ≤ 7 jours d'écart d'une recommandation déjà listée → déjà compté !
+        const modTs = new Date(`${date}T12:00:00`).getTime();
+        const isNearDuplicateOfReco = list.some(
+          (existing) =>
+            existing.sourceType === "reco" &&
+            existing.cropKey === cropKey &&
+            existing.productName.toLowerCase() === prodName.toLowerCase() &&
+            Math.abs(new Date(`${existing.date}T12:00:00`).getTime() - modTs) <= 7 * 86400000
+        );
+        if (isNearDuplicateOfReco) continue;
+
         seen.add(rawKey);
 
         list.push({
@@ -449,6 +485,14 @@ export function PhytoHistoryModal({
       );
       const rawKey = `${date}|${prodName.toLowerCase()}|${cropKey}`;
       if (seen.has(rawKey)) continue;
+      const tkTs = new Date(`${date}T12:00:00`).getTime();
+      const isNearDupTask = list.some(
+        (existing) =>
+          existing.cropKey === cropKey &&
+          existing.productName.toLowerCase() === prodName.toLowerCase() &&
+          Math.abs(new Date(`${existing.date}T12:00:00`).getTime() - tkTs) <= 7 * 86400000
+      );
+      if (isNearDupTask) continue;
       const entryId = `exec-${tk.id}`;
       if (dismissedKeys.includes(entryId) || dismissedKeys.includes(rawKey)) continue;
       seen.add(rawKey);
@@ -486,7 +530,7 @@ export function PhytoHistoryModal({
     setDismissedKeys(nextKeys);
     try {
       localStorage.setItem("doula_dismissed_phyto_history", JSON.stringify(nextKeys));
-    } catch {}
+    } catch { }
 
     // 2. Si c'est une recommandation, la supprimer
     if (item.recoId) {
@@ -517,8 +561,8 @@ export function PhytoHistoryModal({
           if (Array.isArray(arr)) {
             const filtered = arr.filter((r: any) => {
               const rStr = JSON.stringify(r).toLowerCase();
-              const isMatch = r.id === item.moduleRecordId || 
-                r.reco_id === item.recoId || 
+              const isMatch = r.id === item.moduleRecordId ||
+                r.reco_id === item.recoId ||
                 (item.productName && rStr.includes(item.productName.toLowerCase()) && rStr.includes(item.date));
               return !isMatch;
             });
@@ -532,7 +576,7 @@ export function PhytoHistoryModal({
           localStorage.setItem("doula-modules", JSON.stringify(parsed));
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   // Campagne agricole active selon la culture sélectionnée
@@ -661,8 +705,8 @@ export function PhytoHistoryModal({
 
             {activeUsageCounts.length === 0 ? (
               <p className="text-xs text-muted-foreground italic">
-                {isAr 
-                  ? "لا توجد معاملات مسجلة لهذه الحملة على المحصول المختار." 
+                {isAr
+                  ? "لا توجد معاملات مسجلة لهذه الحملة على المحصول المختار."
                   : "Aucun traitement enregistré pour cette campagne sur cette culture."}
               </p>
             ) : (
@@ -674,15 +718,14 @@ export function PhytoHistoryModal({
                     <div
                       key={activeName}
                       onClick={() => setSelectedActive(selectedActive === activeName ? "all" : activeName)}
-                      className={`cursor-pointer rounded-xl border px-3 py-1.5 text-xs font-bold flex items-center gap-2 transition-all shadow-xs ${
-                        selectedActive === activeName
+                      className={`cursor-pointer rounded-xl border px-3 py-1.5 text-xs font-bold flex items-center gap-2 transition-all shadow-xs ${selectedActive === activeName
                           ? "ring-2 ring-primary border-primary bg-primary/10"
                           : isHigh
-                          ? "bg-rose-500/10 border-rose-500/40 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20"
-                          : isMedium
-                          ? "bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
-                          : "bg-background border-border text-foreground hover:bg-muted"
-                      }`}
+                            ? "bg-rose-500/10 border-rose-500/40 text-rose-700 dark:text-rose-300 hover:bg-rose-500/20"
+                            : isMedium
+                              ? "bg-amber-500/10 border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20"
+                              : "bg-background border-border text-foreground hover:bg-muted"
+                        }`}
                     >
                       {isHigh ? (
                         <AlertTriangle className="h-3.5 w-3.5 text-rose-600 shrink-0 animate-pulse" />
@@ -691,13 +734,12 @@ export function PhytoHistoryModal({
                       )}
                       <span>{activeName}</span>
                       <span
-                        className={`rounded-full px-1.5 py-0.2 text-[10px] font-black ${
-                          isHigh
+                        className={`rounded-full px-1.5 py-0.2 text-[10px] font-black ${isHigh
                             ? "bg-rose-600 text-white"
                             : isMedium
-                            ? "bg-amber-500 text-white"
-                            : "bg-muted text-muted-foreground"
-                        }`}
+                              ? "bg-amber-500 text-white"
+                              : "bg-muted text-muted-foreground"
+                          }`}
                       >
                         {count}×
                       </span>
@@ -853,8 +895,8 @@ export function PhytoHistoryModal({
               <div className="rounded-2xl border border-dashed p-8 text-center text-muted-foreground text-xs space-y-2">
                 <Sprout className="h-8 w-8 mx-auto text-muted-foreground/60" />
                 <p>
-                  {isAr 
-                    ? "لا توجد معاملات سابقة مسجلة لهذا المحصول." 
+                  {isAr
+                    ? "لا توجد معاملات سابقة مسجلة لهذا المحصول."
                     : "Aucun traitement phytosanitaire enregistré pour cette culture."}
                 </p>
                 {selectedCrop !== "all" && (
@@ -940,8 +982,8 @@ export function PhytoHistoryModal({
 
         <div className="border-t pt-3 flex justify-between items-center">
           <span className="text-[11px] text-muted-foreground">
-            {isAr 
-              ? "يمكنك حذف أي معاملة سابقة أو ملغاة بالضغط على أيقونة سلة المهملات 🗑️" 
+            {isAr
+              ? "يمكنك حذف أي معاملة سابقة أو ملغاة بالضغط على أيقونة سلة المهملات 🗑️"
               : "Vous pouvez retirer un traitement erroné ou annulé en cliquant sur la corbeille 🗑️"}
           </span>
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="rounded-xl font-bold">

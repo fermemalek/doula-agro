@@ -1109,16 +1109,20 @@ export async function validateRecommendationAndPurchases({
       }
 
       const existingPulvRecordsFarm = getAllModuleRecordsSnapshot("pulverisation");
-      const farmFoliarDates = new Set(
-        existingPulvRecordsFarm
+      const existingPhytoRecordsFarm = getAllModuleRecordsSnapshot("phytosanitaire");
+      const farmSprayBusyDates = new Set([
+        ...existingPulvRecordsFarm
           .filter((r: any) => r.reco_id !== reco.id && typeof r.date === "string")
-          .map((r: any) => String(r.date).slice(0, 10))
-      );
+          .map((r: any) => String(r.date).slice(0, 10)),
+        ...existingPhytoRecordsFarm
+          .filter((r: any) => r.reco_id !== reco.id && typeof r.date === "string")
+          .map((r: any) => String(r.date).slice(0, 10)),
+      ]);
 
       scheduledPhytoDate = avoidFriday(scheduledPhytoDate);
       let phytoSafety = 0;
       while (phytoSafety < 14) {
-        if (!isFridayDate(scheduledPhytoDate) && !farmFoliarDates.has(scheduledPhytoDate)) break;
+        if (!isFridayDate(scheduledPhytoDate) && !farmSprayBusyDates.has(scheduledPhytoDate)) break;
         scheduledPhytoDate = addDaysDate(scheduledPhytoDate, 1);
         phytoSafety++;
       }
