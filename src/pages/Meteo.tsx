@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Sun,
@@ -12,17 +12,19 @@ import {
   Mail,
   AlertTriangle,
   CheckCircle2,
-  ChevronRight,
-  TrendingUp,
   ShieldAlert,
   ArrowUp,
   ArrowDown,
-  Info,
   Clock,
   Send,
   Sparkles,
-  Snowflake,
-  Sprout
+  RefreshCw,
+  Settings,
+  Sunrise,
+  Sunset,
+  ChevronDown,
+  ChevronUp,
+  MapPin,
 } from "lucide-react";
 import { ChillHoursComparator } from "@/components/meteo/ChillHoursComparator";
 import { Card } from "@/components/ui/card";
@@ -32,8 +34,9 @@ import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { useRole } from "@/lib/role";
 import { WIND_LIMIT_KMH } from "@/lib/weather-forecast";
+import { getSolarTimesForDate } from "@/lib/astronomy";
 
-// Coordonnées géographiques de la ferme Doula Agro (Région Ain Oussera / Djelfa)
+// Coordonnées géographiques de la ferme Doula Agro (Benhar / Aïn Oussera, Alt. 762 m)
 const LAT = 35.286281;
 const LON = 3.103180;
 
@@ -65,187 +68,281 @@ interface OpenMeteoData {
     precipitation_probability_max: number[];
     wind_speed_10m_max: number[];
     et0_fao_evapotranspiration: number[];
+    sunrise?: string[];
+    sunset?: string[];
   };
 }
 
 async function fetchFarmMeteo(): Promise<OpenMeteoData> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,et0_fao_evapotranspiration&timezone=auto&forecast_days=7`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${LAT}&longitude=${LON}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,relative_humidity_2m,precipitation_probability,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,et0_fao_evapotranspiration,sunrise,sunset&timezone=auto&forecast_days=7`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("Impossible de charger les données météo");
   return res.json();
 }
 
-function getWeatherDesc(code: number, isAr: boolean): { label: string; icon: any } {
-  if (code === 0) return { label: isAr ? "سماء صافية / مشمس" : "Ciel dégagé / Ensoleillé", icon: Sun };
-  if (code === 1 || code === 2) return { label: isAr ? "قليل الغيوم" : "Partiellement voilé", icon: CloudSun };
-  if (code === 3) return { label: isAr ? "غائم" : "Nuageux", icon: CloudSun };
+function getWeatherDesc(code: number, isAr: boolean): { label: string; icon: typeof Sun } {
+  if (code === 0) return { label: isAr ? "سماء صافية" : "Ciel dégagé", icon: Sun };
+  if (code === 1 || code === 2) return { label: isAr ? "قليل الغيوم" : "Partiellement nuageux", icon: CloudSun };
+  if (code === 3) return { label: isAr ? "غائم" : "Couvert", icon: CloudSun };
   if (code >= 51 && code <= 67) return { label: isAr ? "أمطار خفيفة" : "Pluie légère", icon: CloudRain };
-  if (code >= 80 && code <= 99) return { label: isAr ? "زخات مطرية / عواصف" : "Averses / Orages", icon: CloudRain };
+  if (code >= 80 && code <= 99) return { label: isAr ? "زخات مطرية" : "Averses / Orages", icon: CloudRain };
   return { label: isAr ? "طقس متقلب" : "Variable", icon: Sun };
 }
 
-// Données climatiques moyennes mensuelles calculées pour la zone de la ferme
-const MONTHLY_CLIMATE_DATA = [
-  {
-    monthIdx: 0,
-    nameFr: "Janvier",
-    nameAr: "جانفي (يناير)",
-    tempMax: 12.2,
-    tempMin: 1.5,
-    rainMm: 28,
-    rainDays: 6,
-    et0: 1.8,
-    agriNotesFr: "Repos végétatif, taille d'hiver. Risque élevé de gelées blanches.",
-    agriNotesAr: "فترة السكون الشتوي، التقليم الشتوي. خطر مرتفع للجليد والبرد.",
-    riskLevel: "gel"
-  },
-  {
-    monthIdx: 1,
-    nameFr: "Février",
-    nameAr: "فيفري (فبراير)",
-    tempMax: 13.8,
-    tempMin: 2.4,
-    rainMm: 25,
-    rainDays: 5,
-    et0: 2.4,
-    agriNotesFr: "Fin de taille, application cuivre/huile blanche avant débourrement.",
-    agriNotesAr: "نهاية التقليم، المعالجة الشتوية بالنحاس والزيوت قبل انتفاخ البراعم.",
-    riskLevel: "gel"
-  },
-  {
-    monthIdx: 2,
-    nameFr: "Mars",
-    nameAr: "مارس",
-    tempMax: 17.5,
-    tempMin: 5.0,
-    rainMm: 32,
-    rainDays: 6,
-    et0: 3.5,
-    agriNotesFr: "Débourrement et floraison. Risque critique de gelées printanières. Démarrage de la fertigation.",
-    agriNotesAr: "تفتح البراعم والإزهار. حساسية عالية للجليد الربيعي. بداية التسميد بالري.",
-    riskLevel: "gel_printemps"
-  },
-  {
-    monthIdx: 3,
-    nameFr: "Avril",
-    nameAr: "أفريل (أبريل)",
-    tempMax: 21.2,
-    tempMin: 7.8,
-    rainMm: 34,
-    rainDays: 6,
-    et0: 4.6,
-    agriNotesFr: "Nouaison, formation des fruits. Surveillance tavelure et pucerons. Traitements foliaires (Calcium, Bore).",
-    agriNotesAr: "العقد وتكون الثمار. مراقبة الجرب وحشرة المن. رش ورقي (كالسيوم وبورون).",
-    riskLevel: "maladie"
-  },
-  {
-    monthIdx: 4,
-    nameFr: "Mai",
-    nameAr: "ماي (مايو)",
-    tempMax: 26.8,
-    tempMin: 12.2,
-    rainMm: 27,
-    rainDays: 5,
-    et0: 5.9,
-    agriNotesFr: "Grossissement actif des fruits. Augmentation des besoins en eau et en potassium.",
-    agriNotesAr: "زيادة حجم الثمار. ارتفاع الطلب على مياه الري وعنصر البوتاسيوم.",
-    riskLevel: "normal"
-  },
-  {
-    monthIdx: 5,
-    nameFr: "Juin",
-    nameAr: "جوان (يونيو)",
-    tempMax: 33.0,
-    tempMin: 17.5,
-    rainMm: 12,
-    rainDays: 3,
-    et0: 7.2,
-    agriNotesFr: "Début des fortes chaleurs. Surveillance stricte du carpocapse et de l'irrigation quotidienne.",
-    agriNotesAr: "بداية درجات الحرارة المرتفعة. متابعة دودة الثمار والري المنتظم.",
-    riskLevel: "chaleur"
-  },
-  {
-    monthIdx: 6,
-    nameFr: "Juillet",
-    nameAr: "جويلية (يوليو)",
-    tempMax: 37.8,
-    tempMin: 21.0,
-    rainMm: 5,
-    rainDays: 1,
-    et0: 8.4,
-    agriNotesFr: "Pic de canicule et sirocco (>38°C). Risque d'échaudage des fruits. Irrigation de pointe aux heures fraîches.",
-    agriNotesAr: "ذروة موجات الحر الشديدة والرياح الساخنة (سيروكو > 38°م). ري مكثف في الصباح الباكر.",
-    riskLevel: "canicule"
-  },
-  {
-    monthIdx: 7,
-    nameFr: "Août",
-    nameAr: "أوت (أغسطس)",
-    tempMax: 37.2,
-    tempMin: 20.8,
-    rainMm: 8,
-    rainDays: 2,
-    et0: 7.8,
-    agriNotesFr: "Chaleur intense continue. Maturation des variétés de saison. Maintien de l'humidité du sol.",
-    agriNotesAr: "استمرار الحرارة المرتفعة. نضج أصناف الموسم. الحفاظ على رطوبة التربة.",
-    riskLevel: "canicule"
-  },
-  {
-    monthIdx: 8,
-    nameFr: "Septembre",
-    nameAr: "سبتمبر",
-    tempMax: 30.6,
-    tempMin: 16.4,
-    rainMm: 22,
-    rainDays: 4,
-    et0: 5.3,
-    agriNotesFr: "Récolte principale. Réduction progressive de l'azote pour favoriser l'aoûtement des rameaux.",
-    agriNotesAr: "موسم الجني الرئيسي. تقليص التسميد الآزوتي لتصلب الأغصان وتخزين المدخرات.",
-    riskLevel: "recolte"
-  },
-  {
-    monthIdx: 9,
-    nameFr: "Octobre",
-    nameAr: "أكتوبر",
-    tempMax: 24.0,
-    tempMin: 11.5,
-    rainMm: 29,
-    rainDays: 5,
-    et0: 3.5,
-    agriNotesFr: "Fin des récoltes tardives. Irrigation post-récolte pour reconstituer les réserves de l'arbre.",
-    agriNotesAr: "نهاية الجني المتأخر. ري ما بعد الجني لتغذية الأشجار واسترجاع حيويتها.",
-    riskLevel: "normal"
-  },
-  {
-    monthIdx: 10,
-    nameFr: "Novembre",
-    nameAr: "نوفمبر",
-    tempMax: 16.8,
-    tempMin: 6.2,
-    rainMm: 31,
-    rainDays: 6,
-    et0: 2.2,
-    agriNotesFr: "Chute des feuilles. Traitement d'automne à base de cuivre pour assainir le verger.",
-    agriNotesAr: "تساقط الأوراق. المعالجة الخريفية بمركبات النحاس لتعقيم البستان.",
-    riskLevel: "froid"
-  },
-  {
-    monthIdx: 11,
-    nameFr: "Décembre",
-    nameAr: "ديسمبر",
-    tempMax: 12.8,
-    tempMin: 2.6,
-    rainMm: 30,
-    rainDays: 6,
-    et0: 1.7,
-    agriNotesFr: "Entrée en dormance. Apports d'amendements organiques et phosphatés de fond.",
-    agriNotesAr: "دخول الأشجار في السكون التام. إضافة التسميد العضوي والفوسفاتي الأساسي.",
-    riskLevel: "gel"
+type RiskLevel =
+  | "gel"
+  | "gel_printemps"
+  | "maladie"
+  | "normal"
+  | "chaleur"
+  | "canicule"
+  | "recolte"
+  | "froid";
+
+function getRiskDisplay(level: RiskLevel, isAr: boolean): { label: string; tone: string } {
+  switch (level) {
+    case "gel":
+      return {
+        label: isAr ? "خطر جليد شتوي" : "Risque gel hivernal",
+        tone: "text-sky-700 dark:text-sky-300 bg-sky-500/10 border-sky-500/30",
+      };
+    case "gel_printemps":
+      return {
+        label: isAr ? "جليد ربيعي حرج" : "Gel printanier critique",
+        tone: "text-rose-700 dark:text-rose-300 bg-rose-500/10 border-rose-500/30",
+      };
+    case "maladie":
+      return {
+        label: isAr ? "خطر فطري (جرب/من)" : "Vigilance maladies",
+        tone: "text-amber-700 dark:text-amber-300 bg-amber-500/10 border-amber-500/30",
+      };
+    case "chaleur":
+      return {
+        label: isAr ? "حرارة مرتفعة" : "Fortes chaleurs",
+        tone: "text-orange-700 dark:text-orange-300 bg-orange-500/10 border-orange-500/30",
+      };
+    case "canicule":
+      return {
+        label: isAr ? "موجة حر / سيروكو" : "Canicule / Sirocco",
+        tone: "text-rose-700 dark:text-rose-300 bg-rose-500/15 border-rose-500/40",
+      };
+    case "recolte":
+      return {
+        label: isAr ? "فترة الجني" : "Période de récolte",
+        tone: "text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/30",
+      };
+    case "froid":
+      return {
+        label: isAr ? "بداية البرودة" : "Entrée en froid",
+        tone: "text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 border-indigo-500/30",
+      };
+    default:
+      return {
+        label: isAr ? "مناخ معتدل" : "Conditions modérées",
+        tone: "text-emerald-700 dark:text-emerald-300 bg-emerald-500/10 border-emerald-500/30",
+      };
   }
-];
+}
+
+const MONTHLY_CLIMATE_DATA: Array<{
+  monthIdx: number;
+  nameFr: string;
+  shortFr: string;
+  nameAr: string;
+  shortAr: string;
+  tempMax: number;
+  tempMin: number;
+  rainMm: number;
+  rainDays: number;
+  et0: number;
+  agriNotesFr: string;
+  agriNotesAr: string;
+  riskLevel: RiskLevel;
+}> = [
+    {
+      monthIdx: 0,
+      nameFr: "Janvier",
+      shortFr: "Jan",
+      nameAr: "جانفي",
+      shortAr: "جانفي",
+      tempMax: 12.2,
+      tempMin: 1.5,
+      rainMm: 28,
+      rainDays: 6,
+      et0: 1.8,
+      agriNotesFr: "Repos végétatif et taille d'hiver. Risque élevé de gelées blanches matinales.",
+      agriNotesAr: "فترة السكون الشتوي والتقليم الشتوي. خطر مرتفع للجليد الصباحي.",
+      riskLevel: "gel",
+    },
+    {
+      monthIdx: 1,
+      nameFr: "Février",
+      shortFr: "Fév",
+      nameAr: "فيفري",
+      shortAr: "فيفري",
+      tempMax: 13.8,
+      tempMin: 2.4,
+      rainMm: 25,
+      rainDays: 5,
+      et0: 2.4,
+      agriNotesFr: "Fin de taille, traitement d'hiver (cuivre / huile blanche) avant débourrement.",
+      agriNotesAr: "نهاية التقليم والمعالجة الشتوية بالنحاس والزيت الأبيض قبل انتفاخ البراعم.",
+      riskLevel: "gel",
+    },
+    {
+      monthIdx: 2,
+      nameFr: "Mars",
+      shortFr: "Mar",
+      nameAr: "مارس",
+      shortAr: "مارس",
+      tempMax: 17.5,
+      tempMin: 5.0,
+      rainMm: 32,
+      rainDays: 6,
+      et0: 3.5,
+      agriNotesFr: "Débourrement et floraison. Risque critique de gelées printanières. Démarrage de la fertigation.",
+      agriNotesAr: "تفتح البراعم والإزهار. حساسية عالية للجليد الربيعي وبداية التسميد عبر الري.",
+      riskLevel: "gel_printemps",
+    },
+    {
+      monthIdx: 3,
+      nameFr: "Avril",
+      shortFr: "Avr",
+      nameAr: "أفريل",
+      shortAr: "أفريل",
+      tempMax: 21.2,
+      tempMin: 7.8,
+      rainMm: 34,
+      rainDays: 6,
+      et0: 4.6,
+      agriNotesFr: "Nouaison et formation des fruits. Surveillance tavelure et pucerons ; apports foliaires Calcium / Bore.",
+      agriNotesAr: "العقد وتكوّن الثمار. مراقبة الجرب والمنّ مع رش ورقي بالكالسيوم والبورون.",
+      riskLevel: "maladie",
+    },
+    {
+      monthIdx: 4,
+      nameFr: "Mai",
+      shortFr: "Mai",
+      nameAr: "ماي",
+      shortAr: "ماي",
+      tempMax: 26.8,
+      tempMin: 12.2,
+      rainMm: 27,
+      rainDays: 5,
+      et0: 5.9,
+      agriNotesFr: "Grossissement actif des fruits. Hausse des besoins en eau et en potassium.",
+      agriNotesAr: "نمو سريع للثمار. ارتفاع الاحتياج لمياه الري وعنصر البوتاسيوم.",
+      riskLevel: "normal",
+    },
+    {
+      monthIdx: 5,
+      nameFr: "Juin",
+      shortFr: "Juin",
+      nameAr: "جوان",
+      shortAr: "جوان",
+      tempMax: 33.0,
+      tempMin: 17.5,
+      rainMm: 12,
+      rainDays: 3,
+      et0: 7.2,
+      agriNotesFr: "Début des fortes chaleurs. Surveillance du carpocapse et irrigation quotidienne renforcée.",
+      agriNotesAr: "بداية الحرارة المرتفعة. متابعة دودة الثمار وتعزيز الري اليومي المنتظم.",
+      riskLevel: "chaleur",
+    },
+    {
+      monthIdx: 6,
+      nameFr: "Juillet",
+      shortFr: "Juil",
+      nameAr: "جويلية",
+      shortAr: "جويلية",
+      tempMax: 37.8,
+      tempMin: 21.0,
+      rainMm: 5,
+      rainDays: 1,
+      et0: 8.4,
+      agriNotesFr: "Pic de canicule et sirocco (> 38 °C). Risque d'échaudage : irrigation aux heures fraîches.",
+      agriNotesAr: "ذروة الحر ورياح السيروكو (> 38°م). خطر لفحة الشمس: تكثيف الري في الصباح الباكر والليل.",
+      riskLevel: "canicule",
+    },
+    {
+      monthIdx: 7,
+      nameFr: "Août",
+      shortFr: "Août",
+      nameAr: "أوت",
+      shortAr: "أوت",
+      tempMax: 37.2,
+      tempMin: 20.8,
+      rainMm: 8,
+      rainDays: 2,
+      et0: 7.8,
+      agriNotesFr: "Chaleur intense continue et maturation des variétés de saison. Maintien strict de l'humidité du sol.",
+      agriNotesAr: "استمرار الحرارة الشديدة ونضج أصناف الموسم. الحفاظ المستمر على رطوبة التربة.",
+      riskLevel: "canicule",
+    },
+    {
+      monthIdx: 8,
+      nameFr: "Septembre",
+      shortFr: "Sep",
+      nameAr: "سبتمبر",
+      shortAr: "سبتمبر",
+      tempMax: 30.6,
+      tempMin: 16.4,
+      rainMm: 22,
+      rainDays: 4,
+      et0: 5.3,
+      agriNotesFr: "Récolte principale. Réduction progressive de l'azote pour favoriser l'aoûtement des rameaux.",
+      agriNotesAr: "موسم الجني الرئيسي. تقليص الآزوت تدريجياً لتصلب الأغصان وتخزين المدخرات.",
+      riskLevel: "recolte",
+    },
+    {
+      monthIdx: 9,
+      nameFr: "Octobre",
+      shortFr: "Oct",
+      nameAr: "أكتوبر",
+      shortAr: "أكتوبر",
+      tempMax: 24.0,
+      tempMin: 11.5,
+      rainMm: 29,
+      rainDays: 5,
+      et0: 3.5,
+      agriNotesFr: "Fin des récoltes tardives. Irrigation post-récolte pour reconstituer les réserves de l'arbre.",
+      agriNotesAr: "نهاية الجني المتأخر. ري ما بعد الحصاد لإعادة تكوين مخزون الشجرة.",
+      riskLevel: "normal",
+    },
+    {
+      monthIdx: 10,
+      nameFr: "Novembre",
+      shortFr: "Nov",
+      nameAr: "نوفمبر",
+      shortAr: "نوفمبر",
+      tempMax: 16.8,
+      tempMin: 6.2,
+      rainMm: 31,
+      rainDays: 6,
+      et0: 2.2,
+      agriNotesFr: "Chute des feuilles et récolte des olives. Traitement d'automne au cuivre pour assainir le verger.",
+      agriNotesAr: "تساقط الأوراق وجني الزيتون. معالجة خريفية بالنحاس لتعقيم البستان.",
+      riskLevel: "froid",
+    },
+    {
+      monthIdx: 11,
+      nameFr: "Décembre",
+      shortFr: "Déc",
+      nameAr: "ديسمبر",
+      shortAr: "ديسمبر",
+      tempMax: 12.8,
+      tempMin: 2.6,
+      rainMm: 30,
+      rainDays: 6,
+      et0: 1.7,
+      agriNotesFr: "Entrée en dormance. Apports d'amendements organiques et phosphatés de fond.",
+      agriNotesAr: "دخول الأشجار في السكون الشتوي. إضافة الأسمدة العضوية والفوسفاتية الأساسية.",
+      riskLevel: "gel",
+    },
+  ];
 
 export default function MeteoPage() {
-  const { t, lang } = useTranslation();
+  const { lang } = useTranslation();
   const isAr = lang === "ar";
   const { session } = useRole();
 
@@ -253,7 +350,12 @@ export default function MeteoPage() {
   const [activeTab, setActiveTab] = useState<MeteoTab>("realtime");
   const [selectedMonthIdx, setSelectedMonthIdx] = useState<number>(new Date().getMonth());
 
-  // Configuration de l'alerte de température maximale par email
+  // Panneaux repliables contrôlables depuis l'en-tête (⚙️)
+  const [heatAlertOpen, setHeatAlertOpen] = useState<boolean>(false);
+  const [chillConfigOpen, setChillConfigOpen] = useState<boolean>(false);
+  const [chillRefreshTick, setChillRefreshTick] = useState<number>(0);
+
+  // Configuration de l'alerte canicule par email
   const [maxTempThreshold, setMaxTempThreshold] = useState<number>(() => {
     const saved = localStorage.getItem("doula-meteo-max-temp");
     return saved ? parseFloat(saved) : 35;
@@ -270,7 +372,6 @@ export default function MeteoPage() {
 
   const [sendingTestEmail, setSendingTestEmail] = useState(false);
 
-  // Sauvegarde des préférences d'alerte
   const saveAlertConfig = (temp: number, email: string, enabled: boolean) => {
     setMaxTempThreshold(temp);
     setAlertEmail(email);
@@ -281,7 +382,7 @@ export default function MeteoPage() {
     toast.success(isAr ? "تم حفظ إعدادات تنبيه الحرارة بنجاح" : "Configuration d'alerte enregistrée !");
   };
 
-  const { data: meteo, isLoading, isError, refetch } = useQuery({
+  const { data: meteo, isFetching, refetch } = useQuery({
     queryKey: ["farm-meteo-live"],
     queryFn: fetchFarmMeteo,
     refetchInterval: 15 * 60 * 1000,
@@ -292,12 +393,45 @@ export default function MeteoPage() {
   const currentTemp = hasLiveTemp ? meteo!.current.temperature_2m : null;
   const formattedCurrentTemp = currentTemp !== null ? `${currentTemp.toFixed(1)}°C` : "—";
   const todayMaxTemp = meteo?.daily?.temperature_2m_max?.[0] ?? currentTemp ?? 0;
+  const todayMinTemp = meteo?.daily?.temperature_2m_min?.[0] ?? 0;
   const isThresholdExceeded =
     alertEnabled &&
     ((currentTemp !== null && currentTemp >= maxTempThreshold) ||
       (todayMaxTemp > 0 && todayMaxTemp >= maxTempThreshold));
 
-  // Envoi / Préparation de l'email d'alerte
+  const benharSolar = getSolarTimesForDate(new Date().toISOString().slice(0, 10));
+  const sunriseStr = meteo?.daily?.sunrise?.[0]?.slice(11, 16) || benharSolar.sunriseStr.replace("h", ":");
+  const sunsetStr = meteo?.daily?.sunset?.[0]?.slice(11, 16) || benharSolar.sunsetStr.replace("h", ":");
+  const rain48hMm =
+    (meteo?.daily?.precipitation_sum?.[0] ?? 0) + (meteo?.daily?.precipitation_sum?.[1] ?? 0);
+  const todayEt0 = meteo?.daily?.et0_fao_evapotranspiration?.[0] ?? 0;
+
+  // Indicateur d'aptitude à la pulvérisation (Vent < 15 km/h et pluie = 0)
+  const windKmh = (meteo?.current?.wind_speed_10m ?? 0) * 3.6;
+  const currentPrecip = meteo?.current?.precipitation ?? 0;
+  const isSprayConditionOk = windKmh < WIND_LIMIT_KMH && currentPrecip === 0;
+
+  const weatherMeta = getWeatherDesc(meteo?.current?.weather_code ?? 0, isAr);
+  const WeatherIcon = weatherMeta.icon;
+
+  const handleHeaderRefresh = () => {
+    if (activeTab === "chill") {
+      setChillRefreshTick((n) => n + 1);
+    } else {
+      void refetch();
+    }
+    toast.success(isAr ? "جارٍ تحديث بيانات المحطة..." : "Actualisation des données météo...");
+  };
+
+  const handleHeaderSettings = () => {
+    if (activeTab === "chill") {
+      setChillConfigOpen((v) => !v);
+    } else {
+      setActiveTab("realtime");
+      setHeatAlertOpen((v) => !v);
+    }
+  };
+
   const handleTriggerEmailAlert = () => {
     if (!alertEmail.trim()) {
       return toast.error(isAr ? "يرجى كتابة البريد الإلكتروني" : "Veuillez indiquer une adresse e-mail valide.");
@@ -305,313 +439,323 @@ export default function MeteoPage() {
     setSendingTestEmail(true);
 
     const subject = encodeURIComponent(
-      `⚠️ ALERTE MÉTÉO DOULA AGRO — Température Max Dépassée (${todayMaxTemp.toFixed(1)}°C)`
+      isAr
+        ? `⚠️ تنبيه حرارة قصوى DOULA AGRO (${todayMaxTemp.toFixed(1)}°C)`
+        : `⚠️ ALERTE MÉTÉO DOULA AGRO — Température Max (${todayMaxTemp.toFixed(1)}°C)`
     );
 
-    const bodyText = `Bonjour Ingénieur,\n\nUne température maximale critique de ${todayMaxTemp.toFixed(1)}°C a été détectée sur la ferme Doula Agro (Seuil d'alerte configuré : ${maxTempThreshold}°C).\n\nDonnées Météo Actuelles :\n- Température actuelle : ${formattedCurrentTemp}\n- Température maximale prévue aujourd'hui : ${todayMaxTemp.toFixed(1)}°C\n- Humidité relative : ${meteo?.current?.relative_humidity_2m ?? 0}%\n- Vitesse du vent : ${Math.round((meteo?.current?.wind_speed_10m ?? 0) * 3.6)} km/h\n\nRecommandations agronomiques d'urgence :\n- Éviter les traitements foliaires ou phytosanitaires aux heures chaudes.\n- Renforcer l'irrigation des parcelles sensibles tôt le matin ou le soir.\n- Vérifier l'état d'hydratation des vergers (oliviers, pommiers, nectariniers).\n\nSystème Automatique Doula Agro 🌱`;
+    const bodyText = isAr
+      ? `تنبيه من محطة الأرصاد DOULA AGRO:\nدرجة الحرارة القصوى اليوم: ${todayMaxTemp.toFixed(1)}°C (الحد المحدد: ${maxTempThreshold}°C).\nالحرارة الحالية: ${formattedCurrentTemp}\nالرطوبة: ${meteo?.current?.relative_humidity_2m ?? 0}%\nالرياح: ${Math.round(windKmh)} كم/سا.`
+      : `Bonjour,\n\nTempérature maximale prévue : ${todayMaxTemp.toFixed(1)}°C (seuil configuré : ${maxTempThreshold}°C).\n- Actuelle : ${formattedCurrentTemp}\n- Humidité : ${meteo?.current?.relative_humidity_2m ?? 0}%\n- Vent : ${Math.round(windKmh)} km/h\n\nRecommandation : éviter la pulvérisation aux heures chaudes et renforcer l'irrigation.\nDoula Agro 🌱`;
 
     const body = encodeURIComponent(bodyText);
-
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     if (isMobile) {
       window.location.href = `mailto:${alertEmail}?subject=${subject}&body=${body}`;
     } else {
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(alertEmail)}&su=${subject}&body=${body}`;
-      window.open(gmailUrl, "_blank", "noopener,noreferrer");
+      window.open(
+        `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(alertEmail)}&su=${subject}&body=${body}`,
+        "_blank",
+        "noopener,noreferrer"
+      );
     }
 
     setTimeout(() => {
       setSendingTestEmail(false);
-      toast.success(isAr ? "تم إرسال إشعار التنبيه عبر البريد الإلكتروني" : `Alerte e-mail préparée et envoyée vers ${alertEmail} !`);
-    }, 600);
+      toast.success(
+        isAr
+          ? "تم تجهيز رسالة التنبيه بالبريد الإلكتروني"
+          : `Alerte e-mail préparée vers ${alertEmail} !`
+      );
+    }, 500);
   };
 
-  // Indicateur d'aptitude à la pulvérisation (Vent < 15 km/h et absence de pluie — aligné avec weather-forecast.ts)
-  const windKmh = (meteo?.current?.wind_speed_10m ?? 0) * 3.6;
-  const isSprayConditionOk = windKmh < WIND_LIMIT_KMH && (meteo?.current?.precipitation ?? 0) === 0;
-
   return (
-    <main className="mx-auto max-w-3xl px-4 pb-24 pt-4 space-y-4" dir={isAr ? "rtl" : "ltr"}>
-      {/* En-tête épuré et moderne */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black text-foreground flex items-center gap-2">
-            <Sun className="h-6 w-6 text-amber-500 animate-spin-slow" />
-            <span>{isAr ? "محطة الأرصاد والمناخ الزراعي" : "Météo Agricole & Prévisions"}</span>
+    <main className="mx-auto max-w-3xl px-3 sm:px-4 pb-24 pt-3 space-y-3.5" dir={isAr ? "rtl" : "ltr"}>
+      {/* 1. EN-TÊTE COMPACT VERT FORÊT */}
+      <header className="rounded-3xl bg-gradient-to-br from-emerald-950 via-emerald-900 to-teal-900 text-white px-4 py-3.5 shadow-md flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h1 className="text-base sm:text-lg font-black tracking-tight truncate flex items-center gap-2">
+            <Sun className="h-5 w-5 text-amber-300 shrink-0" />
+            <span>{isAr ? "محطة الأرصاد الزراعية" : "Météo Agricole"}</span>
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {isAr
-              ? "متابعة درجات الحرارة اللحظية، التوقعات الشهرية، وضبط تنبيهات الحرارة القصوى"
-              : "Suivi en temps réel, climatologie mensuelle et alertes canicule par e-mail"}
+          <p className="text-[11px] text-emerald-100/90 font-semibold flex items-center gap-1 mt-0.5 truncate">
+            <MapPin className="h-3 w-3 text-emerald-300 shrink-0" />
+            <span>{isAr ? "بنهار / عين وسارة · 762 م" : "Benhar / Aïn Oussera · 762 m"}</span>
           </p>
         </div>
-      </div>
 
-      {/* Bannière d'alerte active si le seuil max est dépassé */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={handleHeaderRefresh}
+            className="h-9 w-9 rounded-2xl bg-white/15 hover:bg-white/25 active:scale-95 transition flex items-center justify-center cursor-pointer"
+            title={isAr ? "تحديث" : "Actualiser"}
+            aria-label={isAr ? "تحديث" : "Actualiser"}
+          >
+            <RefreshCw className={`h-4 w-4 text-white ${isFetching ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            type="button"
+            onClick={handleHeaderSettings}
+            className={`h-9 w-9 rounded-2xl active:scale-95 transition flex items-center justify-center cursor-pointer ${(activeTab === "chill" && chillConfigOpen) || (activeTab !== "chill" && heatAlertOpen)
+                ? "bg-amber-400 text-emerald-950"
+                : "bg-white/15 hover:bg-white/25 text-white"
+              }`}
+            title={isAr ? "الإعدادات" : "Paramètres"}
+            aria-label={isAr ? "الإعدادات" : "Paramètres"}
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+        </div>
+      </header>
+
+      {/* BARRE D'ONGLETS SEGMENTÉE SUR 1 SEULE LIGNE (3 BOUTONS TACTILES, ZÉRO DÉBORDEMENT) */}
+      <nav
+        aria-label={isAr ? "أقسام الطقس" : "Sections météo"}
+        className="grid grid-cols-3 gap-1 rounded-2xl bg-muted/80 p-1 border shadow-2xs"
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab("realtime")}
+          className={`py-2.5 px-1.5 rounded-xl text-[11px] sm:text-xs font-black whitespace-nowrap transition-all cursor-pointer ${activeTab === "realtime"
+              ? "bg-emerald-800 text-white shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-background/60"
+            }`}
+        >
+          {isAr ? "☀️ اليوم" : "☀️ Aujourd'hui"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("chill")}
+          className={`py-2.5 px-1.5 rounded-xl text-[11px] sm:text-xs font-black whitespace-nowrap transition-all cursor-pointer ${activeTab === "chill"
+              ? "bg-emerald-800 text-white shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-background/60"
+            }`}
+        >
+          {isAr ? "❄️ ساعات البرودة" : "❄️ Heures de froid"}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab("monthly")}
+          className={`py-2.5 px-1.5 rounded-xl text-[11px] sm:text-xs font-black whitespace-nowrap transition-all cursor-pointer ${activeTab === "monthly"
+              ? "bg-emerald-800 text-white shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-background/60"
+            }`}
+        >
+          {isAr ? "📅 الشهري" : "📅 Mensuel"}
+        </button>
+      </nav>
+
+      {/* Bannière d'alerte canicule active si seuil dépassé */}
       {isThresholdExceeded && (
-        <div className="rounded-2xl border-2 border-rose-500/50 bg-rose-500/10 p-3.5 shadow-sm animate-pulse flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2.5">
+        <div className="rounded-2xl border-2 border-rose-500/60 bg-rose-500/10 p-3 shadow-xs flex items-center justify-between gap-2.5">
+          <div className="flex items-start gap-2 min-w-0">
             <ShieldAlert className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs font-extrabold text-rose-800 dark:text-rose-200">
-                {isAr
-                  ? `⚠️ تنبيه حرارة قصوى: درجة الحرارة وصلت إلى ${todayMaxTemp.toFixed(1)}°م (أعلى من الحد ${maxTempThreshold}°م)`
-                  : `⚠️ Alerte Température Maximale : ${todayMaxTemp.toFixed(1)}°C (Dépassement du seuil de ${maxTempThreshold}°C)`}
-              </p>
-              <p className="text-[11px] text-rose-700/80 dark:text-rose-300/80 mt-0.5">
-                {isAr
-                  ? "يُنصح بوقف الرش الورقي في الساعات الحارة وزيادة وتيرة الري في الصباح الباكر أو المساء."
-                  : "Arrêt impératif des pulvérisations en journée. Prioriser l'irrigation le matin ou le soir."}
-              </p>
-            </div>
+            <p className="text-xs font-extrabold text-rose-800 dark:text-rose-200 leading-snug">
+              {isAr
+                ? `تنبيه حرارة قصوى: ${todayMaxTemp.toFixed(1)}°م (الحد ${maxTempThreshold}°م)`
+                : `Alerte chaleur : ${todayMaxTemp.toFixed(1)}°C (seuil ${maxTempThreshold}°C)`}
+            </p>
           </div>
           <Button
             size="sm"
             onClick={handleTriggerEmailAlert}
-            className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shrink-0 rounded-xl flex items-center gap-1"
+            className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shrink-0 rounded-xl h-8 px-2.5"
           >
             <Mail className="h-3.5 w-3.5" />
-            <span>{isAr ? "إشعار بريدي" : "Notifier"}</span>
           </Button>
         </div>
       )}
 
-      {/* GRILLE D'ACCUEIL : 3 GRANDES RUBRIQUES VISUELLES & CLAIRES */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-1">
-        {/* Rubrique 1 : Temps réel */}
-        <button
-          type="button"
-          onClick={() => setActiveTab("realtime")}
-          className={`group text-start p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
-            activeTab === "realtime"
-              ? "border-amber-500 bg-amber-500/10 ring-2 ring-amber-500/30 shadow-md scale-[1.02]"
-              : "border-border bg-card hover:border-amber-500/40 hover:bg-muted/40 shadow-xs"
-          }`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <span
-              className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
-                activeTab === "realtime"
-                  ? "bg-amber-500 text-white shadow-sm"
-                  : "bg-amber-500/15 text-amber-600 dark:text-amber-400 group-hover:bg-amber-500 group-hover:text-white"
-              }`}
-            >
-              <Sun className="h-6 w-6" />
-            </span>
-            <span dir="ltr" className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
-              {formattedCurrentTemp}
-            </span>
-          </div>
-          <div className="mt-3.5 space-y-1">
-            <h3 className="text-base font-black text-foreground group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
-              {isAr ? "الوقت الحقيقي" : "Temps Réel"}
-            </h3>
-            <p className="text-xs text-muted-foreground line-clamp-1">
-              {isAr ? "الطقس اللحظي، الرياح ومؤشر الرش" : "Direct, vent & pulvérisation"}
-            </p>
-          </div>
-        </button>
-
-        {/* Rubrique 2 : Heures de froid & Référentiel Variétal (Fusionnées) */}
-        <button
-          type="button"
-          onClick={() => setActiveTab("chill")}
-          className={`group text-start p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
-            activeTab === "chill"
-              ? "border-sky-500 bg-sky-500/10 ring-2 ring-sky-500/30 shadow-md scale-[1.02]"
-              : "border-border bg-card hover:border-sky-500/40 hover:bg-muted/40 shadow-xs"
-          }`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <span
-              className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
-                activeTab === "chill"
-                  ? "bg-sky-500 text-white shadow-sm"
-                  : "bg-sky-500/15 text-sky-600 dark:text-sky-400 group-hover:bg-sky-500 group-hover:text-white"
-              }`}
-            >
-              <Snowflake className="h-6 w-6" />
-            </span>
-            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 whitespace-nowrap shrink-0">
-              {isAr ? "Weinberger · Utah · Dynamique · 4 أصناف" : "Weinberger · Utah · Dynamique · 4 Variétés"}
-            </span>
-          </div>
-          <div className="mt-3.5 space-y-1">
-            <h3 className="text-base font-black text-foreground group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
-              {isAr ? "ساعات البرودة والمرجع الصنفي ❄️" : "Heures de Froid & Variétés ❄️"}
-            </h3>
-            <p className="text-xs text-muted-foreground line-clamp-1">
-              {isAr ? "النماذج الفسيولوجية، نكتارين، تفاح، زيتون وسجل الحملات" : "Modèles, Nectarine, Pomme, Olivier & Historique"}
-            </p>
-          </div>
-        </button>
-
-        {/* Rubrique 3 : Climat Mensuel */}
-        <button
-          type="button"
-          onClick={() => setActiveTab("monthly")}
-          className={`group text-start p-4 rounded-3xl border transition-all duration-200 flex flex-col justify-between relative overflow-hidden ${
-            activeTab === "monthly"
-              ? "border-indigo-500 bg-indigo-500/10 ring-2 ring-indigo-500/30 shadow-md scale-[1.02]"
-              : "border-border bg-card hover:border-indigo-500/40 hover:bg-muted/40 shadow-xs"
-          }`}
-        >
-          <div className="flex items-start justify-between gap-2">
-            <span
-              className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all duration-200 ${
-                activeTab === "monthly"
-                  ? "bg-indigo-500 text-white shadow-sm"
-                  : "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white"
-              }`}
-            >
-              <Calendar className="h-6 w-6" />
-            </span>
-            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 whitespace-nowrap shrink-0">
-              {isAr ? "12 شهراً" : "12 Mois"}
-            </span>
-          </div>
-          <div className="mt-3.5 space-y-1">
-            <h3 className="text-base font-black text-foreground group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-              {isAr ? "التوقعات الشهرية" : "Climat Mensuel"}
-            </h3>
-            <p className="text-xs text-muted-foreground line-clamp-1">
-              {isAr ? "المعدلات السنوية ومخاطر الجليد" : "Moyennes, pluie & alertes"}
-            </p>
-          </div>
-        </button>
-      </div>
-
-      {/* CONTENU ONGLET 1: TEMPS RÉEL & 7 JOURS */}
+      {/* ======================================================== */}
+      {/* ONGLET 1 : اليوم / AUJOURD'HUI                           */}
+      {/* ======================================================== */}
       {activeTab === "realtime" && (
-        <div className="space-y-4">
-          {/* Carte Principale Météo Actuelle */}
-          <Card className="rounded-3xl border bg-gradient-to-br from-card to-muted/40 p-5 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                  <span>📍 Doula Agro — Ain Oussera</span>
-                </span>
-                <div className="flex items-baseline gap-3 mt-1">
-                  <span dir="ltr" className="inline-block text-4xl sm:text-5xl font-black text-foreground">
-                    {formattedCurrentTemp}
-                  </span>
-                  <div className="text-xs text-muted-foreground font-semibold">
-                    <span>{isAr ? "المحسوسة: " : "Ressenti: "}</span>
-                    <span dir="ltr" className="inline-block text-foreground font-bold">
+        <div className="space-y-3.5">
+          {/* Carte principale (Hero) à fort contraste lisible au soleil */}
+          <Card className="rounded-3xl border-2 border-emerald-900/15 bg-card overflow-hidden shadow-sm">
+            <div className="p-4 sm:p-5 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <WeatherIcon className="h-8 w-8 text-amber-500 shrink-0" />
+                    <span dir="ltr" className="text-4xl sm:text-5xl font-black tracking-tight text-foreground leading-none">
+                      {formattedCurrentTemp}
+                    </span>
+                  </div>
+                  <p className="text-sm font-black text-emerald-800 dark:text-emerald-300">
+                    {weatherMeta.label}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground font-semibold">
+                    {isAr ? "المحسوسة :" : "Ressenti :"}{" "}
+                    <strong dir="ltr" className="text-foreground">
                       {typeof meteo?.current?.apparent_temperature === "number"
                         ? `${meteo.current.apparent_temperature.toFixed(1)}°C`
                         : formattedCurrentTemp}
+                    </strong>
+                  </p>
+                </div>
+
+                {/* Min / Max + Lever / Coucher du soleil (Benhar) */}
+                <div className="space-y-2 shrink-0">
+                  <div className="flex items-center justify-center gap-3 rounded-2xl bg-muted/60 border px-3 py-2">
+                    <div className="text-center">
+                      <span className="text-[10px] font-bold text-muted-foreground flex items-center justify-center gap-0.5">
+                        <ArrowDown className="h-3 w-3 text-sky-600" />
+                        <span>{isAr ? "الدنيا" : "Min"}</span>
+                      </span>
+                      <span dir="ltr" className="text-sm font-black text-foreground">
+                        {todayMinTemp.toFixed(1)}°
+                      </span>
+                    </div>
+                    <div className="h-7 w-px bg-border" />
+                    <div className="text-center">
+                      <span className="text-[10px] font-bold text-muted-foreground flex items-center justify-center gap-0.5">
+                        <ArrowUp className="h-3 w-3 text-rose-600" />
+                        <span>{isAr ? "القصوى" : "Max"}</span>
+                      </span>
+                      <span dir="ltr" className="text-sm font-black text-rose-600 dark:text-rose-400">
+                        {todayMaxTemp.toFixed(1)}°
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 rounded-xl bg-amber-500/10 border border-amber-500/25 px-2.5 py-1.5 text-[11px] font-bold text-amber-950 dark:text-amber-200">
+                    <span className="inline-flex items-center gap-1">
+                      <Sunrise className="h-3.5 w-3.5 text-amber-600" />
+                      <span dir="ltr">{sunriseStr}</span>
+                    </span>
+                    <span className="opacity-40">|</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Sunset className="h-3.5 w-3.5 text-orange-600" />
+                      <span dir="ltr">{sunsetStr}</span>
                     </span>
                   </div>
                 </div>
-                <p className="text-xs font-bold text-primary mt-1">
-                  {getWeatherDesc(meteo?.current?.weather_code ?? 0, isAr).label}
-                </p>
-              </div>
-
-              {/* Indicateur Min / Max du jour */}
-              <div className="flex items-center gap-3 bg-background/80 rounded-2xl p-2.5 border shadow-xs">
-                <div className="text-center px-2">
-                  <span className="text-[10px] text-muted-foreground font-bold flex items-center justify-center gap-0.5">
-                    <ArrowDown className="h-3 w-3 text-sky-500" /> Min
-                  </span>
-                  <span className="text-sm font-black text-foreground">
-                    {(meteo?.daily?.temperature_2m_min?.[0] ?? 0).toFixed(1)}°C
-                  </span>
-                </div>
-                <div className="h-7 w-px bg-border" />
-                <div className="text-center px-2">
-                  <span className="text-[10px] text-muted-foreground font-bold flex items-center justify-center gap-0.5">
-                    <ArrowUp className="h-3 w-3 text-rose-500" /> Max
-                  </span>
-                  <span className="text-sm font-black text-rose-600 dark:text-rose-400">
-                    {todayMaxTemp.toFixed(1)}°C
-                  </span>
-                </div>
               </div>
             </div>
 
-            {/* 4 Indicateurs Clés Agronomiques */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-4">
-              {/* Humidité */}
-              <div className="rounded-2xl border bg-background/60 p-3 space-y-1">
-                <div className="flex items-center justify-between text-muted-foreground text-xs">
-                  <span className="font-semibold">{isAr ? "رطوبة الجو" : "Humidité"}</span>
-                  <Droplets className="h-4 w-4 text-sky-500" />
-                </div>
-                <p className="text-lg font-black text-foreground">
-                  {meteo?.current?.relative_humidity_2m ?? 0}%
-                </p>
-                <p className="text-[10px] text-muted-foreground">
-                  {isAr ? "رطوبة نسبية" : "Air ambiant"}
-                </p>
-              </div>
-
-              {/* Vent et Direction */}
-              <div className="rounded-2xl border bg-background/60 p-3 space-y-1">
-                <div className="flex items-center justify-between text-muted-foreground text-xs">
-                  <span className="font-semibold">{isAr ? "سرعة الرياح" : "Vent"}</span>
-                  <Wind className="h-4 w-4 text-teal-500" />
-                </div>
-                <p className="text-lg font-black text-foreground">
-                  {Math.round(windKmh)} <span className="text-xs font-normal">km/h</span>
-                </p>
-                <p className="text-[10px] text-muted-foreground">
-                  {isAr ? "اتجاه الرياح" : "Vitesse à 10m"}
-                </p>
-              </div>
-
-              {/* Aptitude Pulvérisation */}
-              <div className={`rounded-2xl border p-3 space-y-1 ${
-                isSprayConditionOk
-                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-200"
-                  : "bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-200"
-              }`}>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-bold">{isAr ? "حالة الرش" : "Pulvérisation"}</span>
-                  {isSprayConditionOk ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  ) : (
-                    <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  )}
-                </div>
-                <p className="text-sm font-black truncate">
+            {/* Bandeau bien visible d'état de pulvérisation */}
+            <div
+              className={`px-4 py-3 flex items-center justify-between gap-2 text-xs font-black ${isSprayConditionOk
+                  ? "bg-emerald-600 text-white"
+                  : "bg-orange-600 text-white"
+                }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                {isSprayConditionOk ? (
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
+                )}
+                <span className="truncate">
                   {isSprayConditionOk
-                    ? (isAr ? "مناسب (رياح هادئة)" : "Favorable (<15 km/h)")
-                    : (isAr ? "غير ملائم (رياح)" : "Déconseillé")}
-                </p>
-                <p className="text-[10px] opacity-80">
-                  {isSprayConditionOk
-                    ? (isAr ? "لا يوجد خطر تطاير" : "Sans dérive")
-                    : (isAr ? "خطر تطاير الرذاذ" : "Risque de dérive")}
-                </p>
+                    ? isAr
+                      ? "الرش ملائم — رياح هادئة ولا أمطار"
+                      : "Pulvérisation favorable — vent calme, sans pluie"
+                    : currentPrecip > 0
+                      ? isAr
+                        ? "الرش غير ملائم — أمطار حالية"
+                        : "Pulvérisation déconseillée — pluie en cours"
+                      : isAr
+                        ? "الرش غير ملائم — رياح قوية (خطر تطاير)"
+                        : "Pulvérisation déconseillée — vent fort"}
+                </span>
               </div>
-
-              {/* Évapotranspiration ETo */}
-              <div className="rounded-2xl border bg-background/60 p-3 space-y-1">
-                <div className="flex items-center justify-between text-muted-foreground text-xs">
-                  <span className="font-semibold">{isAr ? "التبخر اليومي" : "ETo (FAO)"}</span>
-                  <Thermometer className="h-4 w-4 text-orange-500" />
-                </div>
-                <p className="text-lg font-black text-foreground">
-                  {(meteo?.daily?.et0_fao_evapotranspiration?.[0] ?? 4.2).toFixed(1)}{" "}
-                  <span className="text-xs font-normal">mm/j</span>
-                </p>
-                <p className="text-[10px] text-muted-foreground">
-                  {isAr ? "احتياج البخر نتح" : "Base irrigation"}
-                </p>
-              </div>
+              <span dir="ltr" className="shrink-0 rounded-full bg-black/20 px-2.5 py-0.5 text-[11px] font-black">
+                {Math.round(windKmh)} {isAr ? "كم/سا" : "km/h"}
+              </span>
             </div>
           </Card>
 
-          {/* Prévisions Heure par Heure (Prochaines 24 heures) */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5 text-primary" />
-              <span>{isAr ? "التوقعات بالساعة (24 ساعة القادمة)" : "Prévisions heure par heure (24h)"}</span>
-            </h3>
+          {/* Grille 2×2 compacte : Humidité, ETo FAO, Pluie 48 h, Seuil alerte chaleur */}
+          <div className="grid grid-cols-2 gap-2.5">
+            {/* 1. Humidité */}
+            <div className="rounded-2xl border bg-card p-3.5 shadow-2xs space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="font-bold">{isAr ? "الرطوبة" : "Humidité"}</span>
+                <Droplets className="h-4 w-4 text-sky-500" />
+              </div>
+              <p dir="ltr" className="text-xl font-black text-foreground">
+                {meteo?.current?.relative_humidity_2m ?? 0}%
+              </p>
+              <p className="text-[10px] text-muted-foreground font-medium">
+                {isAr ? "الرطوبة النسبية للهواء" : "Air ambiant"}
+              </p>
+            </div>
 
-            <div className="flex gap-2 overflow-x-auto pb-2 pt-1 scrollbar-thin">
+            {/* 2. ETo FAO */}
+            <div className="rounded-2xl border bg-card p-3.5 shadow-2xs space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="font-bold">{isAr ? "التبخر (ETo FAO)" : "ETo (FAO)"}</span>
+                <Thermometer className="h-4 w-4 text-orange-500" />
+              </div>
+              <p dir="ltr" className="text-xl font-black text-foreground">
+                {todayEt0.toFixed(1)}{" "}
+                <span className="text-xs font-bold text-muted-foreground">{isAr ? "ملم/يوم" : "mm/j"}</span>
+              </p>
+              <p className="text-[10px] text-muted-foreground font-medium">
+                {isAr ? "مرجع احتياج الري" : "Base irrigation"}
+              </p>
+            </div>
+
+            {/* 3. Pluie 48 h */}
+            <div className="rounded-2xl border bg-card p-3.5 shadow-2xs space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="font-bold">{isAr ? "أمطار 48 ساعة" : "Pluie 48 h"}</span>
+                <CloudRain className="h-4 w-4 text-indigo-500" />
+              </div>
+              <p dir="ltr" className="text-xl font-black text-foreground">
+                {rain48hMm.toFixed(1)}{" "}
+                <span className="text-xs font-bold text-muted-foreground">{isAr ? "ملم" : "mm"}</span>
+              </p>
+              <p className="text-[10px] text-muted-foreground font-medium">
+                {rain48hMm >= 20
+                  ? isAr
+                    ? "خطر غسيل المبيد"
+                    : "Risque de lessivage"
+                  : isAr
+                    ? "تراكم اليوم والغد"
+                    : "Cumul prévu"}
+              </p>
+            </div>
+
+            {/* 4. Seuil alerte chaleur */}
+            <button
+              type="button"
+              onClick={() => setHeatAlertOpen((v) => !v)}
+              className="text-start rounded-2xl border bg-card hover:border-amber-500/50 p-3.5 shadow-2xs space-y-1 transition cursor-pointer"
+            >
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="font-bold">{isAr ? "حد تنبيه الحرارة" : "Seuil chaleur"}</span>
+                <Bell className={`h-4 w-4 ${alertEnabled ? "text-amber-500" : "text-muted-foreground"}`} />
+              </div>
+              <p dir="ltr" className="text-xl font-black text-foreground">
+                {maxTempThreshold}°C
+              </p>
+              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400">
+                {alertEnabled
+                  ? isAr
+                    ? "مفعّل · انقر للتعديل"
+                    : "Actif · modifier"
+                  : isAr
+                    ? "معطّل · انقر للتفعيل"
+                    : "Inactif · configurer"}
+              </p>
+            </button>
+          </div>
+
+          {/* Frise horaire 24 h en défilement horizontal tactile */}
+          <div className="space-y-2">
+            <h2 className="text-xs font-black text-muted-foreground flex items-center gap-1.5 px-0.5">
+              <Clock className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" />
+              <span>{isAr ? "التوقعات بالساعة (24 ساعة)" : "Prévisions heure par heure (24 h)"}</span>
+            </h2>
+
+            <div className="flex gap-2 overflow-x-auto pb-2 snap-x">
               {(meteo?.hourly?.time?.slice(0, 24) || []).map((tIso, idx) => {
                 const hour = tIso.slice(11, 16);
                 const temp = meteo?.hourly?.temperature_2m?.[idx] ?? 0;
@@ -622,24 +766,25 @@ export default function MeteoPage() {
                 return (
                   <div
                     key={tIso}
-                    className={`shrink-0 w-20 rounded-2xl border p-2.5 text-center shadow-xs transition-all ${
-                      isHot
-                        ? "bg-rose-500/10 border-rose-500/40 text-rose-900 dark:text-rose-200"
-                        : "bg-card border-border hover:border-primary/40"
-                    }`}
+                    className={`snap-start shrink-0 w-[72px] rounded-2xl border p-2 text-center shadow-2xs ${isHot
+                        ? "bg-rose-500/10 border-rose-500/40"
+                        : "bg-card border-border"
+                      }`}
                   >
-                    <p className="text-[11px] font-bold text-muted-foreground">{hour}</p>
-                    <p className={`text-sm font-black my-1 ${isHot ? "text-rose-600 dark:text-rose-400" : "text-foreground"}`}>
-                      {temp.toFixed(0)}°C
+                    <p dir="ltr" className="text-[11px] font-bold text-muted-foreground">
+                      {hour}
                     </p>
-                    <div className="text-[9px] text-muted-foreground space-y-0.5">
-                      <p className="flex items-center justify-center gap-0.5">
+                    <p dir="ltr" className={`text-sm font-black my-1 ${isHot ? "text-rose-600 dark:text-rose-400" : "text-foreground"}`}>
+                      {temp.toFixed(0)}°
+                    </p>
+                    <div className="text-[10px] text-muted-foreground space-y-0.5">
+                      <p dir="ltr" className="flex items-center justify-center gap-0.5">
                         <Droplets className="h-2.5 w-2.5 text-sky-500" />
                         <span>{rainProb}%</span>
                       </p>
-                      <p className="flex items-center justify-center gap-0.5">
+                      <p dir="ltr" className="flex items-center justify-center gap-0.5">
                         <Wind className="h-2.5 w-2.5 text-teal-500" />
-                        <span>{wind}k</span>
+                        <span>{wind}</span>
                       </p>
                     </div>
                   </div>
@@ -648,17 +793,21 @@ export default function MeteoPage() {
             </div>
           </div>
 
-          {/* Prévisions sur 7 jours */}
+          {/* Liste compacte 7 jours */}
           <div className="space-y-2">
-            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Calendar className="h-3.5 w-3.5 text-primary" />
-              <span>{isAr ? "توقعات 7 أيام القادمة" : "Prévisions sur 7 jours"}</span>
-            </h3>
+            <h2 className="text-xs font-black text-muted-foreground flex items-center gap-1.5 px-0.5">
+              <Calendar className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" />
+              <span>{isAr ? "توقعات 7 أيام" : "Prévisions sur 7 jours"}</span>
+            </h2>
 
-            <div className="space-y-1.5">
+            <div className="rounded-2xl border bg-card divide-y overflow-hidden shadow-2xs">
               {(meteo?.daily?.time || []).map((dayIso, idx) => {
-                const dateObj = new Date(dayIso);
-                const dayName = dateObj.toLocaleDateString(isAr ? "ar-DZ" : "fr-FR", { weekday: "short", day: "numeric", month: "short" });
+                const dateObj = new Date(`${dayIso}T12:00:00`);
+                const dayName = dateObj.toLocaleDateString(isAr ? "ar-DZ" : "fr-FR", {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                });
                 const min = meteo?.daily?.temperature_2m_min?.[idx] ?? 0;
                 const max = meteo?.daily?.temperature_2m_max?.[idx] ?? 0;
                 const rainSum = meteo?.daily?.precipitation_sum?.[idx] ?? 0;
@@ -669,35 +818,37 @@ export default function MeteoPage() {
                 return (
                   <div
                     key={dayIso}
-                    className={`flex items-center justify-between p-3 rounded-2xl border text-xs shadow-xs transition-all ${
-                      isOverThreshold
-                        ? "border-rose-500/40 bg-rose-500/5 hover:bg-rose-500/10"
-                        : "border-border bg-card hover:bg-muted/40"
-                    }`}
+                    className={`flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs ${isOverThreshold ? "bg-rose-500/5" : ""
+                      }`}
                   >
-                    <div className="w-28 font-bold capitalize text-foreground flex items-center gap-1.5">
+                    <div className="w-28 font-bold capitalize text-foreground flex items-center gap-1.5 truncate">
                       {isOverThreshold && <AlertTriangle className="h-3.5 w-3.5 text-rose-500 shrink-0" />}
-                      <span>{dayName}</span>
+                      <span className="truncate">{dayName}</span>
                     </div>
 
-                    <div className="flex items-center gap-2 text-muted-foreground font-semibold">
+                    <div className="flex items-center gap-1 text-muted-foreground font-semibold shrink-0">
                       <Droplets className="h-3.5 w-3.5 text-sky-500" />
-                      <span dir="ltr" className="inline-block">{rainSum > 0 ? `${rainSum} mm` : `${rainProb}%`}</span>
+                      <span dir="ltr">
+                        {rainSum > 0 ? `${rainSum.toFixed(1)} ${isAr ? "ملم" : "mm"}` : `${rainProb}%`}
+                      </span>
                     </div>
 
-                    <div className="text-muted-foreground text-[11px] hidden sm:block">
-                      <span>ETo : <strong dir="ltr" className="inline-block text-foreground">{et0.toFixed(1)} mm</strong></span>
+                    <div className="hidden sm:block text-[11px] text-muted-foreground shrink-0">
+                      <span>{isAr ? "تبخر" : "ETo"}: </span>
+                      <strong dir="ltr" className="text-foreground">
+                        {et0.toFixed(1)} {isAr ? "ملم" : "mm"}
+                      </strong>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <span className="text-muted-foreground font-semibold">{min.toFixed(0)}°</span>
-                      <div className="h-2 w-16 bg-muted rounded-full overflow-hidden relative">
+                    <div dir="ltr" className="flex items-center gap-2 shrink-0">
+                      <span className="text-muted-foreground font-semibold w-7 text-right">{min.toFixed(0)}°</span>
+                      <div className="h-1.5 w-14 bg-muted rounded-full overflow-hidden">
                         <div
-                          className={`h-full ${isOverThreshold ? "bg-rose-500" : "bg-primary"}`}
-                          style={{ width: `${Math.min(100, (max / 45) * 100)}%` }}
+                          className={`h-full rounded-full ${isOverThreshold ? "bg-rose-500" : "bg-emerald-600"}`}
+                          style={{ width: `${Math.min(100, Math.max(10, (max / 45) * 100))}%` }}
                         />
                       </div>
-                      <span className={`font-black w-8 text-right ${isOverThreshold ? "text-rose-600 dark:text-rose-400 font-extrabold" : "text-foreground"}`}>
+                      <span className={`font-black w-7 ${isOverThreshold ? "text-rose-600 dark:text-rose-400" : "text-foreground"}`}>
                         {max.toFixed(0)}°
                       </span>
                     </div>
@@ -707,141 +858,138 @@ export default function MeteoPage() {
             </div>
           </div>
 
-          {/* SECTION CONFIGURATION ALERTE TEMPÉRATURE MAXIMALE (NOTIFICATION EMAIL) */}
-          <Card className="rounded-3xl border border-amber-500/30 bg-amber-500/[0.03] p-5 shadow-sm space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/20 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-amber-500/10 text-amber-600">
-                  <Bell className="h-5 w-5" />
+          {/* Bloc Alerte Canicule repliable */}
+          <div className="rounded-2xl border border-amber-500/30 bg-card overflow-hidden shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setHeatAlertOpen((v) => !v)}
+              className="w-full flex items-center justify-between gap-2 px-4 py-3 text-xs font-black text-foreground hover:bg-muted/40 transition cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-amber-600 shrink-0" />
+                <span>{isAr ? "إعدادات تنبيه موجة الحر عبر البريد" : "Alerte Canicule par E-mail"}</span>
+              </span>
+              <span className="flex items-center gap-2">
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${alertEnabled
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                      : "bg-muted text-muted-foreground"
+                    }`}
+                >
+                  {alertEnabled ? (isAr ? "مفعّل" : "Actif") : isAr ? "معطّل" : "Inactif"}
                 </span>
-                <div>
-                  <h2 className="text-sm font-black text-foreground">
-                    {isAr ? "ضبط تنبيهات درجات الحرارة القصوى بالبريد" : "Alerte Température Maximale par E-mail"}
-                  </h2>
-                  <p className="text-[11px] text-muted-foreground">
-                    {isAr
-                      ? "تلقي رسالة إلكترونية تلقائية عند تجاوز درجة الحرارة للحد الأقصى المختار"
-                      : "Soyez notifiée automatiquement par e-mail en cas de dépassement du seuil de chaleur"}
-                  </p>
-                </div>
-              </div>
+                {heatAlertOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+              </span>
+            </button>
 
-              {/* Toggle Activer/Désactiver */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-muted-foreground">
-                  {alertEnabled ? (isAr ? "التنبيه مفعل" : "Alerte active") : (isAr ? "معطل" : "Désactivé")}
-                </span>
-                <input
-                  type="checkbox"
-                  checked={alertEnabled}
-                  onChange={(e) => saveAlertConfig(maxTempThreshold, alertEmail, e.target.checked)}
-                  className="h-5 w-5 rounded border-input text-primary focus:ring-primary cursor-pointer"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Choix du seuil de température max */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-foreground block">
-                  {isAr ? "درجة الحرارة القصوى للتنبيه (°م)" : "Seuil de température maximale (°C)"}
-                </label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={25}
-                    max={50}
-                    step={1}
-                    value={maxTempThreshold}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value) || 35;
-                      setMaxTempThreshold(val);
-                    }}
-                    className="h-9 font-black text-base w-24 rounded-xl"
+            {heatAlertOpen && (
+              <div className="border-t border-amber-500/20 bg-amber-500/[0.03] p-4 space-y-3.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-foreground">
+                    {isAr ? "تفعيل التنبيه التلقائي" : "Activer l'alerte canicule"}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={alertEnabled}
+                    onChange={(e) => saveAlertConfig(maxTempThreshold, alertEmail, e.target.checked)}
+                    className="h-5 w-5 rounded border-input accent-emerald-700 cursor-pointer"
                   />
-                  <span className="text-sm font-bold text-muted-foreground">°C</span>
+                </div>
 
-                  {/* Raccourcis rapides */}
-                  <div className="flex gap-1">
-                    {[32, 35, 38, 40].map((tVal) => (
-                      <button
-                        key={tVal}
-                        type="button"
-                        onClick={() => {
-                          setMaxTempThreshold(tVal);
-                          saveAlertConfig(tVal, alertEmail, alertEnabled);
-                        }}
-                        className={`px-2 py-1 rounded-lg text-xs font-bold border transition ${
-                          maxTempThreshold === tVal
-                            ? "bg-amber-600 text-white border-amber-600"
-                            : "bg-background text-foreground hover:bg-muted"
-                        }`}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-muted-foreground block">
+                      {isAr ? "حد الحرارة القصوى (°م)" : "Seuil maximal (°C)"}
+                    </label>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Input
+                        type="number"
+                        dir="ltr"
+                        min={25}
+                        max={50}
+                        step={1}
+                        value={maxTempThreshold}
+                        onChange={(e) => setMaxTempThreshold(parseFloat(e.target.value) || 35)}
+                        className="h-9 font-black text-sm w-20 rounded-xl"
+                      />
+                      {[32, 35, 38, 40].map((tVal) => (
+                        <button
+                          key={tVal}
+                          type="button"
+                          onClick={() => saveAlertConfig(tVal, alertEmail, alertEnabled)}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${maxTempThreshold === tVal
+                              ? "bg-amber-600 text-white border-amber-600"
+                              : "bg-background text-foreground hover:bg-muted"
+                            }`}
+                        >
+                          <span dir="ltr">{tVal}°</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-muted-foreground block">
+                      {isAr ? "البريد الإلكتروني" : "Adresse e-mail"}
+                    </label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="email"
+                        dir="ltr"
+                        value={alertEmail}
+                        onChange={(e) => setAlertEmail(e.target.value)}
+                        placeholder="ingenieur@ferme.com"
+                        className="h-9 text-xs font-semibold rounded-xl flex-1"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => saveAlertConfig(maxTempThreshold, alertEmail, alertEnabled)}
+                        className="rounded-xl font-bold text-xs h-9 px-3 shrink-0"
                       >
-                        {tVal}°
-                      </button>
-                    ))}
+                        {isAr ? "حفظ" : "Sauver"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Adresse Email destinataire */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-foreground block">
-                  {isAr ? "البريد الإلكتروني المخصص للتنبيه" : "Adresse e-mail de notification"}
-                </label>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Mail className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="email"
-                      value={alertEmail}
-                      onChange={(e) => setAlertEmail(e.target.value)}
-                      placeholder="ingenieur@ferme.com"
-                      className="pl-8 h-9 text-xs font-semibold rounded-xl"
-                    />
-                  </div>
+                <div className="flex justify-end pt-1">
                   <Button
                     size="sm"
-                    variant="outline"
-                    onClick={() => saveAlertConfig(maxTempThreshold, alertEmail, alertEnabled)}
-                    className="rounded-xl font-bold text-xs h-9 px-3"
+                    onClick={handleTriggerEmailAlert}
+                    disabled={sendingTestEmail}
+                    className="rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5"
                   >
-                    {isAr ? "حفظ" : "Sauvegarder"}
+                    <Send className="h-3.5 w-3.5" />
+                    <span>{isAr ? "تجربة إرسال تنبيه" : "Tester l'envoi"}</span>
                   </Button>
                 </div>
               </div>
-            </div>
-
-            {/* Bouton de test de l'alerte */}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-500/20 pt-3">
-              <p className="text-[11px] text-muted-foreground">
-                {isAr
-                  ? `الحالة الحالية: درجة الحرارة القصوى اليوم هي ${todayMaxTemp.toFixed(1)}°م (الحد: ${maxTempThreshold}°م)`
-                  : `Aujourd'hui : pic prévu à ${todayMaxTemp.toFixed(1)}°C (seuil d'alerte configuré à ${maxTempThreshold}°C)`}
-              </p>
-
-              <Button
-                size="sm"
-                onClick={handleTriggerEmailAlert}
-                disabled={sendingTestEmail}
-                className="rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5 shadow-xs"
-              >
-                <Send className="h-3.5 w-3.5" />
-                <span>{isAr ? "تجربة إرسال تنبيه بالبريد الإلكتروني" : "Tester l'envoi de l'alerte par e-mail"}</span>
-              </Button>
-            </div>
-          </Card>
+            )}
+          </div>
         </div>
       )}
 
-      {/* CONTENU ONGLET 2: COMPARATEUR D'HEURES DE FROID & RÉFÉRENTIEL VARIÉTAL (FUSIONNÉS) */}
-      {activeTab === "chill" && <ChillHoursComparator viewMode="all" />}
+      {/* ======================================================== */}
+      {/* ONGLET 2 : ساعات البرودة / HEURES DE FROID               */}
+      {/* ======================================================== */}
+      {activeTab === "chill" && (
+        <ChillHoursComparator
+          viewMode="all"
+          embeddedInMeteo
+          externalRefreshTick={chillRefreshTick}
+          externalConfigOpen={chillConfigOpen}
+          onExternalConfigChange={setChillConfigOpen}
+        />
+      )}
 
-      {/* CONTENU ONGLET 3: PRÉVISIONS ET CLIMATOLOGIE PAR MOIS */}
+      {/* ======================================================== */}
+      {/* ONGLET 3 : الشهري / MENSUEL                              */}
+      {/* ======================================================== */}
       {activeTab === "monthly" && (
-        <div className="space-y-4">
-          {/* Sélecteur des 12 mois */}
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        <div className="space-y-3.5">
+          {/* Barre de 12 pastilles de mois en défilement horizontal sur 1 ligne */}
+          <div className="flex gap-1.5 overflow-x-auto pb-2 snap-x">
             {MONTHLY_CLIMATE_DATA.map((m) => {
               const isSelected = m.monthIdx === selectedMonthIdx;
               const isCurrent = m.monthIdx === new Date().getMonth();
@@ -851,101 +999,108 @@ export default function MeteoPage() {
                   key={m.monthIdx}
                   type="button"
                   onClick={() => setSelectedMonthIdx(m.monthIdx)}
-                  className={`p-2.5 rounded-2xl border text-center transition-all ${
-                    isSelected
-                      ? "border-primary bg-primary text-primary-foreground font-black shadow-sm"
-                      : "border-border bg-card hover:bg-muted/60 text-foreground"
-                  }`}
+                  className={`snap-start shrink-0 rounded-full border px-3.5 py-2 text-xs font-black whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${isSelected
+                      ? "border-emerald-800 bg-emerald-800 text-white shadow-sm"
+                      : "border-border bg-card text-foreground hover:bg-muted/60"
+                    }`}
                 >
-                  <p className="text-xs font-bold truncate">
-                    {isAr ? m.nameAr.split(" ")[0] : m.nameFr}
-                  </p>
-                  <p className={`text-[10px] mt-0.5 ${isSelected ? "text-primary-foreground/90 font-semibold" : "text-muted-foreground"}`}>
-                    {m.tempMax}° / {m.tempMin}°
-                  </p>
+                  <span>{isAr ? m.shortAr : m.shortFr}</span>
                   {isCurrent && (
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 mt-1" />
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-amber-300" : "bg-emerald-500"
+                        }`}
+                    />
                   )}
                 </button>
               );
             })}
           </div>
 
-          {/* Fiche détaillée du mois sélectionné */}
+          {/* Détails du mois sélectionné : Grille 2×2 + Carte Conseils agronomiques */}
           {(() => {
             const m = MONTHLY_CLIMATE_DATA[selectedMonthIdx];
+            const risk = getRiskDisplay(m.riskLevel, isAr);
+
             return (
-              <Card className="rounded-3xl border p-5 bg-card space-y-4 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
-                  <div>
-                    <h3 className="text-lg font-black text-primary">
-                      {isAr ? m.nameAr : m.nameFr} — {isAr ? "المناخ والأجندة الزراعية" : "Climatologie & Guide Agronomique"}
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      {isAr
-                        ? "المعدلات المناخية التاريخية للقطعة الزراعية (درجات الحرارة، الأمطار، البخر)"
-                        : "Moyennes climatiques historiques de référence pour la zone d'Ain Oussera"}
-                    </p>
-                  </div>
-                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary border border-primary/20">
-                    {m.tempMax}°C Max
+              <div className="space-y-3">
+                {/* En-tête du mois */}
+                <div className="flex items-center justify-between px-1">
+                  <h2 className="text-base font-black text-foreground">
+                    {isAr ? m.nameAr : m.nameFr}
+                  </h2>
+                  <span className="text-[11px] font-semibold text-muted-foreground">
+                    {isAr ? "المعدلات المرجعية — عين وسارة" : "Moyennes de référence — Aïn Oussera"}
                   </span>
                 </div>
 
-                {/* 4 Indicateurs Mensuels */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <div className="rounded-2xl border bg-muted/30 p-3 space-y-1">
+                {/* Grille 2×2 : Max/Min, Pluie, ETo/j & ETo/mois, Risque gel/chaleur */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  {/* 1. Max / Min */}
+                  <div className="rounded-2xl border bg-card p-3.5 shadow-2xs space-y-1.5">
                     <span className="text-[11px] font-bold text-muted-foreground block">
-                      {isAr ? "معدل الحرارة القصوى" : "Température Max"}
+                      {isAr ? "القصوى / الدنيا" : "Max / Min"}
                     </span>
-                    <p className="text-xl font-black text-rose-600 dark:text-rose-400">
-                      {m.tempMax}°C
+                    <div dir="ltr" className="flex items-baseline gap-1.5">
+                      <span className="text-xl font-black text-rose-600 dark:text-rose-400">
+                        {m.tempMax}°
+                      </span>
+                      <span className="text-muted-foreground font-bold">/</span>
+                      <span className="text-lg font-black text-sky-600 dark:text-sky-400">
+                        {m.tempMin}°C
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 2. Pluie */}
+                  <div className="rounded-2xl border bg-card p-3.5 shadow-2xs space-y-1">
+                    <span className="text-[11px] font-bold text-muted-foreground block">
+                      {isAr ? "الأمطار المقدرة" : "Précipitations"}
+                    </span>
+                    <p dir="ltr" className="text-xl font-black text-foreground">
+                      {m.rainMm}{" "}
+                      <span className="text-xs font-bold text-muted-foreground">{isAr ? "ملم" : "mm"}</span>
+                    </p>
+                    <p className="text-[10px] text-muted-foreground font-medium">
+                      ~{m.rainDays} {isAr ? "أيام ممطرة" : "jours de pluie"}
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border bg-muted/30 p-3 space-y-1">
+                  {/* 3. ETo/j & ETo/mois */}
+                  <div className="rounded-2xl border bg-card p-3.5 shadow-2xs space-y-1">
                     <span className="text-[11px] font-bold text-muted-foreground block">
-                      {isAr ? "معدل الحرارة الدنيا" : "Température Min"}
+                      {isAr ? "التبخر (ETo)" : "ETo Moyen"}
                     </span>
-                    <p className="text-xl font-black text-sky-600 dark:text-sky-400">
-                      {m.tempMin}°C
+                    <p dir="ltr" className="text-xl font-black text-orange-600 dark:text-orange-400">
+                      {m.et0}{" "}
+                      <span className="text-xs font-bold text-muted-foreground">{isAr ? "ملم/يوم" : "mm/j"}</span>
+                    </p>
+                    <p dir="ltr" className="text-[10px] text-muted-foreground font-semibold">
+                      ~{Math.round(m.et0 * 30)} {isAr ? "ملم / شهر" : "mm / mois"}
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border bg-muted/30 p-3 space-y-1">
+                  {/* 4. Risque gel / chaleur */}
+                  <div className="rounded-2xl border bg-card p-3.5 shadow-2xs flex flex-col justify-between space-y-1.5">
                     <span className="text-[11px] font-bold text-muted-foreground block">
-                      {isAr ? "مجموع الأمطار المقدر" : "Précipitations"}
+                      {isAr ? "المخاطر المناخية" : "Risque climatique"}
                     </span>
-                    <p className="text-xl font-black text-foreground">
-                      {m.rainMm} <span className="text-xs font-normal">mm</span>
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">~{m.rainDays} {isAr ? "أيام ممطرة" : "jours de pluie"}</p>
-                  </div>
-
-                  <div className="rounded-2xl border bg-muted/30 p-3 space-y-1">
-                    <span className="text-[11px] font-bold text-muted-foreground block">
-                      {isAr ? "التبخر نتح اليومي" : "ETo Moyen"}
+                    <span className={`inline-flex items-center justify-center rounded-xl border px-2 py-1.5 text-[11px] font-black text-center leading-tight ${risk.tone}`}>
+                      {risk.label}
                     </span>
-                    <p className="text-xl font-black text-orange-600 dark:text-orange-400">
-                      {m.et0} <span className="text-xs font-normal">mm/j</span>
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {isAr ? `~${Math.round(m.et0 * 30)} ملم / شهر` : `~${Math.round(m.et0 * 30)} mm / mois`}
-                    </p>
                   </div>
                 </div>
 
-                {/* Recommandations & Risques pour ce mois */}
-                <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 space-y-2">
-                  <h4 className="text-xs font-extrabold uppercase tracking-wide text-primary flex items-center gap-1.5">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                    <span>{isAr ? "توصيات المهندس والملاحظات الزراعية لهذا الشهر" : "Conseils & Vigilance Agronomique de l'Ingénieur"}</span>
-                  </h4>
+                {/* Carte Conseils agronomiques du mois */}
+                <Card className="rounded-2xl border border-emerald-600/25 bg-emerald-500/[0.06] p-4 space-y-2 shadow-2xs">
+                  <h3 className="text-xs font-black text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span>{isAr ? "التوصيات الزراعية لهذا الشهر" : "Conseils agronomiques du mois"}</span>
+                  </h3>
                   <p className="text-xs text-foreground font-semibold leading-relaxed">
                     {isAr ? m.agriNotesAr : m.agriNotesFr}
                   </p>
-                </div>
-              </Card>
+                </Card>
+              </div>
             );
           })()}
         </div>
