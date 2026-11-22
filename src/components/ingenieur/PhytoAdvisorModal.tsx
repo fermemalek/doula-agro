@@ -42,6 +42,7 @@ import {
   getPestVisualAsset,
   checkProductBlockedForGrowthStage,
   isFruitBearingStage,
+  getDefaultPhenologicalStage,
   TreatmentActionRule,
   SystemicType,
   ModeOfActionRecommendation,
@@ -64,6 +65,7 @@ interface PhytoAdvisorModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cropGroup?: string; // ex: "oliviers", "pommiers", "nectarinier"
+  initialSpecies?: PhytoCultureKey; // "olivier" | "nectarinier" | "pommier"
   onSelectIngredient?: (ingredient: ActiveIngredient, pest: PestTarget) => void;
 }
 
@@ -71,6 +73,7 @@ export function PhytoAdvisorModal({
   open,
   onOpenChange,
   cropGroup = 'nectarinier',
+  initialSpecies,
   onSelectIngredient,
 }: PhytoAdvisorModalProps) {
   const { lang } = useTranslation();
@@ -79,25 +82,30 @@ export function PhytoAdvisorModal({
   // Navigation par onglets
   const [activeTab, setActiveTab] = useState<'advisor' | 'calculator' | 'catalog'>('advisor');
 
-  // Mapper le groupe de culture de Doula vers CropType + permettre le basculement direct dans l'onglet 1
-  const initialCrop: CropType = useMemo(() => {
+  // Déduire l'espèce normalisée ("olivier" | "pommier" | "nectarinier") depuis initialSpecies ou cropGroup
+  const resolvedInitialSpecies: PhytoCultureKey = useMemo(() => {
+    if (initialSpecies) return initialSpecies;
     const c = (cropGroup || '').toLowerCase();
-    if (c.includes('oliv')) return 'olive';
-    if (c.includes('pomm')) return 'pomme';
-    if (c.includes('nectar') || c.includes('pech') || c.includes('redix')) return 'nectarine';
+    if (c.includes('oliv') || /^p[1-4]$/.test(c)) return 'olivier';
+    if (c.includes('pomm') || c.includes('p7') || c.includes('p8')) return 'pommier';
+    return 'nectarinier';
+  }, [initialSpecies, cropGroup]);
+
+  const initialCrop: CropType = useMemo(() => {
+    if (resolvedInitialSpecies === 'olivier') return 'olive';
+    if (resolvedInitialSpecies === 'pommier') return 'pomme';
     return 'nectarine';
-  }, [cropGroup]);
+  }, [resolvedInitialSpecies]);
 
   const [currentCrop, setCurrentCrop] = useState<CropType>(initialCrop);
-  useEffect(() => {
-    setCurrentCrop(initialCrop);
-  }, [initialCrop, open]);
 
   // Suivi des images en erreur pour basculer proprement sur un visuel de secours
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
-  // Étapes de l'assistant
-  const [selectedStage, setSelectedStage] = useState<GrowthStage>('floraison');
+  // Étapes de l'assistant (initialisé automatiquement selon l'espèce et la date courante)
+  const [selectedStage, setSelectedStage] = useState<GrowthStage>(() =>
+    getDefaultPhenologicalStage(resolvedInitialSpecies, new Date())
+  );
   const [selectedPestId, setSelectedPestId] = useState<string | null>(null);
   const [pressureLevel, setPressureLevel] = useState<'legere' | 'moyenne' | 'forte'>('moyenne');
   const [galleryPest, setGalleryPest] = useState<PestTarget | null>(null);
@@ -153,8 +161,18 @@ export function PhytoAdvisorModal({
 
   // Recherche, filtre espèce (pommier / nectarinier / olivier) et masquage des produits bloqués (Onglet 3)
   const [catalogSearch, setCatalogSearch] = useState('');
-  const [catalogCropFilter, setCatalogCropFilter] = useState<'all' | PhytoCultureKey>('all');
+  const [catalogCropFilter, setCatalogCropFilter] = useState<'all' | PhytoCultureKey>(resolvedInitialSpecies);
   const [hideBlockedInCatalog, setHideBlockedInCatalog] = useState<boolean>(false);
+
+  // À chaque ouverture de PhytoAdvisorModal, synchroniser Onglet 1 + Onglet 3 sur initialSpecies
+  // et positionner automatiquement le stade phénologique selon la date courante
+  useEffect(() => {
+    if (!open) return;
+    setCurrentCrop(initialCrop);
+    setCatalogCropFilter(resolvedInitialSpecies);
+    setSelectedStage(getDefaultPhenologicalStage(resolvedInitialSpecies, new Date()));
+    setSelectedPestId(null);
+  }, [open, initialCrop, resolvedInitialSpecies]);
 
   // Traitements historiques passés pour détecter les résistances
   const { data: recos = [] } = useRecommendations();

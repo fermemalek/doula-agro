@@ -75,6 +75,51 @@ export function isFruitBearingStage(stage?: GrowthStage): boolean {
   return FRUIT_BEARING_STAGES.includes(stage);
 }
 
+/**
+ * Détermine automatiquement le stade phénologique par défaut selon l'espèce et la date
+ * (calibré sur le calendrier réel de Ferme Malek — Benhar / Djelfa).
+ */
+export function getDefaultPhenologicalStage(
+  species: 'olivier' | 'olive' | 'pommier' | 'pomme' | 'nectarinier' | 'nectarine' | 'peche',
+  date: Date = new Date()
+): GrowthStage {
+  const mmdd = (date.getMonth() + 1) * 100 + date.getDate();
+
+  if (species === 'olivier' || species === 'olive') {
+    if (mmdd <= 228) return 'dormance';
+    if (mmdd <= 425) return 'gonflement_bourgeons';
+    if (mmdd <= 531) return 'floraison';
+    if (mmdd <= 630) return 'chute_petales_nouaison';
+    if (mmdd <= 1015) return 'grossissement_fruit';
+    if (mmdd <= 1120) return 'maturation';
+    if (mmdd <= 1215) return 'post_recolte';
+    return 'dormance';
+  }
+
+  if (species === 'pommier' || species === 'pomme') {
+    if (mmdd <= 220) return 'dormance';
+    if (mmdd <= 320) return 'gonflement_bourgeons';
+    if (mmdd <= 415) return 'floraison';
+    if (mmdd <= 510) return 'chute_petales_nouaison';
+    if (mmdd <= 720) return 'grossissement_fruit';
+    if (mmdd <= 910) return 'maturation';
+    if (mmdd <= 1025) return 'post_recolte';
+    if (mmdd <= 1130) return 'chute_feuilles';
+    return 'dormance';
+  }
+
+  // Nectarinier / Pêcher (Nablara & Redix 25)
+  if (mmdd <= 131) return 'dormance';
+  if (mmdd <= 210) return 'gonflement_bourgeons';
+  if (mmdd <= 310) return 'floraison';
+  if (mmdd <= 410) return 'chute_petales_nouaison';
+  if (mmdd <= 605) return 'grossissement_fruit';
+  if (mmdd <= 710) return 'maturation';
+  if (mmdd <= 1020) return 'post_recolte';
+  if (mmdd <= 1130) return 'chute_feuilles';
+  return 'dormance';
+}
+
 export interface TreatmentActionRule {
   isRainExpectedSoon: boolean;    // Pluie > 20 mm prévue sous 48h (lessivage)
   hasVisibleSymptoms: boolean;    // Maladie déjà installée (action curative requise)

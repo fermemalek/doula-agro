@@ -2404,6 +2404,15 @@ export function RecommendationForm({
         open={phytoAdvisorOpen}
         onOpenChange={setPhytoAdvisorOpen}
         cropGroup={cropGroups[0]}
+        initialSpecies={(() => {
+          const joined = cropGroups.map((g) => String(g).toLowerCase()).join(" ");
+          if (joined.includes("oliv") || /\bp[1-4]\b/.test(joined)) return "olivier";
+          if (joined.includes("pomm") || /\bp[78]\b/.test(joined)) return "pommier";
+          if (joined.includes("nablara") || joined.includes("redix") || joined.includes("nectar") || /\bp[56]\b/.test(joined)) {
+            return "nectarinier";
+          }
+          return "nectarinier";
+        })()}
         onSelectIngredient={handleSelectFromAdvisor}
       />
     </>
