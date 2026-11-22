@@ -681,33 +681,46 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
             </div>
           </div>
 
-          {/* Analyse comparative et diagnostic d'impact thermique */}
+          {/* Analyse comparative des 3 modèles et diagnostic d'impact thermique */}
           <div className="rounded-2xl border bg-card p-4 space-y-3 shadow-xs">
             <div className="flex items-center justify-between border-b pb-2">
               <h3 className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
                 <Sparkles className="h-4 w-4 text-amber-500" />
-                <span>{isAr ? "التحليل المقارن والتشخيص الفسيولوجي للحرارة" : "📊 Analyse Comparative de l'Écart"}</span>
+                <span>
+                  {isAr
+                    ? "التحليل المقارن للنماذج الثلاثة والتشخيص الفسيولوجي للحرارة"
+                    : "📊 Analyse Comparative des 3 Modèles & Diagnostic"}
+                </span>
               </h3>
               <span className="text-[10px] text-muted-foreground">
                 {lastUpdated ? `${isAr ? "آخر تحديث :" : "Dernière mise à jour :"} ${lastUpdated}` : ""}
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-              <div className="rounded-xl border bg-muted/30 p-2.5 flex items-center justify-between">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              <div className="rounded-xl border bg-muted/30 p-2.5 flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">
-                  {isAr ? "الفارق بين النموذجين :" : "Écart constaté (Weinberger - Utah) :"}
+                  {isAr ? "الفارق (Weinberger − Utah) :" : "Écart (Weinberger − Utah) :"}
                 </span>
-                <span className="font-black text-foreground text-sm">
-                  {difference > 0 ? `+${difference}` : difference} {isAr ? "وحدة" : "unités"}
+                <span dir="ltr" className="inline-block font-black text-foreground text-sm shrink-0">
+                  {difference > 0 ? `+${difference}` : difference} {isAr ? "وحدة" : "u."}
                 </span>
               </div>
-              <div className="rounded-xl border bg-muted/30 p-2.5 flex items-center justify-between">
+              <div className="rounded-xl border border-violet-500/25 bg-violet-500/5 p-2.5 flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">
-                  {isAr ? "ساعات الحرارة المفرطة (> 16°م) :" : "Heures chaudes détectées (> 16°C) :"}
+                  {isAr ? "الديناميكي المثبّت (CP) :" : "Dynamique fixé (CP) :"}
                 </span>
-                <span className="font-black text-rose-600 dark:text-rose-400 text-sm">
-                  {warmHoursCount} {isAr ? "ساعة" : "heures"}
+                <span dir="ltr" className="inline-block font-black text-violet-600 dark:text-violet-400 text-sm shrink-0">
+                  {dynamicCP} CP
+                </span>
+              </div>
+              <div className="rounded-xl border bg-muted/30 p-2.5 flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">
+                  {isAr ? "ساعات الحرارة المفرطة" : "Heures chaudes"}{" "}
+                  <span dir="ltr" className="inline-block">(&gt; 16°C)</span> :
+                </span>
+                <span className="font-black text-rose-600 dark:text-rose-400 text-sm shrink-0">
+                  {warmHoursCount} {isAr ? "ساعة" : "h"}
                 </span>
               </div>
             </div>
@@ -720,15 +733,15 @@ export function ChillHoursComparator({ viewMode = "all" }: ChillHoursComparatorP
               <p className="leading-relaxed">
                 {weinbergerHours < 20 || warmHoursCount > 100
                   ? isAr
-                    ? "بداية موسم البرودة — تراكم ساعات حرارة مرتفعة (>16°م) يؤخر بداية السكون."
-                    : "Début de la saison de froid — l'accumulation d'heures chaudes (> 16°C) retarde l'entrée en dormance."
+                    ? "بداية موسم البرودة — تراكم ساعات حرارة مرتفعة (> 16°م) يؤخر بداية السكون. يُنصح بمتابعة النموذج الديناميكي (CP) كمرجع أدق لمناخ الهضاب العليا."
+                    : "Début de la saison de froid — l'accumulation d'heures chaudes (> 16°C) retarde l'entrée en dormance. Le modèle Dynamique (CP) reste la référence la plus fiable."
                   : difference > 20
                     ? isAr
-                      ? "تؤدي ساعات النهار المشمسة والدافئة إلى إضعاف فعالية البرودة المتراكمة ليلاً. نموذج يوتا يعكس بشكل أصدق مرحلة السكون الفسيولوجي للأشجار في ضيعتنا مقارنة بالعد الخام البسيط."
-                      : "Les journées chaudes actuelles réduisent l'efficacité du froid accumulé la nuit. Le modèle Utah reflète plus fidèlement la dormance physiologique que le simple décompte brut."
+                      ? "تؤدي ساعات النهار المشمسة والدافئة إلى إضعاف فعالية البرودة المتراكمة ليلاً. النموذجان الديناميكي (CP) ويوتا (CU) يعكسان بشكل أصدق مرحلة السكون الفسيولوجي مقارنة بالعد الخام البسيط."
+                      : "Les journées chaudes réduisent l'efficacité du froid nocturne. Les modèles Dynamique (CP) et Utah (CU) reflètent plus fidèlement la dormance réelle que le simple décompte Weinberger."
                     : isAr
-                      ? "توافق ممتاز بين النموذجين : تبقى درجات الحرارة النهارية معتدلة وباردة مما يمنع إتلاف وتدمير وحدات البرودة المتراكمة."
-                      : "Bonne concordance entre les modèles : les températures diurnes restent suffisamment fraîches pour éviter la destruction des unités de froid."}
+                      ? "توافق ممتاز بين النماذج الثلاثة (Weinberger · Utah · Dynamique) : تبقى درجات الحرارة النهارية معتدلة وباردة مما يمنع إتلاف وحدات وحصص البرودة المتراكمة."
+                      : "Bonne concordance entre les 3 modèles (Weinberger · Utah · Dynamique) : les températures diurnes restent suffisamment fraîches pour préserver le froid accumulé."}
               </p>
             </div>
           </div>

@@ -1273,7 +1273,7 @@ export function RecommendationForm({
                                     : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
-                                  <span>🌅</span> Matin / صباحاً
+                                  <span>🌅</span> {isAr ? "صباحاً" : "Matin"}
                                 </button>
                                 <button
                                   type="button"
@@ -1285,7 +1285,7 @@ export function RecommendationForm({
                                     : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
-                                  <span>🌙</span> Soir / مساءً
+                                  <span>🌙</span> {isAr ? "مساءً" : "Soir"}
                                 </button>
                               </div>
                             </div>
@@ -1538,7 +1538,7 @@ export function RecommendationForm({
                                     : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
-                                  <span>🌅</span> Matin / صباحاً
+                                  <span>🌅</span> {isAr ? "صباحاً" : "Matin"}
                                 </button>
                                 <button
                                   type="button"
@@ -1550,7 +1550,7 @@ export function RecommendationForm({
                                     : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
-                                  <span>🌙</span> Soir / مساءً
+                                  <span>🌙</span> {isAr ? "مساءً" : "Soir"}
                                 </button>
                               </div>
                             </div>
@@ -1596,9 +1596,21 @@ export function RecommendationForm({
                                   className="col-span-5 rounded border bg-background px-2 py-1 text-xs"
                                 >
                                   <option value="">{t("reco.form.choose")}</option>
-                                  {foliarProducts.map(p => (
-                                    <option key={p.name} value={p.name}>{p.name}</option>
-                                  ))}
+                                  {foliarProducts.map((p) => {
+                                    const lower = p.name.toLowerCase();
+                                    let label = p.name;
+                                    if (isAr && !/[\u0600-\u06FF]/.test(p.name)) {
+                                      if (lower.includes("oligo")) label = `${p.name} / عناصر صغرى`;
+                                      else if (lower.includes("phosphate de potas")) label = `${p.name} / فوسفات البوتاسيوم`;
+                                      else if (lower.includes("acide ascorbique")) label = `${p.name} / حمض الأسكوربيك`;
+                                      else if (lower.includes("citrate de potas")) label = `${p.name} / سيترات البوتاسيوم`;
+                                      else if (lower.includes("borne") && lower.includes("zinc")) label = `${p.name} / بورون وزنك`;
+                                      else if (lower.includes("sulfate de zinc")) label = `${p.name} / سلفات الزنك`;
+                                    }
+                                    return (
+                                      <option key={p.name} value={p.name}>{label}</option>
+                                    );
+                                  })}
                                 </select>
                                 <input
                                   type="text"
@@ -1749,7 +1761,7 @@ export function RecommendationForm({
                                     : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
-                                  <span>🌅</span> Matin / صباحاً
+                                  <span>🌅</span> {isAr ? "صباحاً" : "Matin"}
                                 </button>
                                 <button
                                   type="button"
@@ -1761,7 +1773,7 @@ export function RecommendationForm({
                                     : "bg-background border-input text-muted-foreground hover:bg-muted"
                                     }`}
                                 >
-                                  <span>🌙</span> Soir / مساءً
+                                  <span>🌙</span> {isAr ? "مساءً" : "Soir"}
                                 </button>
                               </div>
                             </div>
@@ -2162,10 +2174,10 @@ export function RecommendationForm({
                 <CheckCircle2 className="h-4 w-4" />
                 <span>
                   {submitting
-                    ? "Validation en cours..."
+                    ? (isAr ? "جارٍ الاعتماد..." : "Validation en cours...")
                     : duplicateMode
                       ? (isAr ? "تفعيل التوصية المنسوخة مع الشراء" : "Valider la copie & ses Achats")
-                      : "Valider Recommandation & Achats (Mois précédent)"}
+                      : (isAr ? "اعتماد التوصية والمشتريات (الشهر السابق)" : "Valider Recommandation & Achats (Mois précédent)")}
                 </span>
               </button>
 
@@ -2183,7 +2195,9 @@ export function RecommendationForm({
                       ? (isAr ? "حفظ التوصية المنسوخة (قيد الانتظار)" : "Créer la recommandation dupliquée (En attente)")
                       : recoToEdit
                         ? t("reco.form.saveChanges")
-                        : `${t("reco.form.submit")} (En attente)`}
+                        : isAr
+                          ? `${t("reco.form.submit")} (قيد الانتظار)`
+                          : `${t("reco.form.submit")} (En attente)`}
                 </span>
               </button>
 
@@ -2202,7 +2216,7 @@ export function RecommendationForm({
                   className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold uppercase active:scale-95 transition"
                 >
                   <Copy className="h-4 w-4" />
-                  <span>{isAr ? "نسخ كتوصية جديدة (Dupliquer)" : "Dupliquer comme nouvelle recommandation"}</span>
+                  <span>{isAr ? "نسخ كتوصية جديدة" : "Dupliquer comme nouvelle recommandation"}</span>
                 </button>
               )}
             </div>
@@ -2211,18 +2225,26 @@ export function RecommendationForm({
               <button
                 type="button"
                 onClick={async () => {
-                  if (!window.confirm("Voulez-vous vraiment supprimer définitivement cette recommandation ?")) return;
+                  if (
+                    !window.confirm(
+                      isAr
+                        ? "هل أنت متأكد من حذف هذه التوصية نهائياً؟"
+                        : "Voulez-vous vraiment supprimer définitivement cette recommandation ?"
+                    )
+                  )
+                    return;
                   try {
                     await remove.mutateAsync(recoToEdit.id);
-                    toast.success("Recommandation supprimée avec succès !");
+                    toast.success(isAr ? "تم حذف التوصية بنجاح!" : "Recommandation supprimée avec succès !");
                     onOpenChange(false);
                   } catch (e) {
-                    toast.error("Erreur lors de la suppression de la recommandation");
+                    toast.error(isAr ? "حدث خطأ أثناء حذف التوصية" : "Erreur lors de la suppression de la recommandation");
                   }
                 }}
                 className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20 px-4 text-sm font-bold uppercase active:scale-95 transition"
               >
-                <Trash2 className="h-4 w-4" /> Supprimer cette recommandation
+                <Trash2 className="h-4 w-4" />{" "}
+                <span>{isAr ? "حذف هذه التوصية" : "Supprimer cette recommandation"}</span>
               </button>
             )}
             <button

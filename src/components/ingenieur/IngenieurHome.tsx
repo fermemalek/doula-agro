@@ -15,7 +15,10 @@ import { toast } from "sonner";
 
 export function IngenieurHome() {
   const navigate = useNavigate();
-  const { userId } = useRole();
+  const { userId, session } = useRole();
+  const accountName =
+    (session?.user?.user_metadata?.full_name as string)?.trim() ||
+    (session?.user?.email ? session.user.email.split("@")[0] : "");
   const { data: recos = [] } = useRecommendations();
   const parcels = useParcels();
   const [formOpen, setFormOpen] = useState(false);
@@ -99,8 +102,15 @@ export function IngenieurHome() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 pb-24 pt-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h1 className="text-lg font-bold">{t("eng.title", "Espace ingénieur")}</h1>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-lg font-bold">{t("eng.title", "Espace ingénieur")}</h1>
+          {accountName && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
+              👤 {accountName}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <div className="flex rounded-lg border bg-muted p-0.5 text-xs">
             <button
