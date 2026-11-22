@@ -1124,10 +1124,30 @@ export function RecommendationForm({
                   <span className="text-base leading-none">⏳</span>
                   <div>
                     <span className="font-extrabold block">
-                      Mode Spécial Historique Détecté ({appDate} &lt; Aujourd'hui)
+                      {isAr ? (
+                        <>
+                          تم اكتشاف الوضع التاريخي الخاص (<span dir="ltr" className="inline-block font-mono">{appDate}</span> أقدم من اليوم)
+                        </>
+                      ) : (
+                        <>
+                          Mode Spécial Historique Détecté (<span dir="ltr" className="inline-block font-mono">{appDate}</span> &lt; Aujourd&apos;hui)
+                        </>
+                      )}
                     </span>
                     <span className="text-[11px] text-amber-800 dark:text-amber-300 block mt-0.5 leading-relaxed">
-                      Règle Ferme Malek : Lors de la validation, cette recommandation remplacera automatiquement toute recommandation antérieure pour les espèces sélectionnées ({cropGroups.join(", ") || "choisies"}). Tous les achats de produits seront générés pour être <b>strictement égaux aux quantités prescrites</b> (100% réglés, 0 DA de déficit théorique).
+                      {isAr ? (
+                        <>
+                          قاعدة مزرعة مالك : عند الاعتماد، ستقوم هذه التوصية تلقائياً بتعويض أي توصية سابقة لنفس الأصناف المختارة (
+                          {cropGroups.length > 0 ? cropGroups.map((g) => t(`crop.${g}`)).join("، ") : "المختارة"}). سيتم إنشاء جميع مشتريات المنتجات بحيث تكون{" "}
+                          <b>مطابقة تماماً للكميات الموصى بها</b> (مسددة 100%، بدون أي عجز مالي نظري — <span dir="ltr" className="inline-block">0 DA</span>).
+                        </>
+                      ) : (
+                        <>
+                          Règle Ferme Malek : Lors de la validation, cette recommandation remplacera automatiquement toute recommandation antérieure pour les espèces sélectionnées (
+                          {cropGroups.join(", ") || "choisies"}). Tous les achats de produits seront générés pour être{" "}
+                          <b>strictement égaux aux quantités prescrites</b> (100% réglés, 0 DA de déficit théorique).
+                        </>
+                      )}
                     </span>
                   </div>
                 </div>
