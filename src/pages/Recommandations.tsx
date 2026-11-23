@@ -44,6 +44,7 @@ import {
 import { ValidateOrderScheduleDialog, type OrderScheduleConfirmation, type OrderStockSummary, type OrderBacDetail } from "@/components/ValidateOrderScheduleDialog";
 import { getSolarTimesForDate, formatMinutesToTimeInput } from "@/lib/astronomy";
 import { formatDateFR, formatDateTimeFR } from "@/lib/format";
+import { useTranslation } from "@/lib/i18n";
 
 type PrescriptionType = "all" | "fert_irrigation" | "fert_foliaire" | "phytosanitaire";
 
@@ -102,6 +103,7 @@ function getRecoDate(r: Recommendation): string {
 const PRESCRIPTION_CONFIG = {
   fert_irrigation: {
     label: "Fert. Irrigation",
+    labelAr: "تسميد عبر الري",
     labelFull: "Fertilisation par Irrigation (Goutte-à-goutte)",
     colorName: "Vert",
     cardTone: "border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10 dark:bg-emerald-950/20",
@@ -113,6 +115,7 @@ const PRESCRIPTION_CONFIG = {
   },
   fert_foliaire: {
     label: "Fert. Foliaire",
+    labelAr: "تسميد ورقي",
     labelFull: "Fertilisation Foliaire (Pulvérisation)",
     colorName: "Bleu",
     cardTone: "border-sky-500/40 bg-sky-500/5 hover:bg-sky-500/10 dark:bg-sky-950/20",
@@ -124,6 +127,7 @@ const PRESCRIPTION_CONFIG = {
   },
   phytosanitaire: {
     label: "Phytosanitaire",
+    labelAr: "صحة نباتية",
     labelFull: "Traitement Phytosanitaire",
     colorName: "Orange",
     cardTone: "border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10 dark:bg-amber-950/20",
@@ -136,27 +140,27 @@ const PRESCRIPTION_CONFIG = {
 };
 
 const MONTHS_LIST = [
-  { value: "all", label: "Tous les mois" },
-  { value: "01", label: "01 - Janvier" },
-  { value: "02", label: "02 - Février" },
-  { value: "03", label: "03 - Mars" },
-  { value: "04", label: "04 - Avril" },
-  { value: "05", label: "05 - Mai" },
-  { value: "06", label: "06 - Juin" },
-  { value: "07", label: "07 - Juillet" },
-  { value: "08", label: "08 - Août" },
-  { value: "09", label: "09 - Septembre" },
-  { value: "10", label: "10 - Octobre" },
-  { value: "11", label: "11 - Novembre" },
-  { value: "12", label: "12 - Décembre" },
+  { value: "all", label: "Tous les mois", labelAr: "كل الأشهر" },
+  { value: "01", label: "01 - Janvier", labelAr: "01 - جانفي" },
+  { value: "02", label: "02 - Février", labelAr: "02 - فيفري" },
+  { value: "03", label: "03 - Mars", labelAr: "03 - مارس" },
+  { value: "04", label: "04 - Avril", labelAr: "04 - أفريل" },
+  { value: "05", label: "05 - Mai", labelAr: "05 - ماي" },
+  { value: "06", label: "06 - Juin", labelAr: "06 - جوان" },
+  { value: "07", label: "07 - Juillet", labelAr: "07 - جويلية" },
+  { value: "08", label: "08 - Août", labelAr: "08 - أوت" },
+  { value: "09", label: "09 - Septembre", labelAr: "09 - سبتمبر" },
+  { value: "10", label: "10 - Octobre", labelAr: "10 - أكتوبر" },
+  { value: "11", label: "11 - Novembre", labelAr: "11 - نوفمبر" },
+  { value: "12", label: "12 - Décembre", labelAr: "12 - ديسمبر" },
 ];
 
 const SPECIES_OPTIONS = [
-  { value: "all", label: "Toutes les espèces", icon: "🌱" },
-  { value: "pommiers", label: "Pommier Gala One", icon: "🍎" },
-  { value: "nectarines", label: "Nectarine (Nablara & Redix)", icon: "🍑" },
-  { value: "oliviers", label: "Oliviers (P1 à P4)", icon: "🫒" },
-  { value: "casuarina", label: "Casuarina (Brise-vent)", icon: "🌲" },
+  { value: "all", label: "Toutes les espèces", labelAr: "كل الأصناف", icon: "🌱" },
+  { value: "pommiers", label: "Pommier Gala One", labelAr: "التفاح (Gala One)", icon: "🍎" },
+  { value: "nectarines", label: "Nectarine (Nablara & Redix)", labelAr: "النكتارين (نابلارا وريديكس)", icon: "🍑" },
+  { value: "oliviers", label: "Oliviers (P1 à P4)", labelAr: "الزيتون (P1 إلى P4)", icon: "🫒" },
+  { value: "casuarina", label: "Casuarina (Brise-vent)", labelAr: "كازوارينا (مصدات الرياح)", icon: "🌲" },
 ];
 
 function matchesSpecies(r: Recommendation, speciesValue: string, parcels: any[]): boolean {
@@ -222,6 +226,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 function RecommandationsPageContent() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { lang } = useTranslation();
+  const isAr = lang === "ar";
   const { userId } = useRole();
   const displayRole = useDisplayRole();
   const { data: recos = [] } = useRecommendations();
@@ -478,21 +484,39 @@ function RecommandationsPageContent() {
       if (matchingProgs.length > 0) {
         const allExecuted = matchingProgs.every(p => p.status === "execute" || p.executedAt !== undefined || p.executed_at !== null);
         if (allExecuted) {
-          return { label: "Exécuté", tone: "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold" };
+          return {
+            label: isAr ? "منفّذة" : "Exécuté",
+            tone: "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-extrabold",
+          };
         }
-        return { label: "Accepté (Planifié)", tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold" };
+        return {
+          label: isAr ? "مقبولة (مخططة)" : "Accepté (Planifié)",
+          tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold",
+        };
       }
-      return { label: "Accepté", tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold" };
+      return {
+        label: isAr ? "مقبولة" : "Accepté",
+        tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold",
+      };
     }
 
     if (r.status === "rejetee") {
       if (displayRole === "admin") {
-        return { label: "Approvisionnement", tone: "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-200 font-bold" };
+        return {
+          label: isAr ? "قيد التموين" : "Approvisionnement",
+          tone: "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-200 font-bold",
+        };
       }
-      return { label: "En attente", tone: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 font-bold" };
+      return {
+        label: isAr ? "قيد الانتظار" : "En attente",
+        tone: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 font-bold",
+      };
     }
 
-    return { label: "En attente", tone: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 font-bold" };
+    return {
+      label: isAr ? "قيد الانتظار" : "En attente",
+      tone: "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300 font-bold",
+    };
   };
 
   async function handleDeleteAll() {
@@ -739,19 +763,23 @@ function RecommandationsPageContent() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-4xl overflow-x-hidden px-3 sm:px-4 pb-24 pt-4">
+    <main className="mx-auto w-full max-w-4xl overflow-x-hidden px-3 sm:px-4 pb-24 pt-4" dir={isAr ? "rtl" : "ltr"}>
       <button
         onClick={() => navigate({ to: "/" })}
         className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition"
       >
-        <ArrowLeft className="h-4 w-4" /> Retour
+        <ArrowLeft className="h-4 w-4 rtl:rotate-180" /> {isAr ? "رجوع" : "Retour"}
       </button>
 
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3 w-full min-w-0">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold break-words">Recommandations ingénieur</h1>
+          <h1 className="text-xl font-bold break-words">
+            {isAr ? "توصيات المهندس" : "Recommandations ingénieur"}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            {pendingCount} en attente · {list.length} au total
+            {isAr
+              ? `${pendingCount} قيد الانتظار · ${list.length} إجمالاً`
+              : `${pendingCount} en attente · ${list.length} au total`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto min-w-0">
@@ -763,7 +791,9 @@ function RecommandationsPageContent() {
                   disabled={seeding}
                   className="inline-flex h-9 sm:h-10 items-center gap-1 rounded-xl bg-primary/10 hover:bg-primary/20 px-3 text-xs sm:text-sm font-bold text-primary active:scale-95 transition-all"
                 >
-                  {seeding ? "Importation..." : "Importer Excel"}
+                  {seeding
+                    ? isAr ? "جارٍ الاستيراد..." : "Importation..."
+                    : isAr ? "استيراد Excel" : "Importer Excel"}
                 </button>
               )}
               {list.length > 0 && (
@@ -772,10 +802,18 @@ function RecommandationsPageContent() {
                     onClick={handleResetHistory}
                     disabled={resettingHistory}
                     className="inline-flex h-9 sm:h-10 items-center gap-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 px-2.5 sm:px-3 text-xs sm:text-sm font-bold text-amber-700 dark:text-amber-300 border border-amber-500/30 active:scale-95 transition-all"
-                    title="Effacer les exécutions et remettre toutes les recommandations à l'état initial pour recommencer"
+                    title={
+                      isAr
+                        ? "مسح التنفيذات وإعادة جميع التوصيات إلى حالتها الأولية"
+                        : "Effacer les exécutions et remettre toutes les recommandations à l'état initial pour recommencer"
+                    }
                   >
                     <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-                    <span>{resettingHistory ? "Réinitialisation..." : "Réinitialiser applications"}</span>
+                    <span>
+                      {resettingHistory
+                        ? isAr ? "جارٍ إعادة التعيين..." : "Réinitialisation..."
+                        : isAr ? "إعادة تعيين التطبيقات" : "Réinitialiser applications"}
+                    </span>
                   </button>
 
                   <button
@@ -783,7 +821,9 @@ function RecommandationsPageContent() {
                     disabled={deletingAll}
                     className="inline-flex h-9 sm:h-10 items-center gap-1 rounded-xl bg-destructive/10 hover:bg-destructive/20 px-2.5 sm:px-3 text-xs sm:text-sm font-bold text-destructive active:scale-95 transition-all"
                   >
-                    {deletingAll ? "Suppression..." : "Supprimer tout"}
+                    {deletingAll
+                      ? isAr ? "جارٍ الحذف..." : "Suppression..."
+                      : isAr ? "حذف الكل" : "Supprimer tout"}
                   </button>
                 </>
               )}
@@ -798,7 +838,7 @@ function RecommandationsPageContent() {
               }}
               className="inline-flex h-9 sm:h-10 items-center gap-1 rounded-xl bg-primary hover:bg-primary/90 px-3 text-xs sm:text-sm font-bold text-primary-foreground shadow-xs active:scale-95 transition"
             >
-              <Plus className="h-4 w-4 shrink-0" /> Nouvelle
+              <Plus className="h-4 w-4 shrink-0" /> {isAr ? "جديدة" : "Nouvelle"}
             </button>
           )}
         </div>
@@ -812,7 +852,7 @@ function RecommandationsPageContent() {
         <div className="flex flex-wrap items-center gap-1.5 pb-2 border-b border-border/50">
           <span className="text-[10px] font-black uppercase text-muted-foreground mr-1 flex items-center gap-1">
             <CheckCircle2 className="h-3 w-3 text-primary" />
-            <span>Statut :</span>
+            <span>{isAr ? "الحالة :" : "Statut :"}</span>
           </span>
 
           <button
@@ -824,7 +864,7 @@ function RecommandationsPageContent() {
                 : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
             }`}
           >
-            <span>Toutes</span>
+            <span>{isAr ? "الكل" : "Toutes"}</span>
             <span className="rounded-full bg-background/20 px-1.5 py-0.2 text-[10px] font-black">
               {countsByStatus.all}
             </span>
@@ -839,7 +879,7 @@ function RecommandationsPageContent() {
                 : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/20"
             }`}
           >
-            <span>En attente</span>
+            <span>{isAr ? "قيد الانتظار" : "En attente"}</span>
             <span className="rounded-full bg-black/10 dark:bg-white/15 px-1.5 py-0.2 text-[10px] font-black">
               {countsByStatus.pending}
             </span>
@@ -854,7 +894,7 @@ function RecommandationsPageContent() {
                 : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
             }`}
           >
-            <span>Acceptées</span>
+            <span>{isAr ? "مقبولة" : "Acceptées"}</span>
             <span className="rounded-full bg-black/10 dark:bg-white/15 px-1.5 py-0.2 text-[10px] font-black">
               {countsByStatus.accepted}
             </span>
@@ -865,7 +905,7 @@ function RecommandationsPageContent() {
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] font-black uppercase text-muted-foreground mr-1 flex items-center gap-1">
             <Filter className="h-3 w-3 text-primary" />
-            <span>Prescription :</span>
+            <span>{isAr ? "نوع الوصفة :" : "Prescription :"}</span>
           </span>
 
           <button
@@ -876,7 +916,7 @@ function RecommandationsPageContent() {
               : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
           >
-            <span>Toutes</span>
+            <span>{isAr ? "الكل" : "Toutes"}</span>
             <span className="rounded-full bg-background/20 px-1.5 py-0.2 text-[10px] font-black">
               {countsByPrescription.all}
             </span>
@@ -892,7 +932,7 @@ function RecommandationsPageContent() {
               }`}
           >
             <Droplet className="h-3.5 w-3.5" />
-            <span>Fert. Irrigation</span>
+            <span>{isAr ? PRESCRIPTION_CONFIG.fert_irrigation.labelAr : PRESCRIPTION_CONFIG.fert_irrigation.label}</span>
             <span className="rounded-full bg-black/10 dark:bg-white/10 px-1.5 py-0.2 text-[10px] font-black">
               {countsByPrescription.fert_irrigation}
             </span>
@@ -908,7 +948,7 @@ function RecommandationsPageContent() {
               }`}
           >
             <SprayCan className="h-3.5 w-3.5" />
-            <span>Fert. Foliaire</span>
+            <span>{isAr ? PRESCRIPTION_CONFIG.fert_foliaire.labelAr : PRESCRIPTION_CONFIG.fert_foliaire.label}</span>
             <span className="rounded-full bg-black/10 dark:bg-white/10 px-1.5 py-0.2 text-[10px] font-black">
               {countsByPrescription.fert_foliaire}
             </span>
@@ -924,7 +964,7 @@ function RecommandationsPageContent() {
               }`}
           >
             <FlaskConical className="h-3.5 w-3.5" />
-            <span>Phytosanitaire</span>
+            <span>{isAr ? PRESCRIPTION_CONFIG.phytosanitaire.labelAr : PRESCRIPTION_CONFIG.phytosanitaire.label}</span>
             <span className="rounded-full bg-black/10 dark:bg-white/10 px-1.5 py-0.2 text-[10px] font-black">
               {countsByPrescription.phytosanitaire}
             </span>
@@ -937,14 +977,14 @@ function RecommandationsPageContent() {
           <div>
             <label className="text-[10px] font-black text-muted-foreground uppercase mb-1 flex items-center gap-1">
               <Calendar className="h-3 w-3 text-primary" />
-              <span>Année</span>
+              <span>{isAr ? "السنة" : "Année"}</span>
             </label>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
               className="w-full rounded-xl border border-input bg-background px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
             >
-              <option value="all">Toutes les années</option>
+              <option value="all">{isAr ? "كل السنوات" : "Toutes les années"}</option>
               {availableYears.map((yr) => (
                 <option key={yr} value={yr}>
                   {yr}
@@ -957,7 +997,7 @@ function RecommandationsPageContent() {
           <div>
             <label className="text-[10px] font-black text-muted-foreground uppercase mb-1 flex items-center gap-1">
               <CalendarDays className="h-3 w-3 text-primary" />
-              <span>Mois</span>
+              <span>{isAr ? "الشهر" : "Mois"}</span>
             </label>
             <select
               value={selectedMonth}
@@ -966,7 +1006,7 @@ function RecommandationsPageContent() {
             >
               {MONTHS_LIST.map((m) => (
                 <option key={m.value} value={m.value}>
-                  {m.label}
+                  {isAr ? m.labelAr : m.label}
                 </option>
               ))}
             </select>
@@ -976,7 +1016,7 @@ function RecommandationsPageContent() {
           <div>
             <label className="text-[10px] font-black text-muted-foreground uppercase mb-1 flex items-center gap-1">
               <Sprout className="h-3 w-3 text-primary" />
-              <span>Espèce</span>
+              <span>{isAr ? "الصنف / النوع" : "Espèce"}</span>
             </label>
             <select
               value={selectedSpecies}
@@ -985,7 +1025,7 @@ function RecommandationsPageContent() {
             >
               {SPECIES_OPTIONS.map((sp) => (
                 <option key={sp.value} value={sp.value}>
-                  {sp.icon} {sp.label}
+                  {sp.icon} {isAr ? sp.labelAr : sp.label}
                 </option>
               ))}
             </select>
@@ -995,17 +1035,17 @@ function RecommandationsPageContent() {
           <div>
             <label className="text-[10px] font-black text-muted-foreground uppercase mb-1 flex items-center gap-1">
               <Search className="h-3 w-3 text-primary" />
-              <span>Recherche</span>
+              <span>{isAr ? "بحث" : "Recherche"}</span>
             </label>
             <div className="relative">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Titre, produit..."
-                className="w-full rounded-xl border border-input bg-background pl-7 pr-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
+                placeholder={isAr ? "العنوان، المنتج..." : "Titre, produit..."}
+                className="w-full rounded-xl border border-input bg-background ps-7 pe-2.5 py-1.5 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
               />
-              <Search className="absolute left-2 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+              <Search className="absolute start-2 top-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
             </div>
           </div>
         </div>
@@ -1014,7 +1054,15 @@ function RecommandationsPageContent() {
         {isFiltered && (
           <div className="flex items-center justify-between text-xs pt-1 border-t border-border/40 text-muted-foreground">
             <span>
-              Résultats : <strong className="text-foreground">{filteredList.length}</strong> affichée{filteredList.length > 1 ? "s" : ""} sur {list.length} au total
+              {isAr ? (
+                <>
+                  النتائج : <strong className="text-foreground">{filteredList.length}</strong> معروضة من أصل {list.length}
+                </>
+              ) : (
+                <>
+                  Résultats : <strong className="text-foreground">{filteredList.length}</strong> affichée{filteredList.length > 1 ? "s" : ""} sur {list.length} au total
+                </>
+              )}
             </span>
             <button
               type="button"
@@ -1022,7 +1070,7 @@ function RecommandationsPageContent() {
               className="inline-flex items-center gap-1 text-[11px] font-black text-primary hover:underline transition"
             >
               <RotateCcw className="h-3 w-3" />
-              <span>Réinitialiser les filtres</span>
+              <span>{isAr ? "إعادة تعيين الفلاتر" : "Réinitialiser les filtres"}</span>
             </button>
           </div>
         )}
@@ -1051,14 +1099,18 @@ function RecommandationsPageContent() {
               <CheckSquare className="h-4 w-4" />
               <span>
                 {allPendingSelected
-                  ? "Tout désélectionner"
-                  : `Tout cocher (${pendingInFiltered.length} en attente)`}
+                  ? isAr ? "إلغاء تحديد الكل" : "Tout désélectionner"
+                  : isAr
+                    ? `تحديد الكل (${pendingInFiltered.length} قيد الانتظار)`
+                    : `Tout cocher (${pendingInFiltered.length} en attente)`}
               </span>
             </button>
 
             {selectedRecoIds.size > 0 && (
               <span className="text-xs font-black text-primary bg-primary/15 px-2.5 py-1 rounded-xl border border-primary/20">
-                {selectedRecoIds.size} sélectionnée{selectedRecoIds.size > 1 ? "s" : ""}
+                {isAr
+                  ? `${selectedRecoIds.size} محددة`
+                  : `${selectedRecoIds.size} sélectionnée${selectedRecoIds.size > 1 ? "s" : ""}`}
               </span>
             )}
           </div>
@@ -1070,7 +1122,7 @@ function RecommandationsPageContent() {
                 onClick={() => setSelectedRecoIds(new Set())}
                 className="text-xs font-semibold text-muted-foreground hover:text-foreground px-2 py-1"
               >
-                Annuler
+                {isAr ? "إلغاء" : "Annuler"}
               </button>
               <button
                 type="button"
@@ -1081,8 +1133,10 @@ function RecommandationsPageContent() {
                 <CheckCircle2 className="h-4 w-4" />
                 <span>
                   {isValidatingBatch
-                    ? "Validation en cours..."
-                    : `Valider la sélection (${selectedRecoIds.size})`}
+                    ? isAr ? "جارٍ الاعتماد..." : "Validation en cours..."
+                    : isAr
+                      ? `اعتماد المحددة (${selectedRecoIds.size})`
+                      : `Valider la sélection (${selectedRecoIds.size})`}
                 </span>
               </button>
             </div>
@@ -1154,13 +1208,19 @@ function RecommandationsPageContent() {
       {list.length === 0 ? (
         <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
           {displayRole === "ingenieur"
-            ? "Aucune recommandation envoyée. Cliquez sur « Nouvelle » pour commencer."
-            : "Aucune recommandation reçue."}
+            ? isAr
+              ? "لا توجد أي توصية مرسلة. انقر على «جديدة» للبدء."
+              : "Aucune recommandation envoyée. Cliquez sur « Nouvelle » pour commencer."
+            : isAr
+              ? "لا توجد أي توصية مستلمة."
+              : "Aucune recommandation reçue."}
         </p>
       ) : filteredList.length === 0 ? (
         <div className="rounded-2xl border border-dashed p-8 text-center space-y-2">
           <p className="text-sm font-semibold text-muted-foreground">
-            Aucune recommandation ne correspond aux filtres sélectionnés.
+            {isAr
+              ? "لا توجد أي توصية تطابق الفلاتر المختارة."
+              : "Aucune recommandation ne correspond aux filtres sélectionnés."}
           </p>
           <button
             type="button"
@@ -1168,7 +1228,7 @@ function RecommandationsPageContent() {
             className="inline-flex items-center gap-1 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 text-xs font-bold transition active:scale-95"
           >
             <RotateCcw className="h-3.5 w-3.5" />
-            <span>Effacer les filtres</span>
+            <span>{isAr ? "مسح الفلاتر" : "Effacer les filtres"}</span>
           </button>
         </div>
       ) : (
@@ -1234,50 +1294,50 @@ function RecommandationsPageContent() {
                   {/* Badge de Type de Prescription coloré */}
                   <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${config.badgeTone}`}>
                     <Icon className="h-2.5 w-2.5" />
-                    <span>{config.label}</span>
+                    <span>{isAr ? config.labelAr : config.label}</span>
                   </span>
 
                   {/* Badges des Bacs concernés pour les programmes de fertilisation */}
                   {fertBacs.map((b) => (
                     <span
                       key={b.bac}
-                      title={`Bac ${b.bac} : ${b.products.join(", ")}`}
+                      title={`${isAr ? "الحوض" : "Bac"} ${b.bac} : ${b.products.join(", ")}`}
                       className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${getBacBadgeTone(b.bac)}`}
                     >
-                      Bac {b.bac}
+                      {isAr ? `الحوض ${b.bac}` : `Bac ${b.bac}`}
                     </span>
                   ))}
 
                   {stockReport && stockReport.stockStatus === "missing" && (
                     <span
-                      title={`Produits manquants : ${stockReport.missingItems.map((i) => `${i.name} (-${Math.round(i.missing * 100) / 100} ${i.unit})`).join(", ")}`}
+                      title={`${isAr ? "المنتجات الناقصة :" : "Produits manquants :"} ${stockReport.missingItems.map((i) => `${i.name} (-${Math.round(i.missing * 100) / 100} ${i.unit})`).join(", ")}`}
                       className="shrink-0 rounded-full border border-rose-500/40 bg-rose-500/15 text-rose-600 dark:text-rose-400 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
                     >
-                      <AlertTriangle className="h-2.5 w-2.5" /> Achat requis
+                      <AlertTriangle className="h-2.5 w-2.5" /> {isAr ? "شراء مطلوب" : "Achat requis"}
                     </span>
                   )}
                   {stockReport && stockReport.stockStatus === "low" && (
                     <span
-                      title={`Stock au minimum après application : ${stockReport.lowStockItems.map((i) => `${i.name} (reste ${Math.max(0, Math.round((i.available - i.needed) * 100) / 100)} ${i.unit})`).join(", ")}`}
+                      title={`${isAr ? "المخزون عند الحد الأدنى :" : "Stock au minimum après application :"} ${stockReport.lowStockItems.map((i) => `${i.name} (reste ${Math.max(0, Math.round((i.available - i.needed) * 100) / 100)} ${i.unit})`).join(", ")}`}
                       className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
                     >
-                      <AlertTriangle className="h-2.5 w-2.5" /> Dispo (Stock min.)
+                      <AlertTriangle className="h-2.5 w-2.5" /> {isAr ? "متوفر (مخزون منخفض)" : "Dispo (Stock min.)"}
                     </span>
                   )}
                   {stockReport && stockReport.stockStatus === "equivalent" && (
                     <span
-                      title={`Équivalent même matière active en stock : ${stockReport.equivalentItems.map((i) => `${i.name} → ${i.equivalentInStock?.productName}`).join(", ")}`}
+                      title={`${isAr ? "بديل بنفس المادة الفعالة :" : "Équivalent même matière active en stock :"} ${stockReport.equivalentItems.map((i) => `${i.name} → ${i.equivalentInStock?.productName}`).join(", ")}`}
                       className="shrink-0 rounded-full border border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
                     >
-                      🔄 Équivalent en stock
+                      {isAr ? "🔄 بديل في المخزون" : "🔄 Équivalent en stock"}
                     </span>
                   )}
                   {stockReport && stockReport.stockStatus === "available" && (
                     <span
-                      title="Tous les produits sont disponibles en stock"
+                      title={isAr ? "جميع المنتجات متوفرة في المخزون" : "Tous les produits sont disponibles en stock"}
                       className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
                     >
-                      <PackageCheck className="h-2.5 w-2.5" /> Stock dispo
+                      <PackageCheck className="h-2.5 w-2.5" /> {isAr ? "المخزون متوفر" : "Stock dispo"}
                     </span>
                   )}
                 </div>
@@ -1287,20 +1347,27 @@ function RecommandationsPageContent() {
                   <p className="font-bold text-foreground leading-snug text-sm break-words">{r.title}</p>
 
                   <p className="text-xs text-muted-foreground break-words">
-                    <span className="font-semibold text-foreground/80">{config.label}</span>
+                    <span className="font-semibold text-foreground/80">
+                      {isAr ? config.labelAr : config.label}
+                    </span>
                     {" · "}
-                    {targetParcels.length} parcelle{targetParcels.length > 1 ? "s" : ""}
-                    {displayRole !== "ingenieur" && ` · par ${author}`}
+                    {isAr
+                      ? `${targetParcels.length} ${targetParcels.length === 1 ? "قطعة" : targetParcels.length === 2 ? "قطعتان" : "قطع"}`
+                      : `${targetParcels.length} parcelle${targetParcels.length > 1 ? "s" : ""}`}
+                    {displayRole !== "ingenieur" && (isAr ? ` · بواسطة ${author}` : ` · par ${author}`)}
                   </p>
 
                   <p className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                     <span className="inline-flex items-center gap-1">
                       <Calendar className="h-3 w-3 text-muted-foreground/70 shrink-0" />
-                      <span>Date : <strong className="text-foreground/90">{formatDateFR(rDate)}</strong></span>
+                      <span>
+                        {isAr ? "التاريخ :" : "Date :"}{" "}
+                        <strong dir="ltr" className="text-foreground/90">{formatDateFR(rDate)}</strong>
+                      </span>
                     </span>
                     {r.created_at && (
                       <span className="opacity-70 text-[10px]">
-                        (Saisie : {formatDateTimeFR(r.created_at)})
+                        ({isAr ? "تاريخ الإدخال :" : "Saisie :"} <span dir="ltr">{formatDateTimeFR(r.created_at)}</span>)
                       </span>
                     )}
                   </p>
@@ -1309,7 +1376,7 @@ function RecommandationsPageContent() {
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-foreground/80">
                       {fertBacs.map((b) => (
                         <span key={b.bac} className="inline-flex flex-wrap items-center gap-1">
-                          <strong className="font-black">Bac {b.bac}</strong>
+                          <strong className="font-black">{isAr ? `الحوض ${b.bac}` : `Bac ${b.bac}`}</strong>
                           <span className="text-muted-foreground">({b.products.join(", ")})</span>
                         </span>
                       ))}
@@ -1323,7 +1390,9 @@ function RecommandationsPageContent() {
                         return (
                           <div key={eqItem.name} className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300 leading-snug">
                             <span>
-                              🔄 Équivalent en stock : <strong>{eq.productName}</strong> ({eq.available} {eq.unit} · {eq.activeIngredient} — vérifier concentration)
+                              {isAr ? "🔄 بديل متوفر في المخزون :" : "🔄 Équivalent en stock :"}{" "}
+                              <strong>{eq.productName}</strong> ({eq.available} {eq.unit} · {eq.activeIngredient} —{" "}
+                              {isAr ? "يرجى التحقق من التركيز" : "vérifier concentration"})
                             </span>
                             <button
                               type="button"
@@ -1356,7 +1425,7 @@ function RecommandationsPageContent() {
                               }}
                               className="rounded-md border border-sky-500/40 bg-sky-500/15 hover:bg-sky-500/25 px-1.5 py-0.5 text-[10px] font-black text-sky-800 dark:text-sky-200 cursor-pointer"
                             >
-                              Substituer
+                              {isAr ? "استبدال" : "Substituer"}
                             </button>
                           </div>
                         );
@@ -1366,7 +1435,7 @@ function RecommandationsPageContent() {
 
                   {stockReport && stockReport.stockStatus === "missing" && stockReport.missingItems.length > 0 && (
                     <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 leading-snug break-words">
-                      Manque :{" "}
+                      {isAr ? "النقص :" : "Manque :"}{" "}
                       {stockReport.missingItems
                         .map((i) => `${i.name.split("/")[0].trim()} (-${Math.round(i.missing * 100) / 100} ${i.unit})`)
                         .join(" · ")}
@@ -1375,9 +1444,9 @@ function RecommandationsPageContent() {
 
                   {stockReport && stockReport.stockStatus === "low" && stockReport.lowStockItems.length > 0 && (
                     <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 leading-snug break-words">
-                      Stock min. :{" "}
+                      {isAr ? "مخزون منخفض :" : "Stock min. :"}{" "}
                       {stockReport.lowStockItems
-                        .map((i) => `${i.name.split("/")[0].trim()} (reste ${Math.max(0, Math.round((i.available - i.needed) * 100) / 100)} ${i.unit})`)
+                        .map((i) => `${i.name.split("/")[0].trim()} (${isAr ? "المتبقي" : "reste"} ${Math.max(0, Math.round((i.available - i.needed) * 100) / 100)} ${i.unit})`)
                         .join(" · ")}
                     </p>
                   )}
@@ -1398,15 +1467,17 @@ function RecommandationsPageContent() {
                                 openScheduleConfirm(
                                   [r],
                                   "execute",
-                                  `Valider & Exécuter : ${r.title}`,
-                                  "Confirmez l'heure de commencement et les temps d'irrigation avant validation."
+                                  `${isAr ? "اعتماد وتنفيذ :" : "Valider & Exécuter :"} ${r.title}`,
+                                  isAr
+                                    ? "يرجى تأكيد ساعة البدء وأوقات الري قبل الاعتماد."
+                                    : "Confirmez l'heure de commencement et les temps d'irrigation avant validation."
                                 );
                               }}
                               className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 text-[11px] font-bold shadow-xs active:scale-95 transition cursor-pointer"
-                              title="Valider la recommandation et solder l'exécution historique (date passée)"
+                              title={isAr ? "اعتماد التوصية وتنفيذها" : "Valider la recommandation et solder l'exécution historique (date passée)"}
                             >
                               <CheckCircle2 className="h-3.5 w-3.5" />
-                              <span>Valider & Exécuter</span>
+                              <span>{isAr ? "اعتماد وتنفيذ" : "Valider & Exécuter"}</span>
                             </button>
                           ) : (
                             /* Ordonnance future (date >= Aujourd'hui) : Désactivé avec cadenas pour empêcher l'exécution prématurée */
@@ -1414,10 +1485,14 @@ function RecommandationsPageContent() {
                               type="button"
                               disabled
                               className="inline-flex items-center gap-1 rounded-lg bg-muted text-muted-foreground/50 border border-border/40 px-2.5 py-1.5 text-[11px] font-semibold cursor-not-allowed opacity-50 select-none"
-                              title="Action désactivée : Traitement futur (date >= Aujourd'hui). Seule la planification est permise avant l'intervention sur le terrain."
+                              title={
+                                isAr
+                                  ? "معاملة مستقبلية: يُسمح بالتخطيط فقط قبل التنفيذ الميداني"
+                                  : "Action désactivée : Traitement futur (date >= Aujourd'hui). Seule la planification est permise avant l'intervention sur le terrain."
+                              }
                             >
                               <Lock className="h-3.5 w-3.5" />
-                              <span>Valider & Exécuter</span>
+                              <span>{isAr ? "اعتماد وتنفيذ" : "Valider & Exécuter"}</span>
                             </button>
                           )}
 
@@ -1429,15 +1504,17 @@ function RecommandationsPageContent() {
                               openScheduleConfirm(
                                 [r],
                                 "plan",
-                                `Planifier : ${r.title}`,
-                                "Confirmez l'heure de commencement et les temps d'irrigation avant planification."
+                                `${isAr ? "تخطيط :" : "Planifier :"} ${r.title}`,
+                                isAr
+                                  ? "يرجى تأكيد ساعة البدء وأوقات الري قبل التخطيط."
+                                  : "Confirmez l'heure de commencement et les temps d'irrigation avant planification."
                               );
                             }}
                             className="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 text-[11px] font-bold shadow-xs active:scale-95 transition cursor-pointer"
-                            title="Planifier sans marquer comme exécuté"
+                            title={isAr ? "تخطيط دون تسجيلها كمنفّذة" : "Planifier sans marquer comme exécuté"}
                           >
                             <Calendar className="h-3.5 w-3.5" />
-                            <span>Planifier</span>
+                            <span>{isAr ? "تخطيط" : "Planifier"}</span>
                           </button>
                         </>
                       )}
@@ -1451,29 +1528,36 @@ function RecommandationsPageContent() {
                           setFormOpen(true);
                         }}
                         className="inline-flex items-center gap-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2.5 py-1.5 text-[11px] font-bold shadow-xs active:scale-95 transition"
-                        title="Dupliquer cette recommandation pour une nouvelle date"
+                        title={isAr ? "نسخ هذه التوصية لتاريخ جديد" : "Dupliquer cette recommandation pour une nouvelle date"}
                       >
                         <Copy className="h-3.5 w-3.5" />
-                        <span>Dupliquer</span>
+                        <span>{isAr ? "نسخ" : "Dupliquer"}</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={async (e) => {
                           e.stopPropagation();
-                          if (!window.confirm(`Supprimer définitivement la recommandation "${r.title}" ?`)) return;
+                          if (
+                            !window.confirm(
+                              isAr
+                                ? `هل تريد حذف التوصية "${r.title}" نهائياً؟`
+                                : `Supprimer définitivement la recommandation "${r.title}" ?`
+                            )
+                          )
+                            return;
                           try {
                             await remove.mutateAsync(r.id);
-                            toast.success("Recommandation supprimée avec succès !");
+                            toast.success(isAr ? "تم حذف التوصية بنجاح!" : "Recommandation supprimée avec succès !");
                           } catch {
-                            toast.error("Erreur lors de la suppression");
+                            toast.error(isAr ? "حدث خطأ أثناء الحذف" : "Erreur lors de la suppression");
                           }
                         }}
                         className="inline-flex items-center gap-1 rounded-lg border border-destructive/25 bg-destructive/5 px-2.5 py-1.5 text-[11px] font-bold text-destructive hover:bg-destructive/15 active:scale-95 transition"
-                        title="Supprimer cette recommandation"
+                        title={isAr ? "حذف هذه التوصية" : "Supprimer cette recommandation"}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                        <span className="sm:hidden">Supprimer</span>
+                        <span className="sm:hidden">{isAr ? "حذف" : "Supprimer"}</span>
                       </button>
                     </div>
                   </div>
