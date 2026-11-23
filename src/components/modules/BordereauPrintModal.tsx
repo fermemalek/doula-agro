@@ -23,6 +23,7 @@ export interface BordereauPrintData {
   commissionPercent: string;
   commissionManualDA?: string;
   droitsMarcheDA: string;
+  fraisTransportDA?: string;
   avanceProducteurDA: string;
   accountLabel: string; // ex: "Ferme Doula / Mouaas — Nectarine (NABLARA)"
 }
@@ -47,6 +48,7 @@ export function computeBordereauTotals(b: {
   commissionPercent: string;
   commissionManualDA?: string;
   droitsMarcheDA: string;
+  fraisTransportDA?: string;
   avanceProducteurDA: string;
 }) {
   let totalColis = 0;
@@ -69,8 +71,9 @@ export function computeBordereauTotals(b: {
     Number.isFinite(parseFloat(String(b.commissionManualDA).replace(",", ".")));
   const comDA = hasManualCom ? parseNum(b.commissionManualDA) : autoComDA;
   const droitsMarche = parseNum(b.droitsMarcheDA);
+  const fraisTransport = parseNum(b.fraisTransportDA);
   const avanceProducteur = parseNum(b.avanceProducteurDA);
-  const netAPayer = totalVenteBrute - comDA - droitsMarche - avanceProducteur;
+  const netAPayer = totalVenteBrute - comDA - droitsMarche - fraisTransport - avanceProducteur;
 
   return {
     totalColis,
@@ -80,6 +83,7 @@ export function computeBordereauTotals(b: {
     autoComDA,
     comDA,
     droitsMarche,
+    fraisTransport,
     avanceProducteur,
     netAPayer,
   };
@@ -340,6 +344,16 @@ export function BordereauPrintModal({
                     − {formatNumber(totals.droitsMarche, 2)} DA
                   </span>
                 </div>
+                {totals.fraisTransport > 0 && (
+                  <div className="flex items-center justify-between px-3.5 py-2">
+                    <span className="font-semibold text-slate-700">
+                      {isAr ? "مصاريف النقل (Transport)" : "Frais de transport"}
+                    </span>
+                    <span dir="ltr" className="font-mono font-bold text-rose-700">
+                      − {formatNumber(totals.fraisTransport, 2)} DA
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between px-3.5 py-2">
                   <span className="font-semibold text-slate-700">
                     {isAr ? "تسبيق المنتج (Av. Producteur)" : "Av. Producteur"}

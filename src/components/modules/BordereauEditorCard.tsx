@@ -17,6 +17,7 @@ export interface MandataireBordereau {
   commissionPercent: string; // défaut "8"
   commissionManualDA?: string; // ajustement manuel optionnel
   droitsMarcheDA: string; // défaut "0"
+  fraisTransportDA?: string; // frais transport déduits sur le bordereau (optionnel)
   avanceProducteurDA: string; // défaut "0"
 }
 

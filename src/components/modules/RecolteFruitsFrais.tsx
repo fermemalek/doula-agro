@@ -40,7 +40,7 @@ import {
   createEmptySaleLine,
   type MandataireBordereau,
 } from "./BordereauEditorCard";
-import { seedBordereau36387IfNeeded } from "@/lib/recolte-seed";
+import { seedBordereau36387IfNeeded, seedBordereau002_2026IfNeeded } from "@/lib/recolte-seed";
 
 export type FruitDestination = "mandataire" | "frigo" | "direct" | "mixte";
 export type PaymentStatus = "paye" | "en_attente" | "partiel";
@@ -267,7 +267,7 @@ function getRecordFinancialSummary(r: FreshFruitHarvestRecord) {
     for (const bd of bds) {
       const t = computeBordereauTotals(bd);
       grossSales += t.totalVenteBrute;
-      deductionsMandataire += t.comDA + t.droitsMarche;
+      deductionsMandataire += t.comDA + t.droitsMarche + t.fraisTransport;
       avances += t.avanceProducteur;
     }
 
@@ -414,10 +414,11 @@ export function RecolteFruitsFrais({
   const [editingHarvestId, setEditingHarvestId] = useState<string | null>(null);
   const [editingOwnerParcelId, setEditingOwnerParcelId] = useState<string>(parcelId);
 
-  // Seed idempotent du bordereau réel N° 36387 (Pommier 1 & 2) — exécuté une seule fois
+  // Seeds idempotents des bordereaux réels (Pommier 1 & 2) — exécutés une seule fois chacun
   useEffect(() => {
     if (parcelId === "pommier1" || parcelId === "pommier2") {
       seedBordereau36387IfNeeded(pommier1Records, add);
+      seedBordereau002_2026IfNeeded(pommier1Records, add);
     }
   }, [parcelId, pommier1Records, add]);
 
@@ -609,7 +610,7 @@ export function RecolteFruitsFrais({
       const t = computeBordereauTotals(bd);
       assignedKg += t.totalPoidsNet;
       totalVenteBrute += t.totalVenteBrute;
-      deductionsMandataire += t.comDA + t.droitsMarche;
+      deductionsMandataire += t.comDA + t.droitsMarche + t.fraisTransport;
       totalAvances += t.avanceProducteur;
     }
 
