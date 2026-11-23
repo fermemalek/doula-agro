@@ -4,6 +4,7 @@ import type { MandataireBordereau } from "@/components/modules/BordereauEditorCa
 export const SEED_FLAG_BORDEREAU_36387 = "doula_seed_bordereau_36387";
 export const SEED_FLAG_BORDEREAU_002_2026 = "doula_seed_bordereau_002_2026";
 export const SEED_FLAG_BORDEREAU_2026_03 = "doula_seed_bordereau_2026_03";
+export const SEED_FLAG_BORDEREAU_001_2026 = "doula_seed_bordereau_001_2026";
 
 export function buildBordereau36387Record(): Omit<FreshFruitHarvestRecord, "id" | "createdAt"> {
   const lines = [
@@ -323,5 +324,107 @@ export function seedBordereau2026_03IfNeeded(
   if (alreadyExists) return false;
 
   addRecord("pommier1", "recolte", buildBordereau2026_03Record());
+  return true;
+}
+
+export function buildBordereau001_2026Record(): Omit<FreshFruitHarvestRecord, "id" | "createdAt"> {
+  const lines = [
+    { id: "b001_l1", colis: "40",  nature: "Royal Calibre 26",         poidsNetKg: "104.0", prixUnitaire: "260", montantManualDA: "27040.00" },
+    { id: "b001_l2", colis: "348", nature: "Royal Calibre 26",         poidsNetKg: "904.8", prixUnitaire: "180", montantManualDA: "162864.00" },
+    { id: "b001_l3", colis: "60",  nature: "Royal Calibre 22",         poidsNetKg: "174.0", prixUnitaire: "270", montantManualDA: "46980.00" },
+    { id: "b001_l4", colis: "290", nature: "Royal Calibre 22",         poidsNetKg: "841.0", prixUnitaire: "250", montantManualDA: "210250.00" },
+    { id: "b001_l5", colis: "10",  nature: "Déchet Calibre 22 (دشي)", poidsNetKg: "25.0",  prixUnitaire: "40",  montantManualDA: "1000.00" },
+    { id: "b001_l6", colis: "107", nature: "Royal Calibre 20",         poidsNetKg: "346.0", prixUnitaire: "330", montantManualDA: "114180.00" },
+    { id: "b001_l7", colis: "34",  nature: "Royal Vrac (فراك)",        poidsNetKg: "250.0", prixUnitaire: "95",  montantManualDA: "23750.00" },
+  ];
+
+  const bordereau: MandataireBordereau = {
+    id: "bd_001_2026",
+    mandataireName: "Frigo Karim",
+    marcheCarreau: "Frigo Karim • Carré 84",
+    numeroBordereau: "001/2026",
+    dateFolio: "2026-09-19",
+    accountLabel: "عبد الرحمان ع. ق. (Abderrahmane) — Pommier 1 & 2 (Gala One)",
+    paymentStatus: "paye",
+    lines,
+    commissionPercent: "9",
+    commissionManualDA: "52745.00",
+    droitsMarcheDA: "0",
+    fraisTransportDA: "0",
+    avanceProducteurDA: "0",
+  };
+
+  return {
+    recordMode: "fruits_frais",
+    schemaVersion: 2,
+    date: "2026-09-19",
+    selectedParcelIds: ["pommier1", "pommier2"],
+    unit: "Kg",
+    qty: "2644.8",
+    totalKg: 2644.8,
+    totalColis: 889,
+    price: "",
+    harvestLots: [
+      { id: "lot_001_1", nature: "Royal Calibre 26",         colis: "388", poidsNetKg: "1008.8" },
+      { id: "lot_001_2", nature: "Royal Calibre 22",         colis: "350", poidsNetKg: "1015.0" },
+      { id: "lot_001_3", nature: "Déchet Calibre 22 (دشي)", colis: "10",  poidsNetKg: "25.0" },
+      { id: "lot_001_4", nature: "Royal Calibre 20",         colis: "107", poidsNetKg: "346.0" },
+      { id: "lot_001_5", nature: "Royal Vrac (فراك)",        colis: "34",  poidsNetKg: "250.0" },
+    ],
+    rebutKg: "0",
+    rebutPercent: 0,
+    destination: "mandataire",
+    bordereaux: [bordereau],
+    frigoBlocks: [],
+    directBlocks: [],
+    mandataireName: "Frigo Karim",
+    paymentStatus: "paye",
+    frigoExits: [],
+    commissionAmount: 52745,
+    mainOeuvre: "0",
+    transport: "0",
+    emballages: "0",
+    autres: "0",
+    totalVente: 586064,
+    totalDeductionsMandataire: 52745,
+    netBordereauVentes: 533319,
+    chargesFerme: 0,
+    totalCharges: 52745,
+    total: 52745,
+    net: 533319,
+    notes:
+      "Bon N° 001/2026 du 19/09/2026 — Frigo Karim • Carré 84 · 889 caisses (26=388, 22=360, 20=107, Vrac=34) · COM 9% (52 745 DA) · Payé.",
+  };
+}
+
+/**
+ * Initialise de manière idempotente le bon réel N° 001/2026 du 19/09/2026 sur Pommier 1 (& 2).
+ * Protégé par le flag unique `doula_seed_bordereau_001_2026`.
+ */
+export function seedBordereau001_2026IfNeeded(
+  existingPommier1Records: FreshFruitHarvestRecord[],
+  addRecord: (parcelId: string, mod: "recolte", payload: Omit<FreshFruitHarvestRecord, "id" | "createdAt">) => void,
+): boolean {
+  try {
+    if (localStorage.getItem(SEED_FLAG_BORDEREAU_001_2026) === "1") {
+      return false;
+    }
+  } catch {
+    // ignore storage errors
+  }
+
+  const alreadyExists = existingPommier1Records.some((r) =>
+    (r.bordereaux || []).some((b) => String(b.numeroBordereau || "").trim() === "001/2026"),
+  );
+
+  try {
+    localStorage.setItem(SEED_FLAG_BORDEREAU_001_2026, "1");
+  } catch {
+    // ignore storage errors
+  }
+
+  if (alreadyExists) return false;
+
+  addRecord("pommier1", "recolte", buildBordereau001_2026Record());
   return true;
 }

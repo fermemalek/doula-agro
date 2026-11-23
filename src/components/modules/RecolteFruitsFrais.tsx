@@ -44,6 +44,7 @@ import {
   seedBordereau36387IfNeeded,
   seedBordereau002_2026IfNeeded,
   seedBordereau2026_03IfNeeded,
+  seedBordereau001_2026IfNeeded,
 } from "@/lib/recolte-seed";
 
 export type FruitDestination = "mandataire" | "frigo" | "direct" | "mixte";
@@ -424,6 +425,7 @@ export function RecolteFruitsFrais({
       seedBordereau36387IfNeeded(pommier1Records, add);
       seedBordereau002_2026IfNeeded(pommier1Records, add);
       seedBordereau2026_03IfNeeded(pommier1Records, add);
+      seedBordereau001_2026IfNeeded(pommier1Records, add);
     }
   }, [parcelId, pommier1Records, add]);
 
