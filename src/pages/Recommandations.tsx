@@ -1485,7 +1485,12 @@ function RecommandationsPageContent() {
                                     );
                                   }
                                   nextPayload.program = prog;
-                                  await update.mutateAsync({ id: r.id, patch: { payload: nextPayload } });
+                                  await update.mutateAsync({
+                                    id: r.id,
+                                    title: r.title,
+                                    parcel_ids: r.parcel_ids || [],
+                                    payload: nextPayload,
+                                  });
                                   toast.success(`Produit substitué par "${eq.productName}" (pensez à vérifier la concentration).`);
                                 } catch {
                                   toast.error("Erreur lors de la substitution du produit.");

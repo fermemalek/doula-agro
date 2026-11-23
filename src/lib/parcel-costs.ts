@@ -106,8 +106,12 @@ export function computePhytosanitaireRecordTotal(
     const stockPu = resolveProductUnitPrice(p?.product, suppliers, products);
     if (stockPu > 0) {
       const vol = parseNum(p?.volume) || 1000;
-      const qtyObj = parsePhytoProductQuantity(String(p?.dosage || ""), String(vol), 1);
-      const qty = qtyObj && qtyObj.needed > 0 ? qtyObj.needed : 1;
+      const qtyObj = parsePhytoProductQuantity({
+        product: String(p?.product || ""),
+        dosage: String(p?.dosage || ""),
+        volume: vol,
+      });
+      const qty = qtyObj && qtyObj.quantity > 0 ? qtyObj.quantity : 1;
       sum += qty * stockPu;
       usedStock = true;
     }

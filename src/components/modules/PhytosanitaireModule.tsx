@@ -68,8 +68,12 @@ export function PhytosanitaireModule({
       const pu = resolveProductUnitPrice(p.product, suppliers, catalogProducts);
       if (pu <= 0) return p;
       const vol = parseFloat((p.volume || "").replace(",", ".")) || 1000;
-      const qtyObj = parsePhytoProductQuantity(String(p.dosage || ""), String(vol), 1);
-      const qty = qtyObj && qtyObj.needed > 0 ? qtyObj.needed : 1;
+      const qtyObj = parsePhytoProductQuantity({
+        product: String(p.product || ""),
+        dosage: String(p.dosage || ""),
+        volume: vol,
+      });
+      const qty = qtyObj && qtyObj.quantity > 0 ? qtyObj.quantity : 1;
       return { ...p, price: String(Number((qty * pu).toFixed(2))) };
     });
     const newTotal = filledProducts.reduce(

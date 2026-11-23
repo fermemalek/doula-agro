@@ -2215,7 +2215,7 @@ export function AgronomicPlanningCalendar({
                       r.events.some((e) => e.speciesId.startsWith("oliviers"))
                     );
 
-                    const renderedElements: JSX.Element[] = [];
+                    const renderedElements: React.ReactNode[] = [];
 
                     Array.from(cyclesMap.entries()).forEach(([cycleNum, cycleRows]) => {
                       const cycleStartIso = cycleRows[0].date;
