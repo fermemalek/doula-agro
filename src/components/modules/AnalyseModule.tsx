@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Save, Trash2, History, Plus, FlaskConical, Droplet } from "lucide-react";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
+import { formatDateFR } from "@/lib/format";
 import {
   SOL_PAR_PARCELLE,
   EAU_DEFAULT,
@@ -190,7 +191,7 @@ function ArchiveList({
           {records.map((r) => (
             <li key={r.id} className="px-4 py-3">
               <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">{r.date}</span>
+                <span className="font-medium">{formatDateFR(r.date)}</span>
                 {canEdit && (
                   <button onClick={() => onRemove(r.id)} className="text-muted-foreground hover:text-destructive">
                     <Trash2 className="h-3.5 w-3.5" />

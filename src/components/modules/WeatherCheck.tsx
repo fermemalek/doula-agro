@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CloudSun, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import { diagnoseWindForDate, type WindDiag } from "@/lib/weather-forecast";
+import { formatDateFR } from "@/lib/format";
 
 export function WeatherCheck({
   date,
@@ -64,7 +65,7 @@ export function WeatherCheck({
           <div className="flex-1">
             <div className="font-semibold">{diag.label}</div>
             <div>
-              Vent : {diag.windKmh} km/h ({diag.windMs.toFixed(1)} m/s) — prévision pour {diag.forecastDate}
+              Vent : {diag.windKmh} km/h ({diag.windMs.toFixed(1)} m/s) — prévision pour {formatDateFR(diag.forecastDate)}
             </div>
             {!diag.ok && !validatedManual && (
               <button

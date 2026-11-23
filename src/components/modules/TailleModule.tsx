@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatDateFR, formatDA } from "@/lib/format";
 import {
   Save,
   Trash2,
@@ -319,7 +320,7 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
           <div className="space-y-1 rounded-lg bg-muted/30 p-3 text-sm">
             <div className="flex justify-between font-bold">
               <span>Coût Total de l&apos;opération</span>
-              <span>{charges.toFixed(2)} DA</span>
+              <span>{formatDA(charges, 2)}</span>
             </div>
           </div>
 
@@ -361,10 +362,10 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
                 <li key={r.id} className="px-4 py-3 text-sm">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-semibold text-foreground">
-                      {r.date} — {r.typeTaille.split("/")[0]}
+                      {formatDateFR(r.date)} — {r.typeTaille.split("/")[0]}
                     </span>
                     <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-primary">{ch.toFixed(2)} DA</span>
+                      <span className="font-bold text-primary">{formatDA(ch, 2)}</span>
                       {canEdit && (
                         <>
                           <button
@@ -388,8 +389,8 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
                     </div>
                   </div>
                   <div className="mt-1 flex gap-3 text-xs text-muted-foreground">
-                    <span>Main d&apos;œuvre : {(parseFloat(r.mainOeuvre) || 0).toFixed(0)} DA</span>
-                    <span>Équipements : {(parseFloat(r.equipements) || 0).toFixed(0)} DA</span>
+                    <span>Main d&apos;œuvre : {formatDA(parseFloat(r.mainOeuvre) || 0)}</span>
+                    <span>Équipements : {formatDA(parseFloat(r.equipements) || 0)}</span>
                   </div>
                   {r.notes && <p className="mt-1 text-xs italic text-muted-foreground">{r.notes}</p>}
                   {r.photo && <img src={r.photo} alt="" className="mt-2 h-20 rounded object-cover" />}

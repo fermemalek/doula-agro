@@ -3,6 +3,7 @@ import { Plus, Trash2, Save, History, Check, Pencil, X, AlertTriangle, AlertCirc
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcel } from "@/lib/parcel-store";
 import { FERTILIZER_DATABASE, FertilizerProduct } from "@/data/fertilizers";
+import { formatDateFR, formatDA, formatNumber } from "@/lib/format";
 
 type Bac = "A" | "B" | "C" | "D";
 
@@ -543,7 +544,7 @@ export function FertilisationModule({ parcelId, canEdit }: { parcelId: string; c
                           </span>
                         </div>
                         <div className="font-bold text-primary">
-                          Montant : {calcs.montant.toFixed(2)} DA
+                          Montant : {formatDA(calcs.montant, 2)}
                         </div>
                       </div>
 
@@ -610,7 +611,7 @@ export function FertilisationModule({ parcelId, canEdit }: { parcelId: string; c
                           {st.maxTime > 0 ? `${st.maxTime} min` : "—"}
                         </td>
                         <td className="p-2 border text-right font-bold text-primary">
-                          {st.cost > 0 ? `${st.cost.toFixed(2)} DA` : "—"}
+                          {st.cost > 0 ? formatDA(st.cost, 2) : "—"}
                         </td>
                       </tr>
                     );
@@ -624,10 +625,10 @@ export function FertilisationModule({ parcelId, canEdit }: { parcelId: string; c
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t pt-4">
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 w-full sm:w-auto">
               <div className="text-xs text-muted-foreground">Coût total / passage :</div>
-              <div className="text-xs font-bold text-foreground text-right">{costPerPassage.toFixed(2)} DA</div>
+              <div className="text-xs font-bold text-foreground text-right">{formatDA(costPerPassage, 2)}</div>
               
               <div className="text-sm font-semibold text-primary">Coût total hebdomadaire :</div>
-              <div className="text-sm font-black text-primary text-right">{costWeekly.toFixed(2)} DA</div>
+              <div className="text-sm font-black text-primary text-right">{formatDA(costWeekly, 2)}</div>
             </div>
 
             <button
@@ -655,14 +656,14 @@ export function FertilisationModule({ parcelId, canEdit }: { parcelId: string; c
                 {/* Header info */}
                 <div className="flex items-center justify-between text-sm">
                   <div className="space-y-0.5">
-                    <span className="font-bold text-foreground">{r.date}</span>
+                    <span className="font-bold text-foreground">{formatDateFR(r.date)}</span>
                     <p className="text-[10px] text-muted-foreground">
                       Parcelle : {r.hectares || "—"} ha • Fréquence : {r.frequency || 1}/semaine
                     </p>
                   </div>
                   <div className="flex items-center gap-2.5">
                     <span className="font-extrabold text-primary text-sm">
-                      {r.total.toFixed(2)} DA / sem
+                      {formatDA(r.total, 2)} / sem
                     </span>
                     {canEdit && (
                       <div className="flex items-center gap-1">
@@ -718,7 +719,7 @@ export function FertilisationModule({ parcelId, canEdit }: { parcelId: string; c
                       <div key={ei} className="rounded-lg border bg-muted/20 p-2.5 text-xs">
                         <div className="flex items-center justify-between border-b pb-1.5 mb-1.5 font-bold">
                           <span className="text-primary uppercase tracking-wide">BAC {e.bac}</span>
-                          <span className="text-foreground">{cost.toFixed(2)} DA</span>
+                          <span className="text-foreground">{formatDA(cost, 2)}</span>
                         </div>
                         <ul className="space-y-1 text-muted-foreground">
                           {e.items.map((it, i) => (
@@ -727,7 +728,7 @@ export function FertilisationModule({ parcelId, canEdit }: { parcelId: string; c
                                 • {it.name.split("/")[0]}
                               </span>
                               <span className="font-semibold text-foreground">
-                                {it.qty} {it.unit}/ha ({(parseNumber(it.qty) * (r.hectares || 1)).toFixed(1)} {it.unit})
+                                {formatNumber(it.qty)} {it.unit}/ha ({formatNumber(parseNumber(it.qty) * (r.hectares || 1), 1)} {it.unit})
                               </span>
                             </li>
                           ))}
@@ -736,10 +737,10 @@ export function FertilisationModule({ parcelId, canEdit }: { parcelId: string; c
                         {/* Preparational checklist specs */}
                         <div className="mt-2 pt-1.5 border-t border-dashed flex flex-wrap gap-2 text-[10px]">
                           <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-semibold">
-                            Eau Init : {sumEauMin} L
+                            Eau Init : {formatNumber(sumEauMin, 0)} L
                           </span>
                           <span className={`px-1.5 py-0.5 rounded font-semibold ${isOverflow ? "bg-red-50 text-red-700 animate-pulse" : "bg-green-50 text-green-700"}`}>
-                            Vol Solution : {volSolution.toFixed(0)} L {isOverflow ? "(⚠ TROP PLEIN)" : ""}
+                            Vol Solution : {formatNumber(volSolution, 0)} L {isOverflow ? "(⚠ TROP PLEIN)" : ""}
                           </span>
                           {maxTime > 0 && (
                             <span className="bg-yellow-50 text-yellow-700 px-1.5 py-0.5 rounded font-semibold">

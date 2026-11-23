@@ -4,6 +4,7 @@ import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcelActions } from "@/lib/parcel-store";
 import { WeatherCheck } from "./WeatherCheck";
 import { PHYTO_DATABASE } from "@/data/phytosanitaires";
+import { formatDateFR, formatDA } from "@/lib/format";
 
 type Product = {
   product: string;
@@ -170,7 +171,7 @@ export function PhytosanitaireModule({
           <div className="flex items-center justify-between border-t pt-3">
             <div className="text-sm">
               <span className="text-muted-foreground">Prix global :</span>{" "}
-              <span className="font-bold text-foreground">{total.toFixed(2)} DA</span>
+              <span className="font-bold text-foreground">{formatDA(total, 2)}</span>
             </div>
             <button onClick={save} disabled={!date}
               className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50">
@@ -195,13 +196,13 @@ export function PhytosanitaireModule({
           <div className="rounded-xl border bg-primary/5 p-3 space-y-1">
             <div className="flex items-center justify-between text-sm font-semibold">
               <span>Total global</span>
-              <span className="text-primary">{grand.toFixed(2)} DA</span>
+              <span className="text-primary">{formatDA(grand, 2)}</span>
             </div>
             <ul className="space-y-0.5 text-xs">
               {years.map(([y, t]) => (
                 <li key={y} className="flex justify-between text-muted-foreground">
                   <span>Année {y}</span>
-                  <span className="font-semibold text-foreground">{t.toFixed(2)} DA</span>
+                  <span className="font-semibold text-foreground">{formatDA(t, 2)}</span>
                 </li>
               ))}
             </ul>
@@ -220,9 +221,9 @@ export function PhytosanitaireModule({
             {records.map((r) => (
               <li key={r.id} className="px-4 py-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-foreground">{r.date}</span>
+                  <span className="font-medium text-foreground">{formatDateFR(r.date)}</span>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">{r.total.toFixed(2)} DA</span>
+                    <span className="font-bold text-foreground">{formatDA(r.total, 2)}</span>
                     {canEdit && (
                       <button onClick={() => remove(parcelId, "phytosanitaire", r.id)}
                         className="text-muted-foreground hover:text-destructive">

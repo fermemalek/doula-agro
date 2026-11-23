@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatDateFR, formatDA, formatNumber } from "@/lib/format";
 import {
   Save,
   Trash2,
@@ -644,10 +645,10 @@ export function RecolteFruitsFrais({
             <span>{isAr ? "صافي النتيجة" : "Résultat Net"}</span>
           </span>
           <p dir="ltr" className={`text-base sm:text-lg font-black ${campaignKpis.sumNet >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>
-            {campaignKpis.sumNet.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
+            {formatDA(campaignKpis.sumNet)}
           </p>
           <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold">
-            {isAr ? "مبيعات" : "Ventes"}: {campaignKpis.sumVentes.toFixed(0)} · {isAr ? "تكاليف" : "Charges"}: {campaignKpis.sumCharges.toFixed(0)}
+            {isAr ? "مبيعات" : "Ventes"}: {formatNumber(campaignKpis.sumVentes, 0)} · {isAr ? "تكاليف" : "Charges"}: {formatNumber(campaignKpis.sumCharges, 0)}
           </span>
         </div>
       </div>
@@ -1014,20 +1015,20 @@ export function RecolteFruitsFrais({
             )}
             <div className="flex justify-between">
               <span>{isAr ? "إجمالي البيع الخام" : "Total Vente brut"}</span>
-              <b dir="ltr">{totalVenteBrut.toFixed(0)} DA</b>
+              <b dir="ltr">{formatDA(totalVenteBrut)}</b>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>
                 {isAr ? "إجمالي التكاليف" : "Total Charges"}
-                {commissionAmount > 0 ? ` (${isAr ? "عمولة" : "comm."} ${commissionAmount.toFixed(0)})` : ""}
-                {frigoCost > 0 ? ` (${isAr ? "تبريد" : "frigo"} ${frigoCost.toFixed(0)})` : ""}
+                {commissionAmount > 0 ? ` (${isAr ? "عمولة" : "comm."} ${formatNumber(commissionAmount, 0)})` : ""}
+                {frigoCost > 0 ? ` (${isAr ? "تبريد" : "frigo"} ${formatNumber(frigoCost, 0)})` : ""}
               </span>
-              <span dir="ltr">− {totalCharges.toFixed(0)} DA</span>
+              <span dir="ltr">− {formatDA(totalCharges)}</span>
             </div>
             <div className="flex justify-between border-t pt-1.5 text-sm sm:text-base font-black">
               <span>{isAr ? "الصافي" : "Net"}</span>
               <span dir="ltr" className={netResult >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}>
-                {netResult.toFixed(0)} DA
+                {formatDA(netResult)}
               </span>
             </div>
           </div>
@@ -1111,10 +1112,10 @@ export function RecolteFruitsFrais({
                 <li key={r.id} className="p-3.5 text-xs space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span dir="ltr" className="font-black text-foreground">{r.date}</span>
+                      <span dir="ltr" className="font-black text-foreground">{formatDateFR(r.date)}</span>
                       <span className="font-bold text-muted-foreground">—</span>
                       <span dir="ltr" className="font-black text-primary">
-                        {rKg.toFixed(1)} Kg {r.unit === "Caisses" ? `(${r.qty} c.)` : ""}
+                        {formatNumber(rKg, 1)} Kg {r.unit === "Caisses" ? `(${formatNumber(r.qty)} c.)` : ""}
                       </span>
                       {r.destination && (
                         <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold">
@@ -1138,7 +1139,7 @@ export function RecolteFruitsFrais({
 
                     <div className="flex items-center gap-2">
                       <span dir="ltr" className={`font-black ${netVal >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>
-                        Net {netVal.toFixed(0)} DA
+                        Net {formatDA(netVal)}
                       </span>
                       {canEdit && (
                         <>
@@ -1195,10 +1196,10 @@ export function RecolteFruitsFrais({
                           {(r.frigoExits || []).map((ex) => (
                             <div key={ex.id} className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-muted-foreground">
                               <span>
-                                <strong dir="ltr">{ex.date}</strong> · {ex.buyerName} (<span dir="ltr">{ex.qty} {r.unit} × {ex.unitPrice} DA</span>)
+                                <strong dir="ltr">{formatDateFR(ex.date)}</strong> · {ex.buyerName} (<span dir="ltr">{formatNumber(ex.qty)} {r.unit} × {formatDA(ex.unitPrice)}</span>)
                               </span>
                               <span dir="ltr" className="font-bold text-emerald-700 dark:text-emerald-300">
-                                +{ex.netAmount.toFixed(0)} DA
+                                +{formatDA(ex.netAmount)}
                               </span>
                             </div>
                           ))}
@@ -1208,8 +1209,8 @@ export function RecolteFruitsFrais({
                   )}
 
                   <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
-                    <span dir="ltr">{isAr ? "مبيعات" : "Ventes"}: {tv.toFixed(0)} DA</span>
-                    <span dir="ltr">{isAr ? "تكاليف" : "Charges"}: {ch.toFixed(0)} DA</span>
+                    <span dir="ltr">{isAr ? "مبيعات" : "Ventes"}: {formatDA(tv)}</span>
+                    <span dir="ltr">{isAr ? "تكاليف" : "Charges"}: {formatDA(ch)}</span>
                     {typeof r.rebutPercent === "number" && r.rebutPercent > 0 && (
                       <span dir="ltr" className="text-destructive font-semibold">
                         {isAr ? "فضلات" : "Rebut"}: {r.rebutPercent}%

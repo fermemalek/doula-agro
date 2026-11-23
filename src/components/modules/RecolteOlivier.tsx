@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { formatDateFR, formatDA, formatNumber } from "@/lib/format";
 import {
   Save,
   Trash2,
@@ -1081,7 +1082,7 @@ export function RecolteOlivier({
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2.5 text-xs">
             <span className="font-bold text-muted-foreground">
-              {isAr ? "تكاليف الدفعة :" : "Charges lot :"} <strong dir="ltr" className="text-foreground">{formChargesDA.toFixed(0)} DA</strong>
+              {isAr ? "تكاليف الدفعة :" : "Charges lot :"} <strong dir="ltr" className="text-foreground">{formatDA(formChargesDA)}</strong>
             </span>
             <button
               type="button"
@@ -1109,22 +1110,22 @@ export function RecolteOlivier({
         <div className="rounded-xl border bg-card p-3">
           <span className="text-[10px] font-bold text-muted-foreground block">{isAr ? "المردود المتوسط" : "Rendement moyen"}</span>
           <p dir="ltr" className="text-base font-black text-emerald-700 dark:text-emerald-300">
-            {oliveStats.avgYieldLPerQ.toFixed(1)} L/Q
+            {formatNumber(oliveStats.avgYieldLPerQ, 1)} L/Q
           </p>
         </div>
         <div className="rounded-xl border bg-card p-3">
           <span className="text-[10px] font-bold text-muted-foreground block">{isAr ? "تكلفة اللتر" : "Coût de revient / L"}</span>
           <p dir="ltr" className="text-base font-black text-foreground">
-            {oliveStats.costPerLiterDA.toFixed(0)} DA/L
+            {formatDA(oliveStats.costPerLiterDA)}/L
           </p>
         </div>
         <div className="rounded-xl border bg-card p-3">
           <span className="text-[10px] font-bold text-muted-foreground block">{isAr ? "المخزون المتبقي" : "Stock restant"}</span>
           <p dir="ltr" className="text-base font-black text-amber-700 dark:text-amber-300">
-            {oliveStats.totalRemainingOilL.toFixed(0)} L
+            {formatNumber(oliveStats.totalRemainingOilL, 0)} L
           </p>
           <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold">
-            ≈ {oliveStats.estimatedStockValueDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
+            ≈ {formatDA(oliveStats.estimatedStockValueDA)}
           </span>
         </div>
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
@@ -1133,10 +1134,10 @@ export function RecolteOlivier({
             <span>{isAr ? "النتيجة الصافية" : "Résultat Net"}</span>
           </span>
           <p dir="ltr" className={`text-base font-black ${oliveStats.netResultDA >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>
-            {oliveStats.netResultDA.toLocaleString("fr-FR", { maximumFractionDigits: 0 })} DA
+            {formatDA(oliveStats.netResultDA)}
           </p>
           <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold">
-            +{oliveStats.totalCollectedDA.toFixed(0)} / −{oliveStats.totalChargesDA.toFixed(0)}
+            +{formatNumber(oliveStats.totalCollectedDA, 0)} / −{formatNumber(oliveStats.totalChargesDA, 0)}
           </span>
         </div>
       </div>
@@ -1170,30 +1171,30 @@ export function RecolteOlivier({
                 <li key={r.id} className="p-3.5 text-xs space-y-1.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span dir="ltr" className="font-black text-foreground">{r.date}</span>
+                      <span dir="ltr" className="font-black text-foreground">{formatDateFR(r.date)}</span>
                       {rType === "olive_sale" ? (
                         <span className="rounded-full bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 text-[10px] font-black">
                           💰 {isAr ? "بيع زيت" : "Vente huile"} · {r.clientName}
                         </span>
                       ) : rType === "olive_packaging" ? (
                         <span className="rounded-full bg-sky-500/15 text-sky-800 dark:text-sky-200 px-2 py-0.5 text-[10px] font-black">
-                          📦 {isAr ? "تعبئة من الخزان" : "Soutirage"} (<span dir="ltr">{r.transferFromCuveL} L</span>)
+                          📦 {isAr ? "تعبئة من الخزان" : "Soutirage"} (<span dir="ltr">{formatNumber(r.transferFromCuveL)} L</span>)
                         </span>
                       ) : (
                         <span className="rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-200 px-2 py-0.5 text-[10px] font-black">
-                          🫒 {isAr ? "جني / عصر" : "Cueillette"} (<span dir="ltr">{r.weightKg || r.qty} Kg</span>)
+                          🫒 {isAr ? "جني / عصر" : "Cueillette"} (<span dir="ltr">{formatNumber(r.weightKg || r.qty)} Kg</span>)
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
                       {rType === "olive_sale" && (
                         <span dir="ltr" className="font-black text-emerald-700 dark:text-emerald-300">
-                          +{(r.totalVente || 0).toFixed(0)} DA
+                          +{formatDA(r.totalVente || 0)}
                         </span>
                       )}
                       {rType === "olive_harvest" && (r.netOilRecoveredL || 0) > 0 && (
                         <span dir="ltr" className="font-black text-emerald-700 dark:text-emerald-300">
-                          {r.netOilRecoveredL} L ({r.yieldLPerQuintal} L/Q)
+                          {formatNumber(r.netOilRecoveredL)} L ({formatNumber(r.yieldLPerQuintal, 1)} L/Q)
                         </span>
                       )}
                       {canEdit && (
@@ -1222,11 +1223,11 @@ export function RecolteOlivier({
                     {rType === "olive_harvest" && r.millName && <span>🏭 {r.millName}</span>}
                     {rType === "olive_sale" && (
                       <span dir="ltr">
-                        {r.saleQty}{" "}
-                        {r.oilFormat === "bidon_5l" ? "× Bidon 5L" : r.oilFormat === "bouteille_1l" ? "× Bout. 1L" : "L vrac"} @ {r.unitPriceDA} DA
+                        {formatNumber(r.saleQty)}{" "}
+                        {r.oilFormat === "bidon_5l" ? "× Bidon 5L" : r.oilFormat === "bouteille_1l" ? "× Bout. 1L" : "L vrac"} @ {formatDA(r.unitPriceDA)}
                       </span>
                     )}
-                    {(r.totalCharges || 0) > 0 && <span dir="ltr">{isAr ? "تكاليف" : "Charges"}: {r.totalCharges?.toFixed(0)} DA</span>}
+                    {(r.totalCharges || 0) > 0 && <span dir="ltr">{isAr ? "تكاليف" : "Charges"}: {formatDA(r.totalCharges)}</span>}
                   </div>
                   {r.notes && <p className="text-[11px] italic text-muted-foreground">{r.notes}</p>}
                 </li>

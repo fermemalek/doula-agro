@@ -43,6 +43,7 @@ import {
 } from "@/lib/reco-validation";
 import { ValidateOrderScheduleDialog, type OrderScheduleConfirmation, type OrderStockSummary, type OrderBacDetail } from "@/components/ValidateOrderScheduleDialog";
 import { getSolarTimesForDate, formatMinutesToTimeInput } from "@/lib/astronomy";
+import { formatDateFR, formatDateTimeFR } from "@/lib/format";
 
 type PrescriptionType = "all" | "fert_irrigation" | "fert_foliaire" | "phytosanitaire";
 
@@ -1295,11 +1296,11 @@ function RecommandationsPageContent() {
                   <p className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                     <span className="inline-flex items-center gap-1">
                       <Calendar className="h-3 w-3 text-muted-foreground/70 shrink-0" />
-                      <span>Date : <strong className="text-foreground/90">{rDate}</strong></span>
+                      <span>Date : <strong className="text-foreground/90">{formatDateFR(rDate)}</strong></span>
                     </span>
                     {r.created_at && (
                       <span className="opacity-70 text-[10px]">
-                        (Saisie : {new Date(r.created_at).toLocaleString("fr-FR")})
+                        (Saisie : {formatDateTimeFR(r.created_at)})
                       </span>
                     )}
                   </p>

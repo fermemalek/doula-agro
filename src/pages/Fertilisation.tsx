@@ -13,6 +13,7 @@ import {
 } from "@/components/programs/ProgramFiltersBar";
 import { IngenieurRecoBanner } from "@/components/programs/IngenieurRecoBanner";
 import { Button } from "@/components/ui/button";
+import { formatDateFR, formatDA } from "@/lib/format";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -377,7 +378,7 @@ function FertilisationListPage() {
         <>
           <Card className="p-3 flex items-center justify-between bg-primary/5">
             <span className="text-sm font-semibold text-foreground">Total global</span>
-            <span className="text-base font-bold text-primary">{grandTotal.toFixed(2)} DA</span>
+            <span className="text-base font-bold text-primary">{formatDA(grandTotal, 2)}</span>
           </Card>
 
           <div className="space-y-4">
@@ -390,7 +391,7 @@ function FertilisationListPage() {
                       {parcel?.name ?? pid}
                     </h2>
                     <span className="text-xs font-bold text-primary">
-                      Total parcelle : {g.total.toFixed(2)} DA
+                      Total parcelle : {formatDA(g.total, 2)}
                     </span>
                   </div>
                   <ul className="space-y-1.5">
@@ -410,9 +411,9 @@ function FertilisationListPage() {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="text-sm font-medium">{r.date}</span>
+                                  <span className="text-sm font-medium">{formatDateFR(r.date)}</span>
                                   <span className="text-xs font-bold">
-                                    {(r.total ?? 0).toFixed(2)} DA
+                                    {formatDA(r.total ?? 0, 2)}
                                   </span>
                                 </div>
                                 <div className="text-xs text-muted-foreground mt-0.5 truncate">

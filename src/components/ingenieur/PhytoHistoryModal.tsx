@@ -18,6 +18,7 @@ import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
 import { useTranslation } from "@/lib/i18n";
 import { getAgriculturalSeason, isExecutedOrAcceptedStatus } from "@/lib/phyto/engine";
+import { formatDateFR } from "@/lib/format";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -920,7 +921,7 @@ export function PhytoHistoryModal({
                       <div className="flex items-center gap-2">
                         <span className="flex items-center gap-1 font-bold text-xs text-foreground bg-muted px-2 py-0.5 rounded-lg">
                           <Calendar className="h-3.5 w-3.5 text-primary" />
-                          {item.date}
+                          {formatDateFR(item.date)}
                         </span>
                         {item.period && (
                           <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg border bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30">

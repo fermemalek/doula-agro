@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useMaintenance, useOpsActions } from "@/lib/ops-store";
 import { useParcels } from "@/lib/parcel-store";
+import { formatDateFR, formatDA } from "@/lib/format";
 import {
   ListPageShell,
   ProgramFiltersBar,
@@ -128,7 +129,7 @@ function MaintenancePage() {
           <div className="flex flex-wrap gap-2">
             {yearlyTotals.map(([y, total]) => (
               <span key={y} className="rounded-md bg-primary/10 text-primary text-xs font-semibold px-2 py-1">
-                {y}: {total.toFixed(2)} DA
+                {y}: {formatDA(total, 2)}
               </span>
             ))}
           </div>
@@ -156,8 +157,8 @@ function MaintenancePage() {
                       <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{m.description}</p>
                     )}
                     <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                      <span>{m.date}</span>
-                      <span>Coût: {m.cost.toFixed(2)} DA</span>
+                      <span>{formatDateFR(m.date)}</span>
+                      <span>Coût: {formatDA(m.cost, 2)}</span>
                       {parcel && <span>{parcel.name}</span>}
                     </div>
                   </div>

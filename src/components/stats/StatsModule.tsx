@@ -489,7 +489,9 @@ export function StatsModule() {
                       }}
                     />
                     <Tooltip
-                      formatter={(value: any) => [`${parseFloat(value).toFixed(2)} DA`]}
+                      formatter={(value: any) => [
+                        `${Number(value || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DA`,
+                      ]}
                       contentStyle={{ background: "#fff", border: "1px solid #ccc", borderRadius: "8px" }}
                     />
                     <Legend iconType="circle" className="text-xs" />

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Plus, Trash2, Save, History, Pencil, X } from "lucide-react";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { WeatherCheck } from "./WeatherCheck";
+import { formatDateFR, formatDA } from "@/lib/format";
 
 type Item = { name: string; qty: string; unit: string; price: string };
 type Record = {
@@ -155,7 +156,7 @@ export function PulverisationModule({ parcelId, canEdit }: { parcelId: string; c
           <div className="flex items-center justify-between border-t pt-3">
             <div className="text-sm">
               <span className="text-muted-foreground">Prix global :</span>{" "}
-              <span className="font-bold text-foreground">{total.toFixed(2)} DA</span>
+              <span className="font-bold text-foreground">{formatDA(total, 2)}</span>
             </div>
             <button
               onClick={save}
@@ -179,9 +180,9 @@ export function PulverisationModule({ parcelId, canEdit }: { parcelId: string; c
             {records.map((r) => (
               <li key={r.id} className="px-4 py-3">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-foreground">{r.date}</span>
+                  <span className="font-medium text-foreground">{formatDateFR(r.date)}</span>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">{r.total.toFixed(2)} DA</span>
+                    <span className="font-bold text-foreground">{formatDA(r.total, 2)}</span>
                     {canEdit && (
                       <>
                         <button
@@ -212,7 +213,7 @@ export function PulverisationModule({ parcelId, canEdit }: { parcelId: string; c
                         {it.name} — {it.qty} {it.unit}
                       </span>
                       <span>
-                        {((parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0)).toFixed(2)} DA
+                        {formatDA((parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 2)}
                       </span>
                     </li>
                   ))}

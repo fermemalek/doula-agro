@@ -17,6 +17,7 @@ import { useTranslation } from "@/lib/i18n";
 import { checkRecoStock, computeScheduledDates, computePureIrrigationDates, getTargetParcelsForReco, parsePhytoProductQuantity, safeParseFloat, type RecoProductStockItem } from "@/lib/stock-alerts";
 import { validateRecommendationAndPurchases, isHistoricalReco } from "@/lib/reco-validation";
 import { checkTankMixCompatibility } from "@/data/phytosanitaires";
+import { formatDateFR, formatDA } from "@/lib/format";
 
 const KIND_LABEL: Record<Recommendation["kind"], string> = {
   fertilisation: "Fertilisation",
@@ -421,13 +422,13 @@ export function RecommendationDetailDialog({
                         .map((it, i) => (
                           <li key={i} className="flex justify-between">
                             <span>{it.name} — {it.qty} {it.unit}</span>
-                            <span>{((parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0)).toFixed(2)} DA</span>
+                            <span>{formatDA((parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 2)}</span>
                           </li>
                         ))}
                   </ul>
                   <div className="flex justify-between border-t pt-1 font-semibold">
                     <span>Total</span>
-                    <span>{Number(program.total ?? 0).toFixed(2)} DA</span>
+                    <span>{formatDA(Number(program.total ?? 0), 2)}</span>
                   </div>
                   <p className="text-muted-foreground text-[10px] mt-1">
                     Météo : {program.weatherOk ? "Favorable" : "Défavorable (validé)"} · {String(program.weatherNote ?? "")}
@@ -437,7 +438,7 @@ export function RecommendationDetailDialog({
                 <div className="space-y-2 text-xs">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Date</span>
-                    <span className="font-medium">{String(program.date ?? "—")}</span>
+                    <span className="font-medium">{formatDateFR(program.date as string)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{lang === "ar" ? "الري مع التسميد" : "Irrigation avec fertilisation"}</span>
@@ -504,7 +505,7 @@ export function RecommendationDetailDialog({
                 <div className="space-y-2 text-xs">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Date</span>
-                    <span className="font-medium">{String(program.date ?? "—")}</span>
+                    <span className="font-medium">{formatDateFR(program.date as string)}</span>
                   </div>
                   <div className="mt-2 space-y-2">
                     {Array.isArray(program.products) &&
@@ -514,7 +515,7 @@ export function RecommendationDetailDialog({
                           <div key={idx} className="rounded-lg border bg-card p-2 space-y-1">
                             <div className="flex justify-between font-bold text-primary">
                               <span>{p.product}</span>
-                              {p.price && <span>{parseFloat(p.price).toFixed(2)} DA</span>}
+                              {p.price && <span>{formatDA(parseFloat(p.price), 2)}</span>}
                             </div>
                             <div className="grid grid-cols-2 gap-x-2 text-[10px] text-muted-foreground mt-0.5">
                               {p.cible && <span>Cible : <span className="font-medium text-foreground">{p.cible}</span></span>}
@@ -553,7 +554,7 @@ export function RecommendationDetailDialog({
                   {Number(program.total ?? 0) > 0 && (
                     <div className="flex justify-between border-t pt-1 font-semibold">
                       <span>Total Estimé</span>
-                      <span>{Number(program.total).toFixed(2)} DA</span>
+                      <span>{formatDA(Number(program.total), 2)}</span>
                     </div>
                   )}
                 </div>
@@ -562,7 +563,7 @@ export function RecommendationDetailDialog({
                   {program.mode === "date" ? (
                     <>
                       <div className="flex justify-between"><span className="text-muted-foreground">Mode</span><span className="font-medium">Par date</span></div>
-                      <div className="flex justify-between"><span className="text-muted-foreground">Date</span><span className="font-medium">{String(program.date ?? "—")}</span></div>
+                      <div className="flex justify-between"><span className="text-muted-foreground">Date</span><span className="font-medium">{formatDateFR(program.date as string)}</span></div>
                       <div className="flex justify-between"><span className="text-muted-foreground">Démarrage</span><span className="font-medium">{String(program.dateStartHour ?? "—")}</span></div>
                       <div className="flex justify-between"><span className="text-muted-foreground">Durée</span><span className="font-medium">{String(program.duration ?? "—")} h</span></div>
                     </>
@@ -1032,7 +1033,7 @@ export function RecommendationDetailDialog({
 
                           <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-500/20">
                             <span className="text-[10px] font-bold text-muted-foreground">
-                              Coût estimé : ~{stockReport.totalEstimatedMissingCost.toFixed(2)} DA
+                              Coût estimé : ~{formatDA(stockReport.totalEstimatedMissingCost, 2)}
                             </span>
                             <button
                               type="button"

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom";
 import { Link, useNavigate } from "@/lib/router-compat";
+import { formatDateFR, formatNumber } from "@/lib/format";
 import { useSearchParams, Navigate } from "react-router-dom";
 import {
   Droplets,
@@ -2035,7 +2036,7 @@ function ProgrammesPage() {
                       <option value="all">Tous les Bons d'Achat ({distinctBons.length})</option>
                       {distinctBons.map((b) => (
                         <option key={b.orderNumber} value={b.orderNumber}>
-                          {b.orderNumber} ({b.date}) — {b.items.length} produit{b.items.length > 1 ? "s" : ""}
+                          {b.orderNumber} ({formatDateFR(b.date)}) — {b.items.length} produit{b.items.length > 1 ? "s" : ""}
                         </option>
                       ))}
                     </select>
@@ -2097,13 +2098,13 @@ function ProgrammesPage() {
                                 {formatMoney(item.avgPu)}
                               </td>
                               <td className="p-2.5 border text-center whitespace-nowrap font-black bg-emerald-50/40 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-300 text-[13px]">
-                                {item.quantity} {item.unit}
+                                {formatNumber(item.quantity)} {item.unit}
                               </td>
                               <td className="p-2.5 border text-center text-amber-700 whitespace-nowrap font-bold">
-                                {item.consumed} {item.unit}
+                                {formatNumber(item.consumed)} {item.unit}
                               </td>
                               <td className={`p-2.5 border text-center whitespace-nowrap font-bold ${item.remainingQty > 0 ? "text-emerald-700" : "text-muted-foreground"}`}>
-                                {item.remainingQty} {item.unit}
+                                {formatNumber(item.remainingQty)} {item.unit}
                               </td>
                               <td className="p-2.5 border text-right font-mono font-black whitespace-nowrap">
                                 {formatMoney(item.totalCost)}
@@ -2148,7 +2149,7 @@ function ProgrammesPage() {
                       💡 Cumul automatique sur l'ensemble des bons d'achat d'interventions ({distinctBons.length} bon{distinctBons.length > 1 ? "s" : ""}).
                     </span>
                     <span className="font-semibold">
-                      Total Articles : {aggregatedProducts.reduce((sum, it) => sum + it.quantity, 0)} (kg/L)
+                      Total Articles : {formatNumber(aggregatedProducts.reduce((sum, it) => sum + it.quantity, 0))} (kg/L)
                     </span>
                   </div>
                 </div>
@@ -2176,7 +2177,7 @@ function ProgrammesPage() {
                                 {bon.orderNumber}
                               </span>
                               <span className="text-xs font-bold text-foreground">
-                                Intervention du {bon.date}
+                                Intervention du {formatDateFR(bon.date)}
                               </span>
                               <span className="text-[11px] text-muted-foreground font-medium">
                                 ({bon.items.length} produit{bon.items.length > 1 ? "s" : ""})

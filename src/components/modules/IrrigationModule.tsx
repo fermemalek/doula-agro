@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Save, History, Trash2, Calendar as CalendarIcon, CalendarDays, Pencil, X } from "lucide-react";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
+import { formatDateFR } from "@/lib/format";
 
 type Mode = "date" | "mensuel";
 const DAYS = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
@@ -384,7 +385,7 @@ export function IrrigationModule({ parcelId, canEdit }: { parcelId: string; canE
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-medium text-foreground">
                     {r.mode === "date"
-                      ? `Date · ${r.date}`
+                      ? `Date · ${formatDateFR(r.date)}`
                       : `Mensuel · ${r.month} ${r.year}`}
                   </span>
                   {canEdit && (

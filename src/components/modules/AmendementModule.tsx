@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Save, Trash2, History, Image as ImageIcon, Leaf, Plus } from "lucide-react";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
+import { formatDateFR, formatDA, formatNumber } from "@/lib/format";
 
 interface CompostItem {
   typeCompost: string;
@@ -173,7 +174,7 @@ export function AmendementModule({ parcelId, canEdit }: { parcelId: string; canE
                     </div>
                     <div className="col-span-2 flex items-center justify-between pl-1">
                       {itemQ * itemP > 0 ? (
-                        <span className="text-[9px] font-bold text-olive-dark">{(itemQ * itemP).toFixed(0)} DA</span>
+                        <span className="text-[9px] font-bold text-olive-dark">{formatDA(itemQ * itemP)}</span>
                       ) : (
                         <span />
                       )}
@@ -207,11 +208,11 @@ export function AmendementModule({ parcelId, canEdit }: { parcelId: string; canE
           <div className="space-y-1 rounded-lg bg-muted/30 p-3 text-sm">
             <div className="flex justify-between">
               <span>Quantité totale</span>
-              <b>{totalQty.toFixed(1)} {unit}</b>
+              <b>{formatNumber(totalQty, 1)} {unit}</b>
             </div>
             <div className="flex justify-between font-bold text-base border-t pt-1 text-primary">
               <span>Coût total de l'amendement</span>
-              <span>{computedTotal.toFixed(2)} DA</span>
+              <span>{formatDA(computedTotal, 2)}</span>
             </div>
           </div>
 
@@ -238,10 +239,10 @@ export function AmendementModule({ parcelId, canEdit }: { parcelId: string; canE
               return (
                 <li key={r.id} className="px-4 py-3 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="font-semibold text-foreground">{r.date} — {r.qty} {r.unit} d'amendements</span>
+                    <span className="font-semibold text-foreground">{formatDateFR(r.date)} — {formatNumber(r.qty)} {r.unit} d'amendements</span>
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-primary">
-                        {total.toFixed(2)} DA
+                        {formatDA(total, 2)}
                       </span>
                       {canEdit && (
                         <button onClick={() => remove(parcelId, "amendement", r.id)} className="text-muted-foreground hover:text-destructive">
@@ -259,14 +260,14 @@ export function AmendementModule({ parcelId, canEdit }: { parcelId: string; canE
                         const itemP = parseFloat(item.price) || 0;
                         return (
                           <div key={i}>
-                            • <b>{item.typeCompost.split("/")[0]}</b> : {item.qty} {r.unit} @ {item.price} DA = <b>{(itemQ * itemP).toFixed(0)} DA</b>
+                            • <b>{item.typeCompost.split("/")[0]}</b> : {formatNumber(item.qty)} {r.unit} @ {formatDA(itemP)} = <b>{formatDA(itemQ * itemP)}</b>
                           </div>
                         );
                       })}
                     </div>
                   ) : (
                     <div className="mt-1 text-xs text-muted-foreground">
-                      Type compost : {r.typeCompost.split("/")[0]} · Quantité : {r.qty} {r.unit} · Prix unit. : {(parseFloat(r.price) || 0).toFixed(0)} DA
+                      Type compost : {r.typeCompost.split("/")[0]} · Quantité : {formatNumber(r.qty)} {r.unit} · Prix unit. : {formatDA(parseFloat(r.price) || 0)}
                     </div>
                   )}
 
