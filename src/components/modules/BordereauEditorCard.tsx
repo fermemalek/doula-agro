@@ -26,13 +26,14 @@ export const APPLE_VARIETY_OPTIONS = [
 ];
 
 export const CALIBRE_OPTIONS: string[] = [
-  "17",
-  "19",
-  "21",
-  "23",
-  "25",
-  "27",
-  "29",
+  "16",
+  "18",
+  "20",
+  "22",
+  "24",
+  "26",
+  "28",
+  "30",
   "Frag",
   "Piqué",
   "Rebut",

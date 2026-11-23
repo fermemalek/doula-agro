@@ -412,7 +412,7 @@ export function RecolteFruitsFrais({
     }
   });
   const [selectedSpecies, setSelectedSpecies] = useState<string>("");
-  const [selectedCalibre, setSelectedCalibre] = useState<string>("21");
+  const [selectedCalibre, setSelectedCalibre] = useState<string>("22");
   const [addingCustomSpecies, setAddingCustomSpecies] = useState<boolean>(false);
   const [newSpeciesName, setNewSpeciesName] = useState<string>("");
 
@@ -1173,12 +1173,12 @@ export function RecolteFruitsFrais({
               </div>
             </div>
 
-            {/* Sélecteur Espèce / Variété + Calibre (impairs 17 à 29, Frag, Piqué, Rebut) */}
+            {/* Sélecteur Espèce / Variété + Calibre (pairs 16 à 30, Frag, Piqué, Rebut) */}
             <div className="rounded-xl border border-primary/25 bg-primary/[0.03] p-2.5 space-y-2">
               <span className="text-[10px] font-black uppercase text-primary block">
                 {isAr
-                  ? "اختيار الصنف والعيار (17 إلى 29 فردي / Frag / مثقوب / فضلات) :"
-                  : "Choix de l'espèce & du calibre (17 à 29 impairs / Frag / Piqué / Rebut) :"}
+                  ? "اختيار الصنف والعيار (16 إلى 30 زوجي / Frag / مثقوب / فضلات) :"
+                  : "Choix de l'espèce & du calibre (16 à 30 pairs / Frag / Piqué / Rebut) :"}
               </span>
 
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
