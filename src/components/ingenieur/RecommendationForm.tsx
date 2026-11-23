@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
+  useRecommendations,
   useRecommendationActions,
   uploadRecommendationPhotos,
   type RecoKind,
@@ -13,6 +14,7 @@ import {
   type CropGroup,
   type Recommendation,
 } from "@/lib/cloud/recommendations";
+import { evaluatePhytoTemporalConflicts, type PhytoTemporalConflict } from "@/lib/phyto/engine";
 import { FERTILIZER_DATABASE } from "@/data/fertilizers";
 import { useProducts, useProductActions } from "@/lib/products-store";
 import { PHYTO_DATABASE, getMatiereActive, getMatiereActiveAr, getIracFracCode, checkTankMixCompatibility, type TankMixCheckResult } from "@/data/phytosanitaires";
@@ -22,7 +24,7 @@ import { PhytoAdvisorModal } from "@/components/ingenieur/PhytoAdvisorModal";
 import { ACTIVE_INGREDIENTS_DATABASE } from "@/lib/phyto/database";
 import { History } from "lucide-react";
 import { useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
-import { useModuleActions } from "@/lib/modules-store";
+import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
 import { validateRecommendationAndPurchases } from "@/lib/reco-validation";
 import { matchProductName } from "@/lib/stock-alerts";
@@ -126,6 +128,8 @@ export function RecommendationForm({
   isDuplicate?: boolean;
 }) {
   const { create, update, remove, accept } = useRecommendationActions();
+  const { data: allExistingRecos = [] } = useRecommendations();
+  const allModulePhytoRecords = useAllModuleRecords("phytosanitaire");
   const products = useProducts();
   const suppliers = useSuppliers();
   const parcels = useParcels();
@@ -477,6 +481,50 @@ export function RecommendationForm({
     return null;
   }, [selectedPrescriptions, phyPassages, lang]);
 
+  // Contrôle temporel, rotation FRAC/IRAC (< 45j ou consécutif) & quota annuel sur pending + accepted + executed
+  const temporalConflicts: PhytoTemporalConflict[] = useMemo(() => {
+    if (!selectedPrescriptions.includes("phytosanitaire") || cropGroups.length === 0) return [];
+    const proposed: Array<{ product: string; date: string; passageLabel?: string }> = [];
+    for (const passage of phyPassages) {
+      const pDate = passage.date || appDate;
+      for (const prod of passage.products) {
+        if (prod.product?.trim() && pDate) {
+          proposed.push({
+            product: prod.product.trim(),
+            date: pDate,
+            passageLabel: passage.label,
+          });
+        }
+      }
+    }
+    if (proposed.length === 0) return [];
+    return evaluatePhytoTemporalConflicts({
+      proposedProducts: proposed,
+      targetCropGroups: cropGroups,
+      allRecommendations: allExistingRecos,
+      modulePhytoRecords: allModulePhytoRecords,
+      excludeRecoId: recoToEdit && !duplicateMode ? recoToEdit.id : null,
+      lang: (lang as "fr" | "ar") || "fr",
+    });
+  }, [
+    selectedPrescriptions,
+    cropGroups,
+    phyPassages,
+    appDate,
+    allExistingRecos,
+    allModulePhytoRecords,
+    recoToEdit,
+    duplicateMode,
+    lang,
+  ]);
+
+  const blockingTemporalConflict = useMemo(
+    () => temporalConflicts.find((c) => c.isBlocking) || null,
+    [temporalConflicts],
+  );
+
+  const anyPhytoBlocking = Boolean(blockingTankMix || blockingTemporalConflict);
+
   useEffect(() => {
     if (open && recoToEdit) {
       setTitle(
@@ -669,6 +717,12 @@ export function RecommendationForm({
 
     // Vérification de sécurité agronomique : Alerte incompatibilité chimique en cuve
     if (selectedPrescriptions.includes("phytosanitaire")) {
+      // Garde stricte : blocage temporel (<= 14j), rotation FRAC/IRAC (< 45j / consécutif) ou quota saison
+      if (blockingTemporalConflict) {
+        toast.error(blockingTemporalConflict.message);
+        return;
+      }
+
       for (const traitItem of phyPassages) {
         const activeProds = traitItem.products.filter(p => p.product);
         if (activeProds.length >= 2) {
@@ -944,7 +998,13 @@ export function RecommendationForm({
               }
             }
           } else if (presc === "phytosanitaire") {
-            for (const traitItem of phyPassages) {
+            // Garde stricte : blocage temporel (<= 14j), rotation FRAC/IRAC (< 45j / consécutif) ou quota saison
+      if (blockingTemporalConflict) {
+        toast.error(blockingTemporalConflict.message);
+        return;
+      }
+
+      for (const traitItem of phyPassages) {
               const activeProducts = traitItem.products.filter(p => p.product);
               if (activeProducts.length === 0) continue;
 
@@ -2168,6 +2228,58 @@ export function RecommendationForm({
                               </div>
                             )}
 
+                            {/* Bannière ROUGE bloquante : Conflit temporel (<= 14j), Rotation FRAC/IRAC ou Quota annuel */}
+                            {temporalConflicts.length > 0 && (
+                              <div className="space-y-2">
+                                {temporalConflicts.map((c, cIdx) => (
+                                  <div
+                                    key={`${c.rule}-${c.productName}-${c.conflictDate}-${cIdx}`}
+                                    className="rounded-2xl border-2 border-red-400 bg-red-50 dark:bg-red-950/30 p-3.5 text-red-950 dark:text-red-100 ring-2 ring-red-500/20 space-y-1.5 shadow-xs"
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex items-start gap-2 min-w-0">
+                                        <span className="text-xl shrink-0">⛔</span>
+                                        <div className="min-w-0">
+                                          <h5 className="font-extrabold text-xs sm:text-sm tracking-tight break-words">
+                                            {c.title}
+                                          </h5>
+                                          <p className="text-xs mt-0.5 font-medium leading-relaxed break-words">
+                                            {c.message}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <span className="shrink-0 text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-red-600 text-white border border-red-700 animate-pulse">
+                                        {isAr ? "⛔ حظر / Bloquant" : "⛔ Bloquant"}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold text-red-800 dark:text-red-200 pt-1 border-t border-red-300/60">
+                                      <span>
+                                        📅 {isAr ? "تاريخ التوصية المتعارضة:" : "Recommandation en conflit :"}{" "}
+                                        <span dir="ltr" className="font-mono">{c.conflictDate}</span>
+                                      </span>
+                                      <span>·</span>
+                                      <span>
+                                        {isAr ? "الحالة:" : "Statut :"}{" "}
+                                        {c.conflictStatus === "envoyee"
+                                          ? isAr ? "قيد الانتظار" : "En attente"
+                                          : c.conflictStatus === "acceptee"
+                                            ? isAr ? "مقبولة" : "Acceptée"
+                                            : isAr ? "منفذة" : "Exécutée"}
+                                      </span>
+                                      {c.sharedCode && (
+                                        <>
+                                          <span>·</span>
+                                          <span dir="ltr" className="font-mono bg-red-100 dark:bg-red-900/50 px-1.5 py-0.5 rounded">
+                                            {c.sharedCode}
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
                             {phyProducts.length === 1 ? (
                               <button
                                 type="button"
@@ -2243,9 +2355,9 @@ export function RecommendationForm({
               <button
                 type="button"
                 onClick={() => submit(true)}
-                disabled={submitting || Boolean(blockingTankMix)}
+                disabled={submitting || anyPhytoBlocking}
                 className={`inline-flex min-h-11 w-full max-w-full box-border items-center justify-center gap-2 rounded-xl text-white font-bold text-xs uppercase px-3 py-2 text-center whitespace-normal active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed shadow-md transition ${
-                  blockingTankMix ? "bg-red-600" : "bg-emerald-600 hover:bg-emerald-700"
+                  anyPhytoBlocking ? "bg-red-600" : "bg-emerald-600 hover:bg-emerald-700"
                 }`}
               >
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
@@ -2254,20 +2366,26 @@ export function RecommendationForm({
                     ? blockingTankMix.check.isDoubleEmploi
                       ? (isAr ? "⛔ مرفوض: تكرار نفس المادة الفعالة" : "⛔ Bloqué : Double emploi de matière active")
                       : (isAr ? "⛔ مرفوض: تعارض كيميائي في الخزان" : "⛔ Bloqué : Incompatibilité Tank-Mix")
-                    : submitting
-                      ? (isAr ? "جارٍ الاعتماد..." : "Validation en cours...")
-                      : duplicateMode
-                        ? (isAr ? "تفعيل التوصية المنسوخة مع الشراء" : "Valider la copie & ses Achats")
-                        : (isAr ? "اعتماد التوصية والمشتريات (الشهر السابق)" : "Valider Recommandation & Achats (Mois précédent)")}
+                    : blockingTemporalConflict
+                      ? blockingTemporalConflict.rule === "interval_14d"
+                        ? (isAr ? "⛔ مرفوض: تكرار خلال ≤ 14 يوماً" : "⛔ Bloqué : Répétition ≤ 14 jours")
+                        : blockingTemporalConflict.rule === "quota_season"
+                          ? (isAr ? "⛔ مرفوض: تم تجاوز الحد السنوي" : "⛔ Bloqué : Quota annuel dépassé")
+                          : (isAr ? "⛔ مرفوض: نفس مجموعة المقاومة FRAC/IRAC" : "⛔ Bloqué : Rotation FRAC/IRAC obligatoire")
+                      : submitting
+                        ? (isAr ? "جارٍ الاعتماد..." : "Validation en cours...")
+                        : duplicateMode
+                          ? (isAr ? "تفعيل التوصية المنسوخة مع الشراء" : "Valider la copie & ses Achats")
+                          : (isAr ? "اعتماد التوصية والمشتريات (الشهر السابق)" : "Valider Recommandation & Achats (Mois précédent)")}
                 </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => submit(false)}
-                disabled={submitting || Boolean(blockingTankMix)}
+                disabled={submitting || anyPhytoBlocking}
                 className={`inline-flex min-h-10 w-full max-w-full box-border items-center justify-center gap-2 rounded-xl border text-xs font-bold uppercase px-3 py-2 text-center whitespace-normal active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed transition ${
-                  blockingTankMix
+                  anyPhytoBlocking
                     ? "border-red-400 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300"
                     : "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
                 }`}
@@ -2278,15 +2396,21 @@ export function RecommendationForm({
                     ? blockingTankMix.check.isDoubleEmploi
                       ? (isAr ? "⛔ مرفوض: تكرار نفس المادة الفعالة" : "⛔ Bloqué : Double emploi de matière active")
                       : (isAr ? "⛔ مرفوض: تعارض كيميائي في الخزان" : "⛔ Bloqué : Incompatibilité Tank-Mix")
-                    : submitting
-                      ? t("gen.sending")
-                      : duplicateMode
-                        ? (isAr ? "حفظ التوصية المنسوخة (قيد الانتظار)" : "Créer la recommandation dupliquée (En attente)")
-                        : recoToEdit
-                          ? t("reco.form.saveChanges")
-                          : isAr
-                            ? `${t("reco.form.submit")} (قيد الانتظار)`
-                            : `${t("reco.form.submit")} (En attente)`}
+                    : blockingTemporalConflict
+                      ? blockingTemporalConflict.rule === "interval_14d"
+                        ? (isAr ? "⛔ مرفوض: تكرار خلال ≤ 14 يوماً" : "⛔ Bloqué : Répétition ≤ 14 jours")
+                        : blockingTemporalConflict.rule === "quota_season"
+                          ? (isAr ? "⛔ مرفوض: تم تجاوز الحد السنوي" : "⛔ Bloqué : Quota annuel dépassé")
+                          : (isAr ? "⛔ مرفوض: نفس مجموعة المقاومة FRAC/IRAC" : "⛔ Bloqué : Rotation FRAC/IRAC obligatoire")
+                      : submitting
+                        ? t("gen.sending")
+                        : duplicateMode
+                          ? (isAr ? "حفظ التوصية المنسوخة (قيد الانتظار)" : "Créer la recommandation dupliquée (En attente)")
+                          : recoToEdit
+                            ? t("reco.form.saveChanges")
+                            : isAr
+                              ? `${t("reco.form.submit")} (قيد الانتظار)`
+                              : `${t("reco.form.submit")} (En attente)`}
                 </span>
               </button>
 

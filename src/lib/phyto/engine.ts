@@ -6,6 +6,9 @@
 
 import {
   PHYTO_DATABASE,
+  COMMERCIAL_TO_ACTIVE,
+  getIracFracCode,
+  getMatiereActive,
   isProductBlockedAtStage,
   type BlockedStageKey,
   type PhytoCultureKey,
@@ -1017,4 +1020,325 @@ export function getPestVisualAsset(pest: { id: string; category?: string; primar
   // 3. Fallback photographique propre
   const defaultPhoto = resolvePhytoImageUrl('assets/phyto/photos/pom_tavelure.jpg');
   return defaultPhoto || '';
+}
+
+// ==========================================
+// 10. CONTRÔLE TEMPOREL, ROTATION FRAC/IRAC & QUOTA (PENDING + ACCEPTED + EXECUTED)
+// ==========================================
+
+export interface PhytoTemporalConflict {
+  isBlocking: boolean;
+  rule: 'interval_14d' | 'rotation_group' | 'quota_season' | 'multisite_notice';
+  productName: string;
+  conflictProductName: string;
+  conflictDate: string;
+  conflictStatus: string;
+  sharedCode?: string;
+  daysDiff?: number;
+  title: string;
+  message: string;
+}
+
+const MULTISITE_CODE_RE = /\b(FRAC\s*M0?[1-9]|IRAC\s*UN|ADJUVANT|ATTRACTIF)\b/i;
+
+function normalizePhytoStr(v: string | undefined): string {
+  return (v || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function extractActiveTokens(productName: string): string[] {
+  const fromMap = getMatiereActive(productName);
+  const dbMatch = PHYTO_DATABASE.find((p) => normalizePhytoStr(p.name) === normalizePhytoStr(productName));
+  const raw = fromMap || dbMatch?.matiereActive || '';
+  if (!raw) return [];
+  return raw
+    .split('+')
+    .map((part) => normalizePhytoStr(part.split('·')[0]).replace(/[^a-z0-9\s-]/g, '').trim())
+    .filter((t) => t.length >= 3);
+}
+
+function extractResistanceCodes(productName: string): string[] {
+  const code = getIracFracCode(productName);
+  const dbMatch = PHYTO_DATABASE.find((p) => normalizePhytoStr(p.name) === normalizePhytoStr(productName));
+  const raw = code || COMMERCIAL_TO_ACTIVE[productName]?.codeGroup || dbMatch?.codeGroup || '';
+  if (!raw) return [];
+  return raw
+    .split('+')
+    .map((c) => c.trim().toUpperCase())
+    .filter(Boolean);
+}
+
+function isMultisiteCode(code: string): boolean {
+  return MULTISITE_CODE_RE.test(code);
+}
+
+function getMaxPerSeasonForProduct(productName: string): number | null {
+  const dbMatch = PHYTO_DATABASE.find((p) => normalizePhytoStr(p.name) === normalizePhytoStr(productName));
+  if (dbMatch?.maxPerSeason && dbMatch.maxPerSeason > 0) return dbMatch.maxPerSeason;
+  return null;
+}
+
+function normalizeCropTokens(groups: string[], parcelIds: string[] = []): Set<string> {
+  const set = new Set<string>();
+  const all = [...groups, ...parcelIds].map((x) => normalizePhytoStr(String(x)));
+  for (const s of all) {
+    if (!s) continue;
+    if (s.includes('oliv') || /^p[1-4]$/.test(s)) {
+      set.add('oliviers');
+    } else if (s.includes('pomm') || s === 'p7' || s === 'p8') {
+      set.add('pommiers');
+    } else if (s.includes('nablara') || s === 'p5') {
+      set.add('nablara');
+    } else if (s.includes('redix') || s === 'p6') {
+      set.add('redix25');
+    } else if (s.includes('nectar')) {
+      set.add('nablara');
+      set.add('redix25');
+    } else {
+      set.add(s);
+    }
+  }
+  return set;
+}
+
+function cropSetsOverlap(a: Set<string>, b: Set<string>): boolean {
+  if (a.size === 0 || b.size === 0) return false;
+  for (const item of a) {
+    if (b.has(item)) return true;
+  }
+  return false;
+}
+
+function daysBetweenISO(dateA: string, dateB: string): number {
+  const a = new Date(`${dateA.slice(0, 10)}T12:00:00`).getTime();
+  const b = new Date(`${dateB.slice(0, 10)}T12:00:00`).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return 9999;
+  return Math.round((a - b) / (1000 * 60 * 60 * 24));
+}
+
+function isActiveRecoStatus(status: string | undefined): boolean {
+  const s = normalizePhytoStr(status);
+  if (!s) return true;
+  return !['refusee', 'refused', 'rejected', 'annulee', 'cancelled', 'deleted'].includes(s);
+}
+
+export function evaluatePhytoTemporalConflicts(params: {
+  proposedProducts: Array<{ product: string; date: string; passageLabel?: string }>;
+  targetCropGroups: string[];
+  allRecommendations: any[];
+  modulePhytoRecords?: any[];
+  excludeRecoId?: string | null;
+  lang?: 'fr' | 'ar';
+}): PhytoTemporalConflict[] {
+  const {
+    proposedProducts,
+    targetCropGroups,
+    allRecommendations,
+    modulePhytoRecords = [],
+    excludeRecoId = null,
+    lang = 'fr',
+  } = params;
+
+  const isAr = lang === 'ar';
+  const targetTokens = normalizeCropTokens(targetCropGroups);
+  if (targetTokens.size === 0 || proposedProducts.length === 0) return [];
+
+  // 1. Collecter tous les traitements phyto actifs (pending + accepted + executed) sur les mêmes parcelles
+  interface ExistingApp {
+    productName: string;
+    date: string;
+    status: string;
+    activeTokens: string[];
+    codes: string[];
+  }
+
+  const existingApps: ExistingApp[] = [];
+  const handledRecoIds = new Set<string>();
+
+  for (const r of allRecommendations || []) {
+    if (!r || r.kind !== 'phytosanitaire') continue;
+    if (excludeRecoId && r.id === excludeRecoId) continue;
+    if (!isActiveRecoStatus(r.status)) continue;
+
+    const payload = (r.payload || {}) as any;
+    const rawGroups = Array.isArray(payload.crop_group)
+      ? payload.crop_group
+      : payload.crop_group
+        ? [payload.crop_group]
+        : [];
+    const recoTokens = normalizeCropTokens(rawGroups, Array.isArray(r.parcel_ids) ? r.parcel_ids : []);
+    if (!cropSetsOverlap(targetTokens, recoTokens)) continue;
+
+    handledRecoIds.add(r.id);
+
+    const prog = payload.program || {};
+    const appDate = String(prog.date || r.created_at || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(appDate)) continue;
+
+    const prods = Array.isArray(prog.products)
+      ? prog.products
+      : Array.isArray(payload.products)
+        ? payload.products
+        : [];
+
+    for (const p of prods) {
+      const pName = String(p?.product || p?.name || '').trim();
+      if (!pName) continue;
+      existingApps.push({
+        productName: pName,
+        date: appDate,
+        status: String(r.status || 'envoyee'),
+        activeTokens: extractActiveTokens(pName),
+        codes: extractResistanceCodes(pName),
+      });
+    }
+  }
+
+  for (const rec of modulePhytoRecords || []) {
+    if (!rec) continue;
+    if (rec.reco_id && (handledRecoIds.has(rec.reco_id) || (excludeRecoId && rec.reco_id === excludeRecoId))) {
+      continue;
+    }
+    const recTokens = normalizeCropTokens([], [String(rec.parcelId || rec.parcel_id || '')]);
+    if (!cropSetsOverlap(targetTokens, recTokens)) continue;
+    const modDate = String(rec.executed_at || rec.executedAt || rec.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(modDate)) continue;
+
+    const list = Array.isArray(rec.products) ? rec.products : [];
+    for (const p of list) {
+      const pName = String(p?.product || p?.name || '').trim();
+      if (!pName) continue;
+      existingApps.push({
+        productName: pName,
+        date: modDate,
+        status: String(rec.status || 'executed'),
+        activeTokens: extractActiveTokens(pName),
+        codes: extractResistanceCodes(pName),
+      });
+    }
+  }
+
+  const conflicts: PhytoTemporalConflict[] = [];
+  const seenConflictKeys = new Set<string>();
+
+  const pushUnique = (c: PhytoTemporalConflict) => {
+    const key = `${c.rule}|${normalizePhytoStr(c.productName)}|${c.conflictDate}|${c.sharedCode || ''}`;
+    if (seenConflictKeys.has(key)) return;
+    seenConflictKeys.add(key);
+    conflicts.push(c);
+  };
+
+  // Trier l'historique par date décroissante pour identifier le traitement immédiatement précédent
+  const sortedExisting = [...existingApps].sort((a, b) => b.date.localeCompare(a.date));
+
+  for (const prop of proposedProducts) {
+    const prodName = (prop.product || '').trim();
+    const propDate = String(prop.date || '').slice(0, 10);
+    if (!prodName || !/^\d{4}-\d{2}-\d{2}$/.test(propDate)) continue;
+
+    const propNormName = normalizePhytoStr(prodName);
+    const propActives = extractActiveTokens(prodName);
+    const propCodes = extractResistanceCodes(prodName);
+    const propSingleSiteCodes = propCodes.filter((c) => !isMultisiteCode(c));
+
+    // A. Vérifier intervalle <= 14 jours (même produit ou même matière active)
+    for (const ex of sortedExisting) {
+      const diff = Math.abs(daysBetweenISO(propDate, ex.date));
+      const sameProd = normalizePhytoStr(ex.productName) === propNormName;
+      const sameActive =
+        propActives.length > 0 &&
+        ex.activeTokens.length > 0 &&
+        propActives.some((a) => ex.activeTokens.includes(a));
+
+      if ((sameProd || sameActive) && diff <= 14) {
+        pushUnique({
+          isBlocking: true,
+          rule: 'interval_14d',
+          productName: prodName,
+          conflictProductName: ex.productName,
+          conflictDate: ex.date,
+          conflictStatus: ex.status,
+          daysDiff: diff,
+          title: isAr
+            ? `⛔ تكرار ممنوع خلال ≤ 14 يوماً (${prodName})`
+            : `⛔ Répétition interdite à ≤ 14 jours (${prodName})`,
+          message: isAr
+            ? `⛔ لا يمكن تكرار ${prodName} أو نفس المادة الفعالة خلال أقل من 14 يوماً (توجد توصية بتاريخ ${ex.date} — ${ex.productName}).`
+            : `⛔ Impossible de répéter ${prodName} ou la même matière active à ≤ 14 jours d'écart (recommandation existante le ${ex.date} — ${ex.productName}).`,
+        });
+      }
+    }
+
+    // B. Vérifier même groupe FRAC/IRAC consécutif ou < 45 jours (hors multisites M01/M02/M04/M09)
+    if (propSingleSiteCodes.length > 0) {
+      const priorBeforeDate = sortedExisting.filter((ex) => ex.date <= propDate);
+      const immediatePrevDate = priorBeforeDate.length > 0 ? priorBeforeDate[0].date : null;
+
+      for (const ex of sortedExisting) {
+        const sharedCodes = propSingleSiteCodes.filter((c) => ex.codes.includes(c));
+        if (sharedCodes.length === 0) continue;
+
+        const diff = Math.abs(daysBetweenISO(propDate, ex.date));
+        const isConsecutive = immediatePrevDate !== null && ex.date === immediatePrevDate;
+
+        if (diff < 45 || isConsecutive) {
+          const sharedStr = sharedCodes.join(' + ');
+          pushUnique({
+            isBlocking: true,
+            rule: 'rotation_group',
+            productName: prodName,
+            conflictProductName: ex.productName,
+            conflictDate: ex.date,
+            conflictStatus: ex.status,
+            sharedCode: sharedStr,
+            daysDiff: diff,
+            title: isAr
+              ? `⛔ حظر تناوب مجموعة المقاومة (${sharedStr})`
+              : `⛔ Rotation FRAC/IRAC obligatoire (${sharedStr})`,
+            message: isAr
+              ? `⛔ لا يمكن تكرار ${prodName} أو نفس مجموعة المقاومة (${sharedStr}) خلال أقل من 45 يوماً أو بشكل متتالي (توجد توصية بتاريخ ${ex.date} — ${ex.productName}).`
+              : `⛔ Impossible de répéter le groupe ${sharedStr} (${prodName}) à moins de 45 jours ou consécutivement (recommandation existante le ${ex.date} — ${ex.productName}).`,
+          });
+        }
+      }
+    }
+
+    // C. Vérifier quota annuel max/saison
+    const maxPerSeason = getMaxPerSeasonForProduct(prodName);
+    if (maxPerSeason) {
+      const primarySpecies = targetTokens.has('oliviers') ? 'olivier' : 'pommier';
+      const season = getAgriculturalSeason(primarySpecies, propDate);
+      const sameSeasonApps = sortedExisting.filter((ex) => {
+        if (ex.date < season.startDate || ex.date > season.endDate) return false;
+        const sameProd = normalizePhytoStr(ex.productName) === propNormName;
+        const sameActive =
+          propActives.length > 0 &&
+          ex.activeTokens.length > 0 &&
+          propActives.some((a) => ex.activeTokens.includes(a));
+        return sameProd || sameActive;
+      });
+      if (sameSeasonApps.length >= maxPerSeason) {
+        const lastDate = sameSeasonApps[0].date;
+        pushUnique({
+          isBlocking: true,
+          rule: 'quota_season',
+          productName: prodName,
+          conflictProductName: sameSeasonApps[0].productName,
+          conflictDate: lastDate,
+          conflictStatus: sameSeasonApps[0].status,
+          title: isAr
+            ? `⛔ تم بلوغ الحد الأقصى السنوي (${sameSeasonApps.length}/${maxPerSeason})`
+            : `⛔ Quota annuel atteint (${sameSeasonApps.length}/${maxPerSeason})`,
+          message: isAr
+            ? `⛔ تم تجاوز الحد الأقصى السنوي لـ ${prodName} (${sameSeasonApps.length}/${maxPerSeason} في الموسم ${season.label} — آخر توصية بتاريخ ${lastDate}).`
+            : `⛔ Quota annuel dépassé pour ${prodName} (${sameSeasonApps.length}/${maxPerSeason} autorisé(s) sur la campagne ${season.label} — dernière recommandation le ${lastDate}).`,
+        });
+      }
+    }
+  }
+
+  return conflicts;
 }
