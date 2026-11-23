@@ -19,15 +19,20 @@ export interface MandataireBordereau {
   avanceProducteurDA: string; // défaut "0"
 }
 
+export const APPLE_VARIETY_OPTIONS = [
+  "G · Golden",
+  "S · Granny Smith",
+  "Gala One",
+];
+
+export const CALIBRE_OPTIONS: string[] = [
+  ...Array.from({ length: 15 }, (_, i) => String(16 + i)), // 16 à 30
+  "Frag",
+];
+
 export const NATURE_SUGGESTIONS = [
-  "ت/22",
-  "ت/26",
-  "ت/00",
-  "فراك / Vrac",
-  "Choix 1",
-  "Choix 2",
-  "Choix 3",
-  "Choix 4",
+  ...APPLE_VARIETY_OPTIONS,
+  ...CALIBRE_OPTIONS.map((c) => (c === "Frag" ? "Frag" : `Cal. ${c}`)),
 ];
 
 function parseNum(v: string | number | undefined): number {

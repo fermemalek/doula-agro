@@ -32,7 +32,8 @@ import {
 } from "./BordereauPrintModal";
 import {
   BordereauEditorCard,
-  NATURE_SUGGESTIONS,
+  APPLE_VARIETY_OPTIONS,
+  CALIBRE_OPTIONS,
   createEmptyBordereau,
   createEmptySaleLine,
   type MandataireBordereau,
@@ -400,13 +401,53 @@ export function RecolteFruitsFrais({
   const { add, update, remove } = useModuleActions();
   const [editingHarvestId, setEditingHarvestId] = useState<string | null>(null);
 
-  const freshParcels = useMemo(() => {
-    return allParcels.filter((p) => {
-      const idLow = p.id.toLowerCase();
-      const typeLow = (p.type || "").toLowerCase();
-      return typeLow !== "olivier" && !["p1", "p2", "p3", "p4"].includes(idLow);
-    });
-  }, [allParcels]);
+  const CUSTOM_SPECIES_KEY = "doula_recolte_custom_species_v1";
+  const [customSpeciesList, setCustomSpeciesList] = useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(CUSTOM_SPECIES_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === "string" && s.trim().length > 0) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [selectedSpecies, setSelectedSpecies] = useState<string>("");
+  const [selectedCalibre, setSelectedCalibre] = useState<string>("22");
+  const [addingCustomSpecies, setAddingCustomSpecies] = useState<boolean>(false);
+  const [newSpeciesName, setNewSpeciesName] = useState<string>("");
+
+  const speciesOptions = useMemo(() => {
+    return Array.from(new Set([...APPLE_VARIETY_OPTIONS, ...customSpeciesList]));
+  }, [customSpeciesList]);
+
+  function handleAddCustomSpecies() {
+    const cleaned = newSpeciesName.trim();
+    if (!cleaned) return;
+    if (!speciesOptions.includes(cleaned)) {
+      const next = [...customSpeciesList, cleaned];
+      setCustomSpeciesList(next);
+      try {
+        localStorage.setItem(CUSTOM_SPECIES_KEY, JSON.stringify(next));
+      } catch {
+        // ignore storage quota errors
+      }
+    }
+    setSelectedSpecies(cleaned);
+    setNewSpeciesName("");
+    setAddingCustomSpecies(false);
+    toast.success(isAr ? `تمت إضافة الصنف "${cleaned}"` : `Espèce « ${cleaned} » ajoutée !`);
+  }
+
+  function handleAddLotFromPicker() {
+    const calLabel = selectedCalibre === "Frag" ? "Frag" : `Cal. ${selectedCalibre}`;
+    const composed = selectedSpecies ? `${selectedSpecies} — ${calLabel}` : calLabel;
+    const emptyIdx = harvestLots.findIndex((l) => !l.nature.trim() && !l.poidsNetKg && !l.colis);
+    if (emptyIdx >= 0) {
+      setHarvestLots((prev) => prev.map((l, i) => (i === emptyIdx ? { ...l, nature: composed } : l)));
+    } else {
+      setHarvestLots((prev) => [...prev, createEmptyHarvestLot(composed)]);
+    }
+  }
 
   // Liste des mandataires déjà saisis pour l'autocomplétion
   const knownMandataires = useMemo(() => {
@@ -450,7 +491,7 @@ export function RecolteFruitsFrais({
   const [date, setDate] = useState(prefillDate || todayIso);
   const [selectedParcelIds, setSelectedParcelIds] = useState<string[]>([parcelId]);
   const [unit, setUnit] = useState<HarvestUnit>("Kg");
-  const [harvestLots, setHarvestLots] = useState<HarvestLotLine[]>([createEmptyHarvestLot("ت/22")]);
+  const [harvestLots, setHarvestLots] = useState<HarvestLotLine[]>([createEmptyHarvestLot("")]);
   const [rebutKg, setRebutKg] = useState("");
   const [photo, setPhoto] = useState<string | undefined>(undefined);
   const [notes, setNotes] = useState(prefillNotes || "");
@@ -630,7 +671,7 @@ export function RecolteFruitsFrais({
     setDate(prefillDate || todayIso);
     setSelectedParcelIds([parcelId]);
     setUnit("Kg");
-    setHarvestLots([createEmptyHarvestLot("ت/22")]);
+    setHarvestLots([createEmptyHarvestLot("")]);
     setRebutKg("");
     setPhoto(undefined);
     setNotes(prefillNotes || "");
@@ -1132,67 +1173,111 @@ export function RecolteFruitsFrais({
               </div>
             </div>
 
-            {/* Parcelles concernées (multi-sélection) */}
-            {freshParcels.length > 0 && (
-              <div>
-                <label className="text-[10px] uppercase font-bold text-muted-foreground block mb-1">
-                  {isAr ? "القطعة / القطع المعنية" : "Parcelle(s) concernée(s)"}
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {freshParcels.map((p) => {
-                    const active = selectedParcelIds.includes(p.id);
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedParcelIds((prev) =>
-                            prev.includes(p.id)
-                              ? prev.length > 1
-                                ? prev.filter((id) => id !== p.id)
-                                : prev
-                              : [...prev, p.id],
-                          );
-                        }}
-                        className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition cursor-pointer ${
-                          active
-                            ? "border-emerald-600 bg-emerald-600 text-white shadow-xs"
-                            : "border-input bg-background text-foreground hover:bg-muted"
-                        }`}
-                      >
-                        {p.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Suggestions rapides cliquables de Nature / Calibre */}
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold uppercase text-muted-foreground block">
-                {isAr ? "اختيار سريع للعيار / الطبيعة (انقر لإضافة سطر) :" : "Suggestions rapides Nature / Calibre (cliquez pour ajouter) :"}
+            {/* Sélecteur Espèce / Variété + Calibre (16 à 30 & Frag) */}
+            <div className="rounded-xl border border-primary/25 bg-primary/[0.03] p-2.5 space-y-2">
+              <span className="text-[10px] font-black uppercase text-primary block">
+                {isAr
+                  ? "اختيار الصنف والعيار (من 16 إلى 30 أو Frag) لإضافته إلى الدفعات :"
+                  : "Choix de l'espèce & du calibre (16 à 30 ou Frag) :"}
               </span>
-              <div className="flex flex-wrap gap-1.5">
-                {NATURE_SUGGESTIONS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => {
-                      // Si la dernière ligne a un champ nature vide, on le remplit ; sinon on ajoute une nouvelle ligne
-                      const emptyIdx = harvestLots.findIndex((l) => !l.nature.trim() && !l.poidsNetKg && !l.colis);
-                      if (emptyIdx >= 0) {
-                        setHarvestLots((prev) => prev.map((l, i) => (i === emptyIdx ? { ...l, nature: s } : l)));
+
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                {/* Choix espèce / variété */}
+                <div className="sm:col-span-5">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                    {isAr ? "الصنف / نوع التفاح" : "Espèce / Variété"}
+                  </label>
+                  <select
+                    value={addingCustomSpecies ? "__add__" : selectedSpecies}
+                    onChange={(e) => {
+                      if (e.target.value === "__add__") {
+                        setAddingCustomSpecies(true);
                       } else {
-                        setHarvestLots((prev) => [...prev, createEmptyHarvestLot(s)]);
+                        setAddingCustomSpecies(false);
+                        setSelectedSpecies(e.target.value);
                       }
                     }}
-                    className="rounded-lg border border-primary/30 bg-primary/5 hover:bg-primary/15 px-2 py-1 text-[11px] font-bold text-primary transition cursor-pointer"
+                    className={cls}
                   >
-                    + {s}
+                    <option value="">—</option>
+                    {speciesOptions.map((sp) => (
+                      <option key={sp} value={sp}>
+                        {sp}
+                      </option>
+                    ))}
+                    <option value="__add__">
+                      {isAr ? "+ إضافة صنف آخر..." : "+ Autre espèce (ajouter)..."}
+                    </option>
+                  </select>
+                </div>
+
+                {/* Choix calibre 16 à 30 + Frag */}
+                <div className="sm:col-span-4">
+                  <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                    {isAr ? "العيار (16 إلى 30 / Frag)" : "Calibre (16 à 30 / Frag)"}
+                  </label>
+                  <select
+                    dir="ltr"
+                    value={selectedCalibre}
+                    onChange={(e) => setSelectedCalibre(e.target.value)}
+                    className={cls}
+                  >
+                    {CALIBRE_OPTIONS.map((cal) => (
+                      <option key={cal} value={cal}>
+                        {cal === "Frag" ? (isAr ? "Frag / فراك" : "Frag") : `Calibre ${cal}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Bouton ajouter le lot */}
+                <div className="sm:col-span-3">
+                  <button
+                    type="button"
+                    onClick={handleAddLotFromPicker}
+                    className="w-full inline-flex items-center justify-center gap-1 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-2 text-xs font-black transition cursor-pointer"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>{isAr ? "إضافة الدفعة" : "Ajouter"}</span>
                   </button>
-                ))}
+                </div>
               </div>
+
+              {/* Champ inline pour ajouter une nouvelle espèce personnalisée */}
+              {addingCustomSpecies && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-primary/15">
+                  <input
+                    value={newSpeciesName}
+                    onChange={(e) => setNewSpeciesName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddCustomSpecies();
+                      }
+                    }}
+                    placeholder={isAr ? "اسم الصنف الجديد (مثال: Red Chief, Starking...)" : "Nom de la nouvelle espèce (ex: Red Chief, Starking...)"}
+                    className="flex-1 min-w-[160px] rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-semibold"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCustomSpecies}
+                    disabled={!newSpeciesName.trim()}
+                    className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-xs font-black disabled:opacity-50 cursor-pointer"
+                  >
+                    {isAr ? "حفظ الصنف" : "Enregistrer"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAddingCustomSpecies(false);
+                      setNewSpeciesName("");
+                    }}
+                    className="rounded-lg border px-2.5 py-1.5 text-xs font-bold text-muted-foreground hover:bg-muted cursor-pointer"
+                  >
+                    {isAr ? "إلغاء" : "Annuler"}
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Tableau dynamique multi-lignes « Lots récoltés » */}
