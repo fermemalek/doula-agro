@@ -14,8 +14,10 @@ import {
   type Recommendation,
   type CropGroup
 } from "@/lib/cloud/recommendations";
-import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
+import { useAllModuleRecords, useModuleActions, removeModuleRecordsByRecoId, fetchCloudModules } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
+import { useRole } from "@/lib/role";
+import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { getAgriculturalSeason, isExecutedOrAcceptedStatus } from "@/lib/phyto/engine";
 import { formatDateFR } from "@/lib/format";
@@ -156,6 +158,9 @@ export function PhytoHistoryModal({
   const { t, lang } = useTranslation();
   const isAr = lang === "ar";
   const queryClient = useQueryClient();
+  const { role } = useRole();
+  const canBulkClear = role === "admin" || role === "ingenieur";
+  const [clearingAll, setClearingAll] = useState(false);
 
   const parcels = useParcels();
   const { data: recos = [] } = useRecommendations();
@@ -578,6 +583,111 @@ export function PhytoHistoryModal({
         }
       }
     } catch (e) { }
+
+    void queryClient.invalidateQueries({ queryKey: ["recommendations"] });
+    void queryClient.invalidateQueries({ queryKey: ["phyto-executions"] });
+    void queryClient.invalidateQueries({ queryKey: ["executions"] });
+  };
+
+  // Suppression en 1 clic de TOUS les traitements actuellement affichés (Admin & Ingénieur)
+  const handleDeleteAllDisplayed = async () => {
+    if (filteredTreatments.length === 0 || clearingAll) return;
+    const msg = isAr
+      ? `هل تريد مسح جميع المعاملات المعروضة (${filteredTreatments.length}) من التوصيات وأرشيف القطع نهائياً وإعادة حساب حصص IRAC/FRAC؟`
+      : `Voulez-vous supprimer définitivement les ${filteredTreatments.length} traitement(s) affiché(s) (recommandations + historique des parcelles) et recalculer les quotas IRAC/FRAC ?`;
+    if (!window.confirm(msg)) return;
+
+    setClearingAll(true);
+    try {
+      const items = [...filteredTreatments];
+      const nextDismissed = new Set(dismissedKeys);
+      const recoIdsToDelete = new Set<string>();
+      const moduleIdsToDelete: Array<{ parcelId: string; id: string }> = [];
+
+      for (const item of items) {
+        nextDismissed.add(item.id);
+        nextDismissed.add(item.rawKey);
+        if (item.recoId) {
+          nextDismissed.add(item.recoId);
+          nextDismissed.add(`reco-${item.recoId}`);
+          recoIdsToDelete.add(item.recoId);
+        }
+        if (item.moduleRecordId && item.parcelId) {
+          moduleIdsToDelete.push({ parcelId: item.parcelId, id: item.moduleRecordId });
+        }
+      }
+
+      const dismissedArr = Array.from(nextDismissed);
+      setDismissedKeys(dismissedArr);
+      try {
+        localStorage.setItem("doula_dismissed_phyto_history", JSON.stringify(dismissedArr));
+      } catch {}
+
+      // 1. Supprimer les recommandations liées + leurs entrées module_records
+      for (const recoId of recoIdsToDelete) {
+        try {
+          await removeReco.mutateAsync(recoId);
+        } catch {}
+        removeModuleRecordsByRecoId(recoId);
+      }
+
+      // 2. Supprimer les enregistrements directs dans l'archive phyto des parcelles
+      for (const m of moduleIdsToDelete) {
+        try {
+          removeModuleRecord(m.parcelId, "phytosanitaire", m.id);
+        } catch {}
+      }
+
+      // 3. Nettoyer doula-modules localStorage pour toutes les entrées affichées
+      try {
+        const rawMod = localStorage.getItem("doula-modules");
+        if (rawMod) {
+          const parsed = JSON.parse(rawMod);
+          let changed = false;
+          for (const pid of Object.keys(parsed)) {
+            const arr = parsed[pid]?.phytosanitaire;
+            if (Array.isArray(arr)) {
+              const filtered = arr.filter((r: any) => {
+                const rStr = JSON.stringify(r).toLowerCase();
+                const matched = items.some(
+                  (item) =>
+                    (item.moduleRecordId && r.id === item.moduleRecordId) ||
+                    (item.recoId && r.reco_id === item.recoId) ||
+                    (item.productName && rStr.includes(item.productName.toLowerCase()) && rStr.includes(item.date)),
+                );
+                return !matched;
+              });
+              if (filtered.length !== arr.length) {
+                parsed[pid].phytosanitaire = filtered;
+                changed = true;
+              }
+            }
+          }
+          if (changed) {
+            localStorage.setItem("doula-modules", JSON.stringify(parsed));
+          }
+        }
+      } catch {}
+
+      // 4. Rafraîchir les caches Cloud & IRAC/FRAC
+      await fetchCloudModules();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["recommendations"] }),
+        queryClient.invalidateQueries({ queryKey: ["phyto-executions"] }),
+        queryClient.invalidateQueries({ queryKey: ["executions"] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+      ]);
+      window.dispatchEvent(new Event("doula:farm-reset"));
+      toast.success(
+        isAr
+          ? `تم مسح ${items.length} معاملة وإعادة حساب حصص IRAC/FRAC بنجاح.`
+          : `${items.length} traitement(s) supprimé(s) et quotas IRAC/FRAC recalculés.`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : isAr ? "خطأ أثناء المسح" : "Erreur lors de la suppression");
+    } finally {
+      setClearingAll(false);
+    }
   };
 
   // Campagne agricole active selon la culture sélectionnée
@@ -866,7 +976,7 @@ export function PhytoHistoryModal({
 
           {/* Liste des traitements triée */}
           <div className="space-y-2">
-            <div className="flex justify-between items-center text-xs text-muted-foreground px-1">
+            <div className="flex flex-wrap justify-between items-center gap-2 text-xs text-muted-foreground px-1">
               <span>
                 {filteredTreatments.length} {isAr ? "معاملة مطابقة" : "traitement(s) trouvé(s)"}
                 {selectedCrop !== "all" && (
@@ -875,21 +985,38 @@ export function PhytoHistoryModal({
                   </span>
                 )}
               </span>
-              {(selectedCrop !== defaultCropFilter || selectedSeason !== "all" || selectedMonth !== "all" || selectedActive !== "all" || searchTerm) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCrop(defaultCropFilter);
-                    setSelectedSeason("all");
-                    setSelectedMonth("all");
-                    setSelectedActive("all");
-                    setSearchTerm("");
-                  }}
-                  className="text-primary hover:underline font-bold text-[11px]"
-                >
-                  {isAr ? "إعادة تعيين الفلاتر" : "Réinitialiser les filtres"}
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {canBulkClear && filteredTreatments.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={clearingAll}
+                    onClick={handleDeleteAllDisplayed}
+                    className="inline-flex items-center gap-1 rounded-lg border border-destructive/40 bg-destructive/10 hover:bg-destructive/20 text-destructive px-2.5 py-1 text-[11px] font-black transition cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    <span>
+                      {clearingAll
+                        ? isAr ? "جارٍ المسح..." : "Suppression..."
+                        : isAr ? "مسح السجل المعروض" : "Tout supprimer"}
+                    </span>
+                  </button>
+                )}
+                {(selectedCrop !== defaultCropFilter || selectedSeason !== "all" || selectedMonth !== "all" || selectedActive !== "all" || searchTerm) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedCrop(defaultCropFilter);
+                      setSelectedSeason("all");
+                      setSelectedMonth("all");
+                      setSelectedActive("all");
+                      setSearchTerm("");
+                    }}
+                    className="text-primary hover:underline font-bold text-[11px]"
+                  >
+                    {isAr ? "إعادة تعيين الفلاتر" : "Réinitialiser les filtres"}
+                  </button>
+                )}
+              </div>
             </div>
 
             {filteredTreatments.length === 0 ? (

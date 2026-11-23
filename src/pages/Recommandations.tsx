@@ -29,7 +29,18 @@ import { RecommendationForm } from "@/components/ingenieur/RecommendationForm";
 import { RecommendationDetailDialog } from "@/components/RecommendationDetailDialog";
 import seededRecos from "@/data/seeded_recommendations.json";
 import { toast } from "sonner";
-import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
+import { useAllModuleRecords, useModuleActions, removeModuleRecordsByRecoId, fetchCloudModules } from "@/lib/modules-store";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { useSuppliers, useSupplierActions } from "@/lib/suppliers-store";
 import { useParcels, useParcelActions } from "@/lib/parcel-store";
 import { checkRecoStock, getTargetParcelsForReco } from "@/lib/stock-alerts";
@@ -245,6 +256,9 @@ function RecommandationsPageContent() {
   const [seeding, setSeeding] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
   const [resettingHistory, setResettingHistory] = useState(false);
+  const [deleteAllDialogOpen, setDeleteAllDialogOpen] = useState(false);
+  const [deleteLinkedParcelPhyto, setDeleteLinkedParcelPhyto] = useState(true);
+  const queryClient = useQueryClient();
   const [isBatchValidating, setIsBatchValidating] = useState(false);
 
   // Fenêtre systématique de confirmation de l'heure de début + temps d'irrigation (avec et sans fertilisation)
@@ -519,19 +533,101 @@ function RecommandationsPageContent() {
     };
   };
 
-  async function handleDeleteAll() {
-    if (!window.confirm("Voulez-vous vraiment supprimer TOUTES les recommandations ? Cette action est irréversible.")) return;
+  function handleDeleteAll() {
+    setDeleteLinkedParcelPhyto(true);
+    setDeleteAllDialogOpen(true);
+  }
+
+  async function confirmDeleteAll() {
+    setDeleteAllDialogOpen(false);
     setDeletingAll(true);
     try {
-      toast.info("Suppression en cours...");
+      toast.info(isAr ? "جارٍ الحذف..." : "Suppression en cours...");
       const itemsToDelete = [...list];
+      const deletedIds = new Set<string>();
 
-      // Suppression séquentielle garantie
+      // 1. Suppression séquentielle des recommandations
       for (const r of itemsToDelete) {
         await remove.mutateAsync(r.id);
+        deletedIds.add(r.id);
       }
 
-      toast.success("Toutes les recommandations ont été supprimées avec succès !");
+      // 2. Si la case est cochée : supprimer aussi les traitements exécutés liés dans l'historique des parcelles
+      if (deleteLinkedParcelPhyto) {
+        for (const r of itemsToDelete) {
+          removeModuleRecordsByRecoId(r.id);
+        }
+
+        // Nettoyage complémentaire dans doula-modules localStorage + Supabase module_records (phytosanitaire liés)
+        const phytoItems = itemsToDelete.filter((r) => r.kind === "phytosanitaire");
+        try {
+          const rawMod = localStorage.getItem("doula-modules");
+          if (rawMod) {
+            const parsed = JSON.parse(rawMod);
+            let changed = false;
+            for (const pid of Object.keys(parsed)) {
+              const arr = parsed[pid]?.phytosanitaire;
+              if (Array.isArray(arr)) {
+                const filtered = arr.filter((rec: any) => {
+                  if (rec.reco_id && deletedIds.has(rec.reco_id)) return false;
+                  if (rec.payload?.reco_id && deletedIds.has(rec.payload.reco_id)) return false;
+                  if (phytoItems.length > 0 && rec.reco_id) return false;
+                  return true;
+                });
+                if (filtered.length !== arr.length) {
+                  parsed[pid].phytosanitaire = filtered;
+                  changed = true;
+                }
+              }
+            }
+            if (changed) {
+              localStorage.setItem("doula-modules", JSON.stringify(parsed));
+            }
+          }
+        } catch {}
+
+        // Supprimer aussi dans Supabase module_records les lignes phytosanitaires créées via recommandations
+        if (phytoItems.length > 0) {
+          try {
+            const { data: cloudPhyto } = await supabase
+              .from("module_records")
+              .select("id, payload")
+              .eq("kind", "phytosanitaire");
+            if (Array.isArray(cloudPhyto)) {
+              const cloudIdsToDelete = cloudPhyto
+                .filter((row: any) => {
+                  const rid = row?.payload?.reco_id;
+                  return rid && deletedIds.has(rid);
+                })
+                .map((row: any) => row.id);
+              if (cloudIdsToDelete.length > 0) {
+                await supabase.from("module_records").delete().in("id", cloudIdsToDelete);
+              }
+            }
+          } catch {}
+        }
+
+        await fetchCloudModules();
+      }
+
+      // 3. Invalider tous les caches de calcul IRAC/FRAC & historique
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["recommendations"] }),
+        queryClient.invalidateQueries({ queryKey: ["phyto-executions"] }),
+        queryClient.invalidateQueries({ queryKey: ["executions"] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+      ]);
+      window.dispatchEvent(new Event("doula:farm-reset"));
+
+      toast.success(
+        deleteLinkedParcelPhyto
+          ? isAr
+            ? "تم حذف جميع التوصيات والمعاملات المرتبطة في أرشيف القطع وإعادة حساب الحصص!"
+            : "Toutes les recommandations et les traitements liés dans l'historique des parcelles ont été supprimés !"
+          : isAr
+            ? "تم حذف جميع التوصيات بنجاح!"
+            : "Toutes les recommandations ont été supprimées avec succès !",
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Erreur lors de la suppression");
     } finally {
@@ -1604,6 +1700,58 @@ function RecommandationsPageContent() {
           onConfirm={executeConfirmedValidation}
         />
       )}
+      {/* Dialogue de confirmation « Supprimer tout / حذف الكل » avec synchronisation historique parcelles */}
+      <Dialog open={deleteAllDialogOpen} onOpenChange={setDeleteAllDialogOpen}>
+        <DialogContent className="max-w-md rounded-2xl" dir={isAr ? "rtl" : "ltr"}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive font-black text-base">
+              <Trash2 className="h-5 w-5 shrink-0" />
+              <span>{isAr ? "حذف جميع التوصيات" : "Supprimer toutes les recommandations"}</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1">
+              {isAr
+                ? `هل أنت متأكد من حذف (${list.length}) توصية نهائياً؟ لا يمكن التراجع عن هذا الإجراء.`
+                : `Voulez-vous vraiment supprimer définitivement les ${list.length} recommandation(s) affichée(s) ? Cette action est irréversible.`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <label className="flex items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs font-semibold text-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={deleteLinkedParcelPhyto}
+              onChange={(e) => setDeleteLinkedParcelPhyto(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-input accent-destructive cursor-pointer shrink-0"
+            />
+            <span className="leading-relaxed">
+              {isAr
+                ? "حذف المعاملات المنفذة المرتبطة من أرشيف القطع أيضاً (وإعادة ضبط حصص IRAC/FRAC)"
+                : "Supprimer aussi les traitements exécutés liés dans l'historique des parcelles (et recalculer les quotas IRAC/FRAC)"}
+            </span>
+          </label>
+
+          <DialogFooter className="gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteAllDialogOpen(false)}
+              className="rounded-xl font-bold"
+            >
+              {isAr ? "إلغاء" : "Annuler"}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={confirmDeleteAll}
+              className="rounded-xl font-black"
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1.5 rtl:mr-0 rtl:ml-1.5" />
+              {isAr ? "تأكيد الحذف الكلي" : "Confirmer la suppression"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
