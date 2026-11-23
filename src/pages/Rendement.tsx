@@ -451,6 +451,21 @@ export default function RendementPage() {
       const inBlockCampaign = (r: any) =>
         getBlockForParcelId(r.parcelId) === def.id && isDateInCampaign(r.date, selectedCampaign, def.id);
 
+      // Règle Taille : uniquement l'année civile de la campagne en question (ex: 2026)
+      const inBlockTailleYear = (r: any) => {
+        if (getBlockForParcelId(r.parcelId) !== def.id) return false;
+        if (selectedCampaign === "all") return true;
+        return String(r.date || "").slice(0, 4) === selectedCampaign;
+      };
+
+      // Règle Amendement : toujours l'année précédente (N-1, ex: 2025 pour la campagne 2026)
+      const prevYear = selectedCampaign === "all" ? null : String(parseInt(selectedCampaign, 10) - 1);
+      const inBlockAmendPrevYear = (r: any) => {
+        if (getBlockForParcelId(r.parcelId) !== def.id) return false;
+        if (!prevYear) return true;
+        return String(r.date || "").slice(0, 4) === prevYear;
+      };
+
       const fertCostDA = allFert
         .filter(inBlockCampaign)
         .reduce((s, r) => s + computeFertilisationRecordTotal(r, suppliers, catalogProducts).total, 0);
@@ -461,10 +476,10 @@ export default function RendementPage() {
         .filter(inBlockCampaign)
         .reduce((s, r) => s + computePhytosanitaireRecordTotal(r, suppliers, catalogProducts).total, 0);
       const tailleCostDA = allTaille
-        .filter(inBlockCampaign)
+        .filter(inBlockTailleYear)
         .reduce((s, r) => s + parseNum(r.mainOeuvre) + parseNum(r.equipements), 0);
       const amendCostDA = allAmend
-        .filter(inBlockCampaign)
+        .filter(inBlockAmendPrevYear)
         .reduce((s, r) => s + parseNum(r.total ?? r.totalCost), 0);
 
       const otherFeeKey = `${selectedCampaign}_${def.id}`;
@@ -879,6 +894,9 @@ export default function RendementPage() {
                     <span className="flex items-center gap-1">
                       <Scissors className="h-3 w-3 text-muted-foreground" />
                       {isAr ? "التقليم" : "Taille"}
+                      {selectedCampaign !== "all" && (
+                        <span className="text-[10px] text-muted-foreground font-semibold">({selectedCampaign})</span>
+                      )}
                     </span>
                     <strong dir="ltr">{formatDA(b.tailleCostDA, 0)}</strong>
                   </div>
@@ -886,6 +904,11 @@ export default function RendementPage() {
                     <span className="flex items-center gap-1">
                       <Sprout className="h-3 w-3 text-emerald-700" />
                       {isAr ? "التسميد العضوي (Amendement)" : "Amendement"}
+                      {selectedCampaign !== "all" && (
+                        <span className="text-[10px] text-muted-foreground font-semibold">
+                          ({parseInt(selectedCampaign, 10) - 1})
+                        </span>
+                      )}
                     </span>
                     <strong dir="ltr">{formatDA(b.amendCostDA, 0)}</strong>
                   </div>
