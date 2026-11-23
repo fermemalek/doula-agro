@@ -739,7 +739,7 @@ function RecommandationsPageContent() {
   };
 
   return (
-    <main className="mx-auto max-w-4xl px-4 pb-24 pt-4">
+    <main className="mx-auto w-full max-w-4xl overflow-x-hidden px-3 sm:px-4 pb-24 pt-4">
       <button
         onClick={() => navigate({ to: "/" })}
         className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition"
@@ -747,21 +747,21 @@ function RecommandationsPageContent() {
         <ArrowLeft className="h-4 w-4" /> Retour
       </button>
 
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold">Recommandations ingénieur</h1>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3 w-full min-w-0">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold break-words">Recommandations ingénieur</h1>
           <p className="text-sm text-muted-foreground">
             {pendingCount} en attente · {list.length} au total
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto min-w-0">
           {(displayRole === "ingenieur" || displayRole === "admin") && (
             <>
               {list.length === 0 && (
                 <button
                   onClick={handleSeed}
                   disabled={seeding}
-                  className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-primary/10 hover:bg-primary/20 px-3 text-sm font-bold text-primary active:scale-95 transition-all"
+                  className="inline-flex h-9 sm:h-10 items-center gap-1 rounded-xl bg-primary/10 hover:bg-primary/20 px-3 text-xs sm:text-sm font-bold text-primary active:scale-95 transition-all"
                 >
                   {seeding ? "Importation..." : "Importer Excel"}
                 </button>
@@ -771,17 +771,17 @@ function RecommandationsPageContent() {
                   <button
                     onClick={handleResetHistory}
                     disabled={resettingHistory}
-                    className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 px-3 text-sm font-bold text-amber-700 dark:text-amber-300 border border-amber-500/30 active:scale-95 transition-all"
+                    className="inline-flex h-9 sm:h-10 items-center gap-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 px-2.5 sm:px-3 text-xs sm:text-sm font-bold text-amber-700 dark:text-amber-300 border border-amber-500/30 active:scale-95 transition-all"
                     title="Effacer les exécutions et remettre toutes les recommandations à l'état initial pour recommencer"
                   >
-                    <RotateCcw className="h-4 w-4" />
-                    {resettingHistory ? "Réinitialisation..." : "Réinitialiser applications"}
+                    <RotateCcw className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                    <span>{resettingHistory ? "Réinitialisation..." : "Réinitialiser applications"}</span>
                   </button>
 
                   <button
                     onClick={handleDeleteAll}
                     disabled={deletingAll}
-                    className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-destructive/10 hover:bg-destructive/20 px-3 text-sm font-bold text-destructive active:scale-95 transition-all"
+                    className="inline-flex h-9 sm:h-10 items-center gap-1 rounded-xl bg-destructive/10 hover:bg-destructive/20 px-2.5 sm:px-3 text-xs sm:text-sm font-bold text-destructive active:scale-95 transition-all"
                   >
                     {deletingAll ? "Suppression..." : "Supprimer tout"}
                   </button>
@@ -796,9 +796,9 @@ function RecommandationsPageContent() {
                 setIsDuplicate(false);
                 setFormOpen(true);
               }}
-              className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-primary hover:bg-primary/90 px-3 text-sm font-bold text-primary-foreground shadow-xs active:scale-95 transition"
+              className="inline-flex h-9 sm:h-10 items-center gap-1 rounded-xl bg-primary hover:bg-primary/90 px-3 text-xs sm:text-sm font-bold text-primary-foreground shadow-xs active:scale-95 transition"
             >
-              <Plus className="h-4 w-4" /> Nouvelle
+              <Plus className="h-4 w-4 shrink-0" /> Nouvelle
             </button>
           )}
         </div>
@@ -1199,7 +1199,7 @@ function RecommandationsPageContent() {
                     setDetail(r);
                   }
                 }}
-                className={`flex flex-col gap-2.5 cursor-pointer rounded-2xl border p-3.5 shadow-xs transition active:scale-[0.99] hover:shadow-md ${config.cardTone} ${selectedRecoIds.has(r.id) ? "ring-2 ring-primary border-primary bg-primary/10" : ""
+                className={`w-full max-w-full min-w-0 overflow-hidden flex flex-col gap-2.5 cursor-pointer rounded-2xl border p-3.5 shadow-xs transition active:scale-[0.99] hover:shadow-md ${config.cardTone} ${selectedRecoIds.has(r.id) ? "ring-2 ring-primary border-primary bg-primary/10" : ""
                   }`}
               >
                 {/* HAUT DE CARTE : Case à cocher + Icône + Badge Statut + Badge Type + Badges Bacs & Stock */}

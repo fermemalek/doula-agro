@@ -1004,10 +1004,10 @@ export function RecommendationForm({
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
-          className="w-[95vw] max-w-2xl mx-auto left-1/2 -translate-x-1/2 max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 rounded-2xl bg-card text-card-foreground"
+          className="fixed left-2 right-2 top-1/2 -translate-y-1/2 translate-x-0 w-auto max-w-[calc(100vw-1rem)] max-h-[90dvh] overflow-y-auto overflow-x-hidden p-3 sm:p-6 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-full sm:max-w-2xl rounded-2xl bg-card text-card-foreground"
         >
-          <DialogHeader className="border-b pb-2 pr-6">
-            <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-wide flex flex-wrap items-center justify-between gap-2">
+          <DialogHeader className="border-b pb-2 pr-6 min-w-0">
+            <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-wide flex flex-wrap items-center justify-between gap-2 min-w-0">
               <div className="flex items-center gap-2 min-w-0">
                 {duplicateMode ? (
                   <Copy className="h-5 w-5 text-amber-500 shrink-0" />
@@ -1031,25 +1031,25 @@ export function RecommendationForm({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 text-xs min-w-0">
+          <div className="space-y-4 text-xs min-w-0 w-full box-border">
             {duplicateMode && (
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 flex items-start gap-2.5 text-amber-900 dark:text-amber-200">
+              <div className="w-full max-w-full min-w-0 box-border rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 flex items-start gap-2.5 text-amber-900 dark:text-amber-200">
                 <Copy className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
                 <div className="min-w-0">
                   <p className="font-bold text-xs">
                     {isAr ? "وضع النسخ مفعل (Duplication)" : "Mode Duplication actif"}
                   </p>
-                  <p className="text-[11px] opacity-90 mt-0.5">
+                  <p className="text-[11px] opacity-90 mt-0.5 break-words">
                     {t("reco.form.duplicateDesc")}
                   </p>
                 </div>
               </div>
             )}
             {/* 1. Kinds Selectors */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 min-w-0 w-full">
+              <div className="min-w-0 w-full">
                 <p className="mb-1.5 font-bold uppercase text-muted-foreground">{t("reco.form.prescriptionType")}</p>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5 w-full min-w-0">
                   {[
                     { id: "fert_irrigation", label: t("reco.form.shortFertIrrigation"), icon: Droplet },
                     { id: "fert_pulverisation", label: t("reco.form.shortFertFoliar"), icon: SprayCan },
@@ -1067,11 +1067,11 @@ export function RecommendationForm({
                               : [...prev, id]
                           );
                         }}
-                        className={`flex flex-col items-center justify-center gap-1 rounded-xl border py-2 text-center transition-all font-bold ${active ? "border-primary bg-primary/10 text-primary shadow-xs" : "border-input hover:bg-muted"
+                        className={`min-w-0 w-full flex flex-col items-center justify-center gap-1 rounded-xl border px-1.5 py-2 text-center whitespace-normal break-words transition-all font-bold ${active ? "border-primary bg-primary/10 text-primary shadow-xs" : "border-input hover:bg-muted"
                           }`}
                       >
-                        <Icon className="h-4 w-4" />
-                        <span className="text-[10px] leading-tight">{label}</span>
+                        <Icon className="h-4 w-4 shrink-0" />
+                        <span className="text-[11px] sm:text-xs leading-tight break-words">{label}</span>
                       </button>
                     );
                   })}
@@ -1079,9 +1079,9 @@ export function RecommendationForm({
               </div>
 
               {/* Espèce ciblée */}
-              <div>
+              <div className="min-w-0 w-full">
                 <p className="mb-1.5 font-bold uppercase text-muted-foreground">{t("reco.form.cropTargeted")}</p>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5 w-full min-w-0">
                   {CROP_GROUPS.map((g) => (
                     <button
                       key={g.v}
@@ -1093,7 +1093,7 @@ export function RecommendationForm({
                             : [...prev, g.v]
                         );
                       }}
-                      className={`rounded-full border px-2.5 py-1.5 font-bold text-[10px] uppercase transition-all ${cropGroups.includes(g.v)
+                      className={`max-w-full whitespace-normal break-words text-center rounded-full border px-2.5 py-1.5 font-bold text-[11px] sm:text-xs leading-snug uppercase transition-all ${cropGroups.includes(g.v)
                         ? "border-primary bg-primary text-primary-foreground shadow-xs"
                         : "border-input bg-background hover:bg-muted"
                         }`}
@@ -1106,8 +1106,8 @@ export function RecommendationForm({
             </div>
 
             {/* Date d'application uniquement */}
-            <div className="rounded-2xl border border-primary/30 bg-primary/[0.03] p-3.5 shadow-xs">
-              <label className="block">
+            <div className="w-full max-w-full min-w-0 box-border rounded-2xl border border-primary/30 bg-primary/[0.03] p-3 sm:p-3.5 shadow-xs">
+              <label className="block w-full min-w-0">
                 <span className="font-extrabold uppercase text-primary text-xs flex items-center gap-1.5">
                   📅 {t("reco.form.globalAppDate")} *
                 </span>
@@ -1115,14 +1115,14 @@ export function RecommendationForm({
                   type="date"
                   value={appDate}
                   onChange={(e) => setAppDate(e.target.value)}
-                  className="mt-1.5 w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm font-bold shadow-xs focus:ring-2 focus:ring-primary/20"
+                  className="mt-1.5 w-full max-w-full min-w-0 box-border rounded-xl border border-input bg-background px-3 py-2.5 text-sm font-bold shadow-xs focus:ring-2 focus:ring-primary/20"
                 />
               </label>
 
               {appDate && appDate < new Date().toISOString().slice(0, 10) && (
-                <div className="mt-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
-                  <span className="text-base leading-none">⏳</span>
-                  <div>
+                <div className="mt-2.5 w-full max-w-full min-w-0 box-border rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                  <span className="text-base leading-none shrink-0">⏳</span>
+                  <div className="min-w-0 flex-1 break-words">
                     <span className="font-extrabold block">
                       {isAr ? (
                         <>
@@ -1156,15 +1156,15 @@ export function RecommendationForm({
 
             {/* Bloc Irrigation Seule (Sans fertilisation / Eau claire) - Positionné en haut après la date d'application */}
             {selectedPrescriptions.includes("fert_irrigation") && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-blue-500/10 border-2 border-blue-500/30 p-3 rounded-2xl shadow-xs">
-                <label className="block">
+              <div className="w-full max-w-full min-w-0 box-border grid grid-cols-1 sm:grid-cols-2 gap-2 bg-blue-500/10 border-2 border-blue-500/30 p-3 rounded-2xl shadow-xs">
+                <label className="block w-full min-w-0">
                   <span className="font-bold text-blue-700 dark:text-blue-300 text-xs flex items-center gap-1">
                     <span>💧</span> {t("reco.form.pureIrrigationFreq", "Irrigations seules (eau claire) / sem")}
                   </span>
                   <select
                     value={pureIrrFreq}
                     onChange={(e) => setPureIrrFreq(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-input bg-background px-3 py-2 text-xs font-semibold"
+                    className="mt-1 w-full max-w-full min-w-0 box-border rounded-xl border border-input bg-background px-3 py-2 text-xs font-semibold"
                   >
                     <option value="0">{t("reco.freq.none", "0 (Aucune)")}</option>
                     <option value="1">{t("reco.freq.1perWeek", "1 fois par semaine")}</option>
@@ -1173,14 +1173,14 @@ export function RecommendationForm({
                   </select>
                 </label>
                 {pureIrrFreq !== "0" && (
-                  <label className="block">
+                  <label className="block w-full min-w-0">
                     <span className="font-bold text-blue-700 dark:text-blue-300 text-xs flex items-center gap-1">
                       <span>⏱️</span> {t("reco.form.pureIrrigationTime", "Durée irrigation seule")}
                     </span>
                     <select
                       value={pureIrrTime}
                       onChange={(e) => setPureIrrTime(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-input bg-background px-3 py-2 text-xs font-semibold"
+                      className="mt-1 w-full max-w-full min-w-0 box-border rounded-xl border border-input bg-background px-3 py-2 text-xs font-semibold"
                     >
                       <option value="1h">1h</option>
                       <option value="1h30">1h30</option>
@@ -2188,14 +2188,14 @@ export function RecommendationForm({
               )}
             </div>
 
-            <div className="flex flex-col gap-2 pt-2">
+            <div className="flex flex-col gap-2 pt-2 w-full min-w-0">
               <button
                 type="button"
                 onClick={() => submit(true)}
                 disabled={submitting}
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase active:scale-95 disabled:opacity-50 shadow-md transition"
+                className="inline-flex min-h-11 w-full max-w-full box-border items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase px-3 py-2 text-center whitespace-normal active:scale-95 disabled:opacity-50 shadow-md transition"
               >
-                <CheckCircle2 className="h-4 w-4" />
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <span>
                   {submitting
                     ? (isAr ? "جارٍ الاعتماد..." : "Validation en cours...")
@@ -2209,9 +2209,9 @@ export function RecommendationForm({
                 type="button"
                 onClick={() => submit(false)}
                 disabled={submitting}
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold uppercase active:scale-95 disabled:opacity-50 transition"
+                className="inline-flex min-h-10 w-full max-w-full box-border items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold uppercase px-3 py-2 text-center whitespace-normal active:scale-95 disabled:opacity-50 transition"
               >
-                <Send className="h-3.5 w-3.5" />
+                <Send className="h-3.5 w-3.5 shrink-0" />
                 <span>
                   {submitting
                     ? t("gen.sending")
@@ -2288,7 +2288,7 @@ export function RecommendationForm({
         <DialogContent
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
-          className="w-[95vw] max-w-md mx-auto left-1/2 -translate-x-1/2 max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 rounded-2xl bg-card text-card-foreground text-xs"
+          className="fixed left-2 right-2 top-1/2 -translate-y-1/2 translate-x-0 w-auto max-w-[calc(100vw-1rem)] max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-full sm:max-w-md rounded-2xl bg-card text-card-foreground text-xs"
         >
           <DialogHeader>
             <DialogTitle className="text-sm font-black uppercase tracking-wide">
