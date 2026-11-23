@@ -434,14 +434,48 @@ export function RecommendationForm({
     }));
   };
 
-  // Agronomic Tank Mix Compatibility Check (Vérification automatique de compatibilité en cuve)
+  // Agronomic Tank Mix Compatibility Check (Vérification automatique de compatibilité & Double Emploi sur toutes les paires)
   const tankMixCheck: TankMixCheckResult | null = useMemo(() => {
-    if (phyProducts.length < 2) return null;
-    const p1 = phyProducts[0]?.product?.trim();
-    const p2 = phyProducts[1]?.product?.trim();
-    if (!p1 || !p2) return null;
-    return checkTankMixCompatibility(p1, p2, (lang as "fr" | "ar") || "fr");
+    const activeProds = phyProducts.filter((p: any) => p.product?.trim());
+    if (activeProds.length < 2) return null;
+    let firstWarning: TankMixCheckResult | null = null;
+    let firstCompatible: TankMixCheckResult | null = null;
+    for (let i = 0; i < activeProds.length; i++) {
+      for (let j = i + 1; j < activeProds.length; j++) {
+        const res = checkTankMixCompatibility(
+          activeProds[i].product,
+          activeProds[j].product,
+          (lang as "fr" | "ar") || "fr",
+        );
+        if (!res) continue;
+        if (res.isBlocking || res.status === "incompatible") return res;
+        if (res.status === "warning" && !firstWarning) firstWarning = res;
+        if (res.status === "compatible" && !firstCompatible) firstCompatible = res;
+      }
+    }
+    return firstWarning || firstCompatible;
   }, [phyProducts, lang]);
+
+  // Blocage global strict (Double Emploi ou Incompatibilité Tank-Mix sur n'importe quel passage phyto)
+  const blockingTankMix = useMemo(() => {
+    if (!selectedPrescriptions.includes("phytosanitaire")) return null;
+    for (const traitItem of phyPassages) {
+      const activeProds = traitItem.products.filter((p: any) => p.product?.trim());
+      for (let i = 0; i < activeProds.length; i++) {
+        for (let j = i + 1; j < activeProds.length; j++) {
+          const chk = checkTankMixCompatibility(
+            activeProds[i].product,
+            activeProds[j].product,
+            (lang as "fr" | "ar") || "fr",
+          );
+          if (chk && (chk.isBlocking || chk.status === "incompatible")) {
+            return { check: chk, label: traitItem.label };
+          }
+        }
+      }
+    }
+    return null;
+  }, [selectedPrescriptions, phyPassages, lang]);
 
   useEffect(() => {
     if (open && recoToEdit) {
@@ -638,19 +672,25 @@ export function RecommendationForm({
       for (const traitItem of phyPassages) {
         const activeProds = traitItem.products.filter(p => p.product);
         if (activeProds.length >= 2) {
-          const check = checkTankMixCompatibility(
-            activeProds[0].product,
-            activeProds[1].product,
-            (lang as "fr" | "ar") || "fr"
-          );
-          if (check && check.status === "incompatible") {
-            const confirmMix = window.confirm(
-              isAr
-                ? `⚠️ تحذير زراعي: تم رصد تعارض كيميائي خطير في (${traitItem.label}) بين (${activeProds[0].product}) و (${activeProds[1].product})!\n\n${check.title}\n${check.message}\n\nنصيحة: ${check.advice}\n\nهل أنت متأكد من حفظ هذه التوصية بهذا الخلط؟`
-                : `⚠️ ALERTE AGRONOMIQUE : Incompatibilité chimique détectée dans "${traitItem.label}" entre "${activeProds[0].product}" et "${activeProds[1].product}" !\n\n${check.title}\n${check.message}\n\nRecommandation : ${check.advice}\n\nSouhaitez-vous malgré tout enregistrer cette recommandation ?`
-            );
-            if (!confirmMix) {
-              return;
+          for (let i = 0; i < activeProds.length; i++) {
+            for (let j = i + 1; j < activeProds.length; j++) {
+              const check = checkTankMixCompatibility(
+                activeProds[i].product,
+                activeProds[j].product,
+                (lang as "fr" | "ar") || "fr",
+              );
+              if (check && (check.isBlocking || check.status === "incompatible")) {
+                toast.error(
+                  check.isDoubleEmploi
+                    ? isAr
+                      ? "⛔ لا يمكن اعتماد التوصية: يوجد تكرار لنفس المادة الفعالة (Double Emploi). يرجى تغيير أو حذف أحد المنتجين."
+                      : "⛔ Impossible de valider : double emploi de la même matière active détecté. Modifiez ou supprimez l'un des deux produits."
+                    : isAr
+                      ? `⛔ لا يمكن اعتماد التوصية: ${check.title}`
+                      : `⛔ Impossible de valider : ${check.title}`,
+                );
+                return;
+              }
             }
           }
         }
@@ -2053,15 +2093,15 @@ export function RecommendationForm({
                               <div
                                 className={`rounded-2xl border-2 p-3.5 space-y-2.5 shadow-xs transition-all ${tankMixCheck.status === "compatible"
                                     ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-950 dark:text-emerald-100"
-                                    : tankMixCheck.status === "incompatible"
-                                      ? "bg-rose-500/15 border-rose-500/50 text-rose-950 dark:text-rose-100 ring-2 ring-rose-500/20"
+                                    : tankMixCheck.isBlocking || tankMixCheck.status === "incompatible"
+                                      ? "bg-red-50 dark:bg-red-950/30 border-red-400 text-red-950 dark:text-red-100 ring-2 ring-red-500/20"
                                       : "bg-amber-500/15 border-amber-500/50 text-amber-950 dark:text-amber-100"
                                   }`}
                               >
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex items-start gap-2.5">
                                     <span className="text-2xl shrink-0 mt-0.5">
-                                      {tankMixCheck.status === "compatible" ? "✅" : tankMixCheck.status === "incompatible" ? "⛔" : "⚠️"}
+                                      {tankMixCheck.status === "compatible" ? "✅" : tankMixCheck.isBlocking || tankMixCheck.status === "incompatible" ? "⛔" : "⚠️"}
                                     </span>
                                     <div>
                                       <h5 className="font-extrabold text-xs sm:text-sm tracking-tight">
@@ -2075,16 +2115,16 @@ export function RecommendationForm({
                                   <span
                                     className={`shrink-0 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border shadow-xs ${tankMixCheck.status === "compatible"
                                         ? "bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500/30"
-                                        : tankMixCheck.status === "incompatible"
-                                          ? "bg-rose-500/20 text-rose-800 dark:text-rose-200 border-rose-500/40 animate-pulse"
+                                        : tankMixCheck.isBlocking || tankMixCheck.status === "incompatible"
+                                          ? "bg-red-600 text-white border-red-700 animate-pulse"
                                           : "bg-amber-500/20 text-amber-800 dark:text-amber-200 border-amber-500/40"
                                       }`}
                                   >
                                     {tankMixCheck.status === "compatible"
                                       ? (isAr ? "خلط متوافق" : "Compatible")
-                                      : tankMixCheck.status === "incompatible"
-                                        ? (isAr ? "تعارض كيميائي خطير" : "Incompatible")
-                                        : (isAr ? "انتباه / تكرار" : "Attention")}
+                                      : tankMixCheck.isBlocking || tankMixCheck.status === "incompatible"
+                                        ? (isAr ? "⛔ حظر / Bloquant" : "⛔ Bloquant")
+                                        : (isAr ? "انتباه" : "Attention")}
                                   </span>
                                 </div>
 
@@ -2092,8 +2132,8 @@ export function RecommendationForm({
                                   <div
                                     className={`flex items-start gap-2 rounded-xl p-2.5 text-xs font-semibold ${tankMixCheck.status === "compatible"
                                         ? "bg-emerald-500/15 text-emerald-900 dark:text-emerald-200"
-                                        : tankMixCheck.status === "incompatible"
-                                          ? "bg-rose-500/20 text-rose-900 dark:text-rose-200 font-bold"
+                                        : tankMixCheck.isBlocking || tankMixCheck.status === "incompatible"
+                                          ? "bg-red-100/80 dark:bg-red-900/40 text-red-900 dark:text-red-100 font-bold"
                                           : "bg-amber-500/20 text-amber-900 dark:text-amber-200"
                                       }`}
                                   >
@@ -2203,36 +2243,50 @@ export function RecommendationForm({
               <button
                 type="button"
                 onClick={() => submit(true)}
-                disabled={submitting}
-                className="inline-flex min-h-11 w-full max-w-full box-border items-center justify-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase px-3 py-2 text-center whitespace-normal active:scale-95 disabled:opacity-50 shadow-md transition"
+                disabled={submitting || Boolean(blockingTankMix)}
+                className={`inline-flex min-h-11 w-full max-w-full box-border items-center justify-center gap-2 rounded-xl text-white font-bold text-xs uppercase px-3 py-2 text-center whitespace-normal active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed shadow-md transition ${
+                  blockingTankMix ? "bg-red-600" : "bg-emerald-600 hover:bg-emerald-700"
+                }`}
               >
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
                 <span>
-                  {submitting
-                    ? (isAr ? "جارٍ الاعتماد..." : "Validation en cours...")
-                    : duplicateMode
-                      ? (isAr ? "تفعيل التوصية المنسوخة مع الشراء" : "Valider la copie & ses Achats")
-                      : (isAr ? "اعتماد التوصية والمشتريات (الشهر السابق)" : "Valider Recommandation & Achats (Mois précédent)")}
+                  {blockingTankMix
+                    ? blockingTankMix.check.isDoubleEmploi
+                      ? (isAr ? "⛔ مرفوض: تكرار نفس المادة الفعالة" : "⛔ Bloqué : Double emploi de matière active")
+                      : (isAr ? "⛔ مرفوض: تعارض كيميائي في الخزان" : "⛔ Bloqué : Incompatibilité Tank-Mix")
+                    : submitting
+                      ? (isAr ? "جارٍ الاعتماد..." : "Validation en cours...")
+                      : duplicateMode
+                        ? (isAr ? "تفعيل التوصية المنسوخة مع الشراء" : "Valider la copie & ses Achats")
+                        : (isAr ? "اعتماد التوصية والمشتريات (الشهر السابق)" : "Valider Recommandation & Achats (Mois précédent)")}
                 </span>
               </button>
 
               <button
                 type="button"
                 onClick={() => submit(false)}
-                disabled={submitting}
-                className="inline-flex min-h-10 w-full max-w-full box-border items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold uppercase px-3 py-2 text-center whitespace-normal active:scale-95 disabled:opacity-50 transition"
+                disabled={submitting || Boolean(blockingTankMix)}
+                className={`inline-flex min-h-10 w-full max-w-full box-border items-center justify-center gap-2 rounded-xl border text-xs font-bold uppercase px-3 py-2 text-center whitespace-normal active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed transition ${
+                  blockingTankMix
+                    ? "border-red-400 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300"
+                    : "border-primary/40 bg-primary/10 text-primary hover:bg-primary/20"
+                }`}
               >
                 <Send className="h-3.5 w-3.5 shrink-0" />
                 <span>
-                  {submitting
-                    ? t("gen.sending")
-                    : duplicateMode
-                      ? (isAr ? "حفظ التوصية المنسوخة (قيد الانتظار)" : "Créer la recommandation dupliquée (En attente)")
-                      : recoToEdit
-                        ? t("reco.form.saveChanges")
-                        : isAr
-                          ? `${t("reco.form.submit")} (قيد الانتظار)`
-                          : `${t("reco.form.submit")} (En attente)`}
+                  {blockingTankMix
+                    ? blockingTankMix.check.isDoubleEmploi
+                      ? (isAr ? "⛔ مرفوض: تكرار نفس المادة الفعالة" : "⛔ Bloqué : Double emploi de matière active")
+                      : (isAr ? "⛔ مرفوض: تعارض كيميائي في الخزان" : "⛔ Bloqué : Incompatibilité Tank-Mix")
+                    : submitting
+                      ? t("gen.sending")
+                      : duplicateMode
+                        ? (isAr ? "حفظ التوصية المنسوخة (قيد الانتظار)" : "Créer la recommandation dupliquée (En attente)")
+                        : recoToEdit
+                          ? t("reco.form.saveChanges")
+                          : isAr
+                            ? `${t("reco.form.submit")} (قيد الانتظار)`
+                            : `${t("reco.form.submit")} (En attente)`}
                 </span>
               </button>
 

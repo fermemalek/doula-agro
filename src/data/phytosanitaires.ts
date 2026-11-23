@@ -286,6 +286,8 @@ export function isProductBlockedAtStage(
 
 export interface TankMixCheckResult {
   status: "compatible" | "warning" | "incompatible";
+  isBlocking?: boolean;
+  isDoubleEmploi?: boolean;
   title: string;
   message: string;
   advice?: string;
@@ -293,6 +295,31 @@ export interface TankMixCheckResult {
   codeB?: string;
   typeA?: string;
   typeB?: string;
+}
+
+function normalizeActiveBase(raw: string): string {
+  return (raw || "")
+    .split("+")
+    .map((part) =>
+      part
+        .split("·")[0]
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9\s-]/gi, "")
+        .toLowerCase()
+        .trim(),
+    )
+    .filter(Boolean)
+    .sort()
+    .join(" + ");
+}
+
+function resolveFullActiveFr(productName: string): string {
+  const fromMap = getMatiereActive(productName);
+  if (fromMap) return fromMap;
+  const lower = productName.trim().toLowerCase();
+  const dbMatch = PHYTO_DATABASE.find((p) => p.name.trim().toLowerCase() === lower);
+  return dbMatch?.matiereActive || "";
 }
 
 export function checkTankMixCompatibility(
@@ -309,23 +336,33 @@ export function checkTankMixCompatibility(
   const codeA = getIracFracCode(cleanA);
   const codeB = getIracFracCode(cleanB);
 
-  const activeA = isAr ? getMatiereActiveAr(cleanA) || getMatiereActive(cleanA) : getMatiereActive(cleanA);
-  const activeB = isAr ? getMatiereActiveAr(cleanB) || getMatiereActive(cleanB) : getMatiereActive(cleanB);
+  const activeFrRawA = resolveFullActiveFr(cleanA);
+  const activeFrRawB = resolveFullActiveFr(cleanB);
+  const activeA = isAr ? getMatiereActiveAr(cleanA) || activeFrRawA : activeFrRawA;
+  const activeB = isAr ? getMatiereActiveAr(cleanB) || activeFrRawB : activeFrRawB;
+  const normActiveA = normalizeActiveBase(activeFrRawA);
+  const normActiveB = normalizeActiveBase(activeFrRawB);
 
   const typeA = COMMERCIAL_TO_ACTIVE[cleanA]?.type || (codeA.includes("IRAC") ? "IRAC" : codeA.includes("FRAC") ? "FRAC" : "");
   const typeB = COMMERCIAL_TO_ACTIVE[cleanB]?.type || (codeB.includes("IRAC") ? "IRAC" : codeB.includes("FRAC") ? "FRAC" : "");
 
-  // 1. Même produit ou même matière active exacte
-  if (cleanA.toLowerCase() === cleanB.toLowerCase() || (activeA && activeB && activeA.toLowerCase() === activeB.toLowerCase())) {
+  // 1. Même produit ou même matière active exacte (STRICTEMENT BLOQUANT)
+  const sameName = cleanA.toLowerCase() === cleanB.toLowerCase();
+  const sameActive =
+    (normActiveA && normActiveB && normActiveA === normActiveB) ||
+    (activeA && activeB && activeA.toLowerCase() === activeB.toLowerCase());
+  if (sameName || sameActive) {
     return {
-      status: "warning",
-      title: isAr ? "⚠️ تكرار نفس المادة الفعالة (Double Emploi)" : "⚠️ Même matière active sélectionnée",
+      status: "incompatible",
+      isBlocking: true,
+      isDoubleEmploi: true,
+      title: isAr ? "⛔ تكرار نفس المادة الفعالة (Double Emploi)" : "⛔ Double emploi de la même matière active",
       message: isAr
-        ? `المنتجان يحتويان على نفس المادة (${activeA || cleanA}). هذا تكرار غير مفيد وقد يسبب جرعة زائدة.`
-        : `Les deux sélections contiennent la même substance active (${activeA || cleanA}). Risque de surdosage ou double emploi inutile.`,
+        ? `المنتجان يحتويان على نفس المادة (${activeA || cleanA}). هذا التكرار ممنوع تماماً ويسبب جرعة زائدة وخطر المقاومة.`
+        : `Les deux produits contiennent la même matière active (${activeA || cleanA}). Ce doublon est strictement bloqué (surdosage et risque de résistance).`,
       advice: isAr
-        ? "اختر مادتين فعالتين مختلفتين، مثلاً: مبيد فطري + مبيد حشري للحصول على فعالية مزدوجة."
-        : "Associez plutôt deux modes d'action différents (ex: Fongicide + Insecticide) pour une protection combinée.",
+        ? "قم بحذف أحد المنتجين أو استبداله بمادة فعالة ومجموعة كيميائية مختلفة."
+        : "Supprimez ou remplacez l'un des deux produits par une matière active d'un autre groupe FRAC/IRAC.",
       codeA, codeB, typeA, typeB
     };
   }
@@ -349,8 +386,8 @@ export function checkTankMixCompatibility(
   const isCaptaneA = codeA.includes("M04") || cleanA.toLowerCase().includes("captan") || cleanA.toLowerCase().includes("criptan") || cleanA.toLowerCase().includes("capitan");
   const isCaptaneB = codeB.includes("M04") || cleanB.toLowerCase().includes("captan") || cleanB.toLowerCase().includes("criptan") || cleanB.toLowerCase().includes("capitan");
 
-  const activeFrA = getMatiereActive(cleanA).toLowerCase();
-  const activeFrB = getMatiereActive(cleanB).toLowerCase();
+  const activeFrA = activeFrRawA.toLowerCase();
+  const activeFrB = activeFrRawB.toLowerCase();
   const isHuileA = activeFrA.includes("huile") || cleanA.toLowerCase().includes("huile") || cleanA.toLowerCase().includes("agroil") || cleanA.toLowerCase().includes("oil") || cleanA.toLowerCase().includes("citrole") || cleanA.toLowerCase().includes("beidazit") || cleanA.toLowerCase().includes("hp22");
   const isHuileB = activeFrB.includes("huile") || cleanB.toLowerCase().includes("huile") || cleanB.toLowerCase().includes("agroil") || cleanB.toLowerCase().includes("oil") || cleanB.toLowerCase().includes("citrole") || cleanB.toLowerCase().includes("beidazit") || cleanB.toLowerCase().includes("hp22");
 
@@ -358,6 +395,7 @@ export function checkTankMixCompatibility(
   if ((isCuivreA && isFosetylB) || (isCuivreB && isFosetylA)) {
     return {
       status: "incompatible",
+      isBlocking: true,
       title: isAr ? "⛔ تعارض كيميائي خطير (النحاس + فوسيتيل الألومنيوم)" : "⛔ Incompatibilité chimique absolue (Cuivre + Fosétyl-Al)",
       message: isAr
         ? "يمنع منعاً باتاً خلط النحاس مع فوسيتيل الألومنيوم (Fosetyl-Al) لتجنب ترسب المحلول وحروق شديدة للأوراق (Phytotoxicité)."
@@ -373,6 +411,7 @@ export function checkTankMixCompatibility(
   if ((isCuivreA && isTriazoleB) || (isCuivreB && isTriazoleA)) {
     return {
       status: "incompatible",
+      isBlocking: true,
       title: isAr ? "⛔ تعارض فيزيائي وكيميائي (النحاس + تريازول FRAC 3)" : "⛔ Incompatibilité Cuivre + Triazole (FRAC 3)",
       message: isAr
         ? "خلط النحاس مع مبيدات التريازول (مثل ديفينوكونازول أو تيبوكونازول) يسبب إبطال المفعول وخطر تسمم الأنسجة الفتية."
@@ -388,6 +427,7 @@ export function checkTankMixCompatibility(
   if ((isSoufreA && isHuileB) || (isSoufreB && isHuileA)) {
     return {
       status: "incompatible",
+      isBlocking: true,
       title: isAr ? "⛔ تعارض خطير: كبريت + زيت معدني" : "⛔ Incompatibilité majeure Soufre + Huile",
       message: isAr
         ? "خطر حروق شديدة للأوراق وتلف الثمار. يجب احترام فاصل 21 يوماً بين الكبريت والزيوت."
@@ -405,6 +445,7 @@ export function checkTankMixCompatibility(
   if ((isCuivreA && isBtB) || (isCuivreB && isBtA)) {
     return {
       status: "incompatible",
+      isBlocking: true,
       title: isAr ? "⛔ تعارض بيولوجي: النحاس يبطل مفعول البكتيريا (Bt / Dipel)" : "⛔ Incompatibilité biologique : Cuivre + Bacillus thuringiensis (Bt)",
       message: isAr
         ? "النحاس مبيد بكتيري قوي يقضي مباشرة على أبواغ البكتيريا النافعة (Bacillus thuringiensis) في الخزان مما يجعل المعاملة عديمة الفعالية."
@@ -420,6 +461,7 @@ export function checkTankMixCompatibility(
   if ((isCaptaneA && isHuileB) || (isCaptaneB && isHuileA)) {
     return {
       status: "incompatible",
+      isBlocking: true,
       title: isAr ? "⛔ تعارض قاطع: كابتان + زيت معدني" : "⛔ Incompatibilité absolue Captane + Huile",
       message: isAr
         ? "اختراق عنيف لأنسجة الأوراق مما يؤدي إلى تلف المحصول. يجب احترام فاصل 21 يوماً."
