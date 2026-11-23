@@ -3,6 +3,7 @@ import type { MandataireBordereau } from "@/components/modules/BordereauEditorCa
 
 export const SEED_FLAG_BORDEREAU_36387 = "doula_seed_bordereau_36387";
 export const SEED_FLAG_BORDEREAU_002_2026 = "doula_seed_bordereau_002_2026";
+export const SEED_FLAG_BORDEREAU_2026_03 = "doula_seed_bordereau_2026_03";
 
 export function buildBordereau36387Record(): Omit<FreshFruitHarvestRecord, "id" | "createdAt"> {
   const lines = [
@@ -210,5 +211,117 @@ export function seedBordereau002_2026IfNeeded(
   if (alreadyExists) return false;
 
   addRecord("pommier1", "recolte", buildBordereau002_2026Record());
+  return true;
+}
+
+export function buildBordereau2026_03Record(): Omit<FreshFruitHarvestRecord, "id" | "createdAt"> {
+  const lines = [
+    // Partie 1 : Royal (301 caisses · 842,0 kg · 169 320,00 DA)
+    { id: "b202603_l1",  colis: "5",   nature: "Royal Silver (ساير رويال)", poidsNetKg: "20.0",  prixUnitaire: "280", montantManualDA: "5600.00" },
+    { id: "b202603_l2",  colis: "68",  nature: "Royal Calibre 20",          poidsNetKg: "210.0", prixUnitaire: "260", montantManualDA: "54600.00" },
+    { id: "b202603_l3",  colis: "20",  nature: "Royal Calibre 26",          poidsNetKg: "54.0",  prixUnitaire: "180", montantManualDA: "9720.00" },
+    { id: "b202603_l4",  colis: "54",  nature: "Royal Calibre 26",          poidsNetKg: "140.0", prixUnitaire: "170", montantManualDA: "23800.00" },
+    { id: "b202603_l5",  colis: "100", nature: "Royal Calibre 22",          poidsNetKg: "260.0", prixUnitaire: "230", montantManualDA: "59800.00" },
+    { id: "b202603_l6",  colis: "3",   nature: "Royal Déchet (دشي)",        poidsNetKg: "0.0",   prixUnitaire: "0",   montantManualDA: "0.00" },
+    { id: "b202603_l7",  colis: "51",  nature: "Royal Vrac",                poidsNetKg: "158.0", prixUnitaire: "100", montantManualDA: "15800.00" },
+    // Partie 2 : Golden (254 caisses · 774,3 kg · 103 152,00 DA)
+    { id: "b202603_l8",  colis: "2",   nature: "Golden Calibre 20",         poidsNetKg: "6.8",   prixUnitaire: "240", montantManualDA: "1632.00" },
+    { id: "b202603_l9",  colis: "76",  nature: "Golden Calibre 20",         poidsNetKg: "220.0", prixUnitaire: "160", montantManualDA: "35200.00" },
+    { id: "b202603_l10", colis: "2",   nature: "Golden Déchet (دشي)",       poidsNetKg: "0.0",   prixUnitaire: "0",   montantManualDA: "0.00" },
+    { id: "b202603_l11", colis: "45",  nature: "Golden Calibre 22",         poidsNetKg: "126.0", prixUnitaire: "150", montantManualDA: "18900.00" },
+    { id: "b202603_l12", colis: "10",  nature: "Golden Calibre 26",         poidsNetKg: "31.0",  prixUnitaire: "170", montantManualDA: "5270.00" },
+    { id: "b202603_l13", colis: "50",  nature: "Golden Calibre 26",         poidsNetKg: "145.0", prixUnitaire: "100", montantManualDA: "14500.00" },
+    { id: "b202603_l14", colis: "20",  nature: "Golden Calibre 26",         poidsNetKg: "55.0",  prixUnitaire: "120", montantManualDA: "6600.00" },
+    { id: "b202603_l15", colis: "11",  nature: "Golden Vrac (فراك)",        poidsNetKg: "81.5",  prixUnitaire: "80",  montantManualDA: "6520.00" },
+    { id: "b202603_l16", colis: "8",   nature: "Golden 2e choix (دوام)",    poidsNetKg: "26.0",  prixUnitaire: "80",  montantManualDA: "2080.00" },
+    { id: "b202603_l17", colis: "27",  nature: "Golden Sayer (ساير)",       poidsNetKg: "83.0",  prixUnitaire: "150", montantManualDA: "12450.00" },
+    { id: "b202603_l18", colis: "3",   nature: "Golden Déchet (دشي)",       poidsNetKg: "0.0",   prixUnitaire: "0",   montantManualDA: "0.00" },
+  ];
+
+  const bordereau: MandataireBordereau = {
+    id: "bd_2026_03",
+    mandataireName: "علوي (N° 2026-03)",
+    marcheCarreau: "علوي · R.C. 86.2026",
+    numeroBordereau: "2026-03",
+    dateFolio: "2026-09-30",
+    accountLabel: "عبد الرحمان ع. ق. (Abderrahmane) — Pommier 1 & 2 (Gala & Golden)",
+    paymentStatus: "en_attente",
+    lines,
+    commissionPercent: "0",
+    commissionManualDA: "0.00",
+    droitsMarcheDA: "0",
+    fraisTransportDA: "0",
+    avanceProducteurDA: "0",
+  };
+
+  return {
+    recordMode: "fruits_frais",
+    schemaVersion: 2,
+    date: "2026-09-30",
+    selectedParcelIds: ["pommier1", "pommier2"],
+    unit: "Kg",
+    qty: "1616.3",
+    totalKg: 1616.3,
+    totalColis: 555,
+    price: "",
+    harvestLots: [
+      { id: "lot_202603_1", nature: "Royal (Gala)",  colis: "301", poidsNetKg: "842.0" },
+      { id: "lot_202603_2", nature: "Golden (قولدان)", colis: "254", poidsNetKg: "774.3" },
+    ],
+    rebutKg: "0",
+    rebutPercent: 0,
+    destination: "mandataire",
+    bordereaux: [bordereau],
+    frigoBlocks: [],
+    directBlocks: [],
+    mandataireName: "علوي (N° 2026-03)",
+    paymentStatus: "en_attente",
+    frigoExits: [],
+    commissionAmount: 0,
+    mainOeuvre: "0",
+    transport: "0",
+    emballages: "0",
+    autres: "0",
+    totalVente: 272472,
+    totalDeductionsMandataire: 0,
+    netBordereauVentes: 272472,
+    chargesFerme: 0,
+    totalCharges: 0,
+    total: 0,
+    net: 272472,
+    notes:
+      "Facture N° 2026-03 du 30/09/2026 — علوي (R.C. 86.2026) · 555 caisses (301 Royal + 254 Golden) · Décompte commission/transport non joint sur la page 1 (éditable).",
+  };
+}
+
+/**
+ * Initialise de manière idempotente la facture réelle N° 2026-03 du 30/09/2026 sur Pommier 1 (& 2).
+ * Protégé par le flag unique `doula_seed_bordereau_2026_03`.
+ */
+export function seedBordereau2026_03IfNeeded(
+  existingPommier1Records: FreshFruitHarvestRecord[],
+  addRecord: (parcelId: string, mod: "recolte", payload: Omit<FreshFruitHarvestRecord, "id" | "createdAt">) => void,
+): boolean {
+  try {
+    if (localStorage.getItem(SEED_FLAG_BORDEREAU_2026_03) === "1") {
+      return false;
+    }
+  } catch {
+    // ignore storage errors
+  }
+
+  const alreadyExists = existingPommier1Records.some((r) =>
+    (r.bordereaux || []).some((b) => String(b.numeroBordereau || "").trim() === "2026-03"),
+  );
+
+  try {
+    localStorage.setItem(SEED_FLAG_BORDEREAU_2026_03, "1");
+  } catch {
+    // ignore storage errors
+  }
+
+  if (alreadyExists) return false;
+
+  addRecord("pommier1", "recolte", buildBordereau2026_03Record());
   return true;
 }
