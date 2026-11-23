@@ -949,7 +949,7 @@ export default function RendementPage() {
                       <div className="flex justify-between">
                         <span className="flex items-center gap-1">
                           <Package className="h-3 w-3 text-amber-700" />
-                          {isAr ? "مصاريف الجني والنقل والتغليف" : "Charges de récolte"}
+                          {isAr ? "مصاريف البيع" : "Charge de Vente"}
                         </span>
                         <strong dir="ltr">{formatDA(b.harvestChargesDA, 0)}</strong>
                       </div>

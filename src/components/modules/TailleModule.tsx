@@ -386,7 +386,7 @@ export function TailleModule({ parcelId, canEdit }: { parcelId: string; canEdit:
           <p className="px-4 py-6 text-center text-xs text-muted-foreground">Aucune session enregistrée.</p>
         ) : (
           <ul className="divide-y">
-            {records.map((r) => {
+            {[...records].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map((r) => {
               const ch = (parseFloat(r.mainOeuvre) || 0) + (parseFloat(r.equipements) || 0);
               return (
                 <li key={r.id} className="px-4 py-3 text-sm">

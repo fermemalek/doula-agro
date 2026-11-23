@@ -263,7 +263,7 @@ export function AmendementModule({ parcelId, canEdit }: { parcelId: string; canE
           <p className="px-4 py-6 text-center text-xs text-muted-foreground">Aucun amendement enregistré.</p>
         ) : (
           <ul className="divide-y">
-            {records.map((r) => {
+            {[...records].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map((r) => {
               const total = parseFloat(r.totalCost) || (parseFloat(r.qty) || 0) * (parseFloat(r.price) || 0);
               const hasItems = Array.isArray(r.compostItems) && r.compostItems.length > 0;
               return (
