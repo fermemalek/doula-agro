@@ -58,9 +58,13 @@ import {
 } from '@/lib/phyto/database';
 import {
   PHYTO_DATABASE,
+  COMMERCIAL_TO_ACTIVE,
   type PhytoCultureKey,
+  type PhytoProductInfo,
 } from '@/data/phytosanitaires';
 import { useAllModuleRecords } from '@/lib/modules-store';
+import { useSuppliers } from '@/lib/suppliers-store';
+import { matchProductName } from '@/lib/stock-alerts';
 import { useRecommendations } from '@/lib/cloud/recommendations';
 import { getRainForecast48h, RainForecast48h } from '@/lib/weather-forecast';
 import {
@@ -79,7 +83,19 @@ interface PhytoAdvisorModalProps {
   initialSpecies?: PhytoCultureKey; // "olivier" | "nectarinier" | "pommier"
   selectedSpecies?: PhytoCultureKey[]; // 1 à 3 espèces cochées dans RecommendationForm
   estimatedSprayVolumeL?: number; // Volume cumulé estimé (500 L/parc. Olivier & Pommier, 1000 L/parc. Nectarine)
-  onSelectIngredient?: (ingredient: ActiveIngredient, pest: PestTarget) => void;
+  onSelectIngredient?: (
+    ingredient: ActiveIngredient,
+    pest: PestTarget,
+    commercialProduct?: PhytoProductInfo,
+  ) => void;
+}
+
+function normalizePhytoText(s: string | undefined): string {
+  return (s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
 }
 
 export function PhytoAdvisorModal({
@@ -270,6 +286,105 @@ export function PhytoAdvisorModal({
   // Traitements historiques passés pour détecter les résistances
   const { data: recos = [] } = useRecommendations();
   const modulePhytoRecords = useAllModuleRecords('phytosanitaire');
+  const suppliers = useSuppliers();
+
+  // Sélecteur dépliable des spécialités commerciales algériennes (INPV + stock ferme) par matière active
+  const [expandedIngredientId, setExpandedIngredientId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setExpandedIngredientId(null);
+  }, [selectedPestId, currentCrop, selectedStage, open]);
+
+  const getMatchingCommercialProducts = (ingredient: ActiveIngredient) => {
+    const normName = normalizePhytoText(ingredient.name);
+    const normCommon = normalizePhytoText(ingredient.commonNameFr);
+    const tokens = Array.from(
+      new Set(
+        [normName, normCommon, ...normName.split(/[/+,()]/), ...normCommon.split(/[/+,()]/)]
+          .map((t) => t.trim())
+          .filter((t) => t.length >= 4),
+      ),
+    );
+    const isCopper = normName.includes('cuivre') || normCommon.includes('cuivre');
+    const isSulfur = normName.includes('soufre') || normCommon.includes('soufre');
+    const isOil = normName.includes('paraffine') || normName.includes('huile') || normCommon.includes('huile');
+
+    const seenNames = new Set<string>();
+    const results: Array<{
+      prod: PhytoProductInfo;
+      stockQty: number;
+      stockUnit: string;
+      stageCheck: { blocked: boolean; reason?: string };
+    }> = [];
+
+    for (const prod of PHYTO_DATABASE) {
+      // 1. Filtrer par espèce(s) sélectionnée(s)
+      const allowedForSpecies = isMultiSpecies
+        ? !prod.cultures || prod.cultures.length === 0 || activeSpeciesList.every((sp) => prod.cultures!.includes(sp))
+        : !prod.cultures || prod.cultures.length === 0 || prod.cultures.includes(currentCropAsCultureKey);
+      if (!allowedForSpecies) continue;
+
+      // 2. Correspondance sur matiereActive / COMMERCIAL_TO_ACTIVE / nom commercial
+      const mapped = COMMERCIAL_TO_ACTIVE[prod.name];
+      const normProdActive = normalizePhytoText(prod.matiereActive || mapped?.activeFr || '');
+      const normProdName = normalizePhytoText(prod.name);
+
+      let matchesActive = false;
+      if (isCopper) {
+        matchesActive =
+          normProdActive.includes('cuivre') ||
+          normProdName.includes('bordelaise') ||
+          normProdName.includes('cuprox') ||
+          normProdName.includes('nordox') ||
+          normProdName.includes('kocide') ||
+          normProdName.includes('nucop') ||
+          normProdName.includes('curenox');
+      } else if (isSulfur) {
+        matchesActive = normProdActive.includes('soufre') || normProdName.includes('soufre');
+      } else if (isOil) {
+        matchesActive = normProdActive.includes('paraffine') || normProdActive.includes('huile');
+      } else if (normProdActive) {
+        matchesActive = tokens.some(
+          (tok) => normProdActive.includes(tok) || (normProdActive.length >= 5 && tok.includes(normProdActive)),
+        );
+      }
+
+      if (!matchesActive) continue;
+
+      const dedupKey = normalizePhytoText(prod.name);
+      if (seenNames.has(dedupKey)) continue;
+      seenNames.add(dedupKey);
+
+      // 3. Stock réel ferme (Agrimax / Fournisseurs)
+      const stockMatches = suppliers.filter((s) => matchProductName(s.productName, prod.name));
+      const stockQty = stockMatches.reduce((sum, s) => sum + Math.max(0, s.quantity - (s.consumed || 0)), 0);
+      const stockUnit = stockMatches[0]?.unit || 'L/kg';
+
+      // 4. Vérification blocage stade phénologique
+      const stageCheck = isMultiSpecies
+        ? checkMultiSpeciesProductStage(prod, speciesStages)
+        : checkProductBlockedForGrowthStage(prod, selectedStage);
+
+      results.push({ prod, stockQty, stockUnit, stageCheck });
+    }
+
+    // Tri : 1) En stock ferme en premier, 2) Non bloqués au stade, 3) Validés INPV/FITO, 4) Alphabétique
+    results.sort((a, b) => {
+      const aInStock = a.stockQty > 0 ? 1 : 0;
+      const bInStock = b.stockQty > 0 ? 1 : 0;
+      if (aInStock !== bInStock) return bInStock - aInStock;
+      if (aInStock && bInStock && a.stockQty !== b.stockQty) return b.stockQty - a.stockQty;
+      const aBlocked = a.stageCheck.blocked ? 1 : 0;
+      const bBlocked = b.stageCheck.blocked ? 1 : 0;
+      if (aBlocked !== bBlocked) return aBlocked - bBlocked;
+      const aVal = a.prod.validationStatus === 'validated' ? 1 : 0;
+      const bVal = b.prod.validationStatus === 'validated' ? 1 : 0;
+      if (aVal !== bVal) return bVal - aVal;
+      return a.prod.name.localeCompare(b.prod.name);
+    });
+
+    return results;
+  };
 
   const historyLogs: SprayApplicationRecord[] = useMemo(() => {
     const logs: SprayApplicationRecord[] = [];
@@ -532,7 +647,8 @@ export function PhytoAdvisorModal({
           onClick={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
           onTouchMove={(e) => e.stopPropagation()}
-          className="relative pointer-events-auto w-full max-w-4xl max-h-[94vh] overflow-y-auto overscroll-contain bg-card text-card-foreground p-0 rounded-3xl shadow-2xl border"
+          dir={isAr ? 'rtl' : 'ltr'}
+          className="relative pointer-events-auto w-full max-w-4xl max-h-[94vh] overflow-y-auto overflow-x-hidden overscroll-contain bg-card text-card-foreground p-0 rounded-3xl shadow-2xl border"
         >
           {/* En-tête avec bannière scientifique */}
           <div className="bg-gradient-to-r from-emerald-600 via-teal-700 to-sky-700 text-white p-5 rounded-t-3xl relative">
@@ -600,7 +716,7 @@ export function PhytoAdvisorModal({
             </div>
           </div>
 
-          <div className="p-5 space-y-5 text-xs">
+          <div className="p-4 sm:p-5 space-y-5 text-xs w-full max-w-full overflow-x-hidden">
             {/* ========================================================= */}
             {/* ONGLET 1 : ASSISTANT PHYTOSANITAIRE IRAC / FRAC           */}
             {/* ========================================================= */}
@@ -1136,7 +1252,7 @@ export function PhytoAdvisorModal({
                       </div>
                     </div>
 
-                    <div className="space-y-2.5">
+                    <div className="space-y-2.5 w-full max-w-full overflow-x-hidden">
                       {evaluatedOptions.map(({ ingredient, isAllowed, isBlocked, isMultiSite, blockReason, beeBlock, beeWarning, stageBlocked, quotaBlocked, darBlocked, effectiveDar, isOliveOilPyrethroidDar, darLabelFr, darLabelAr, effectiveMaxPerSeason, currentSeasonUsageCount, isSituationallyRecommended }) => {
                         const isFrac = ingredient.type === 'FRAC';
                         const badgeColor = isFrac
@@ -1145,30 +1261,33 @@ export function PhytoAdvisorModal({
 
                         // Date de récolte sécurisée basée sur le DAR effectif (incluant DAR spécial Huile d'Olive 28 j)
                         const harvestSafety = PhytosanitaryEngine.calculateHarvestSafetyDate(new Date(), effectiveDar);
+                        const matchingProducts = isAllowed ? getMatchingCommercialProducts(ingredient) : [];
+                        const inStockCount = matchingProducts.filter((m) => m.stockQty > 0).length;
+                        const isPickerOpen = expandedIngredientId === ingredient.id;
 
                         return (
                           <div
                             key={ingredient.id}
-                            className={`rounded-2xl border p-4 transition-all ${isAllowed
+                            className={`w-full max-w-full min-w-0 overflow-hidden rounded-2xl border p-3.5 sm:p-4 transition-all ${isAllowed
                               ? "bg-card border-input hover:border-primary/50 shadow-xs"
                               : "bg-destructive/[0.04] border-destructive/30 opacity-85"
                               }`}
                           >
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                              <div className="space-y-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="text-sm font-black text-foreground">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 min-w-0">
+                              <div className="space-y-1 min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                  <span className="text-sm font-black text-foreground break-words">
                                     {ingredient.name}
                                   </span>
                                   <span dir="ltr" className={`inline-block whitespace-nowrap text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${badgeColor}`}>
                                     {ingredient.codeGroup}
                                   </span>
                                   {isMultiSite && (
-                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 border border-emerald-500/30 flex items-center gap-1">
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-700 border border-emerald-500/30 inline-flex items-center gap-1 max-w-full">
                                       🛡️ {isAr ? "متعدد مواقع التأثير (بدون مقاومة)" : "Multi-site (Immunité anti-résistance)"}
                                     </span>
                                   )}
-                                  <span className="text-[10px] text-muted-foreground font-semibold">
+                                  <span className="text-[10px] text-muted-foreground font-semibold break-words">
                                     ({ingredient.familyChemical})
                                   </span>
                                   <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${ingredient.systemicType === 'contact'
@@ -1180,37 +1299,52 @@ export function PhytoAdvisorModal({
                                     {ingredient.systemicType === 'contact' ? '🛡️ Contact' : ingredient.systemicType === 'systemique' ? '🔄 Systémique' : '🍃 Translaminaire'}
                                   </span>
                                   {isSituationallyRecommended && (
-                                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                                      <Sparkles className="h-3 w-3 text-amber-500" />
+                                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 inline-flex items-center gap-1">
+                                      <Sparkles className="h-3 w-3 text-amber-500 shrink-0" />
                                       {isAr ? 'مناسب للظروف الحالية' : 'Idéal situation actuelle'}
                                     </span>
                                   )}
+                                  {isAllowed && inStockCount > 0 && (
+                                    <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-600 text-white inline-flex items-center gap-1">
+                                      ✓ {isAr ? `في المخزون (${inStockCount})` : `En stock (${inStockCount})`}
+                                    </span>
+                                  )}
                                 </div>
-                                <p className="text-[11px] text-muted-foreground">
+                                <p className="text-[11px] text-muted-foreground break-words">
                                   {ingredient.commonNameFr}
                                 </p>
                               </div>
 
                               {/* Bouton d'action ou Avertissement de blocage */}
-                              <div className="shrink-0 flex items-center gap-2">
+                              <div className="shrink-0 flex items-center gap-2 max-w-full">
                                 {isAllowed ? (
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      if (onSelectIngredient) {
-                                        onSelectIngredient(ingredient, activePest);
+                                      if (matchingProducts.length === 0) {
+                                        if (onSelectIngredient) {
+                                          onSelectIngredient(ingredient, activePest);
+                                        }
+                                        onOpenChange(false);
+                                      } else {
+                                        setExpandedIngredientId(isPickerOpen ? null : ingredient.id);
                                       }
-                                      onOpenChange(false);
                                     }}
-                                    className="px-3.5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-black text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition"
+                                    className="px-3.5 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-black text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition cursor-pointer"
                                   >
-                                    <span>{isAr ? "اختيار المادة في التوصية" : "Insérer ce produit"}</span>
-                                    <ArrowRight className="h-3.5 w-3.5 rtl:rotate-180" />
+                                    <span>
+                                      {isPickerOpen
+                                        ? isAr ? "إخفاء الأدوية التجارية" : "Masquer les spécialités"
+                                        : isAr
+                                          ? `اختيار المادة في التوصية (${matchingProducts.length})`
+                                          : `Choisir cette matière active (${matchingProducts.length})`}
+                                    </span>
+                                    <ArrowRight className={`h-3.5 w-3.5 transition-transform ${isPickerOpen ? 'rotate-90' : 'rtl:rotate-180'}`} />
                                   </button>
                                 ) : (
-                                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-bold">
+                                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-bold min-w-0">
                                     <XCircle className="h-4 w-4 shrink-0" />
-                                    <span>
+                                    <span className="break-words">
                                       {quotaBlocked
                                         ? isAr
                                           ? `تم بلوغ الحد الأقصى السنوي (${currentSeasonUsageCount}/${effectiveMaxPerSeason || ingredient.maxApplicationsPerSeason})`
@@ -1235,6 +1369,103 @@ export function PhytoAdvisorModal({
                                 )}
                               </div>
                             </div>
+
+                            {/* Sélecteur direct des spécialités commerciales algériennes (Stock ferme en premier, puis INPV Algérie) */}
+                            {isAllowed && isPickerOpen && matchingProducts.length > 0 && (
+                              <div className="mt-3 p-3 rounded-xl bg-muted/40 border-2 border-primary/30 space-y-2 w-full max-w-full overflow-hidden">
+                                <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-1.5">
+                                  <span className="text-[11px] font-black text-foreground">
+                                    🇩🇿{" "}
+                                    {isAr
+                                      ? `اختر الدواء التجاري المعتمد في الجزائر (${matchingProducts.length})`
+                                      : `Sélectionner une spécialité commerciale algérienne (${matchingProducts.length})`}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (onSelectIngredient) {
+                                        onSelectIngredient(ingredient, activePest);
+                                      }
+                                      onOpenChange(false);
+                                    }}
+                                    className="text-[10px] font-bold text-muted-foreground hover:text-primary underline cursor-pointer"
+                                  >
+                                    {isAr ? "استخدام المادة الفعالة العامة فقط" : "Utiliser le nom générique uniquement"}
+                                  </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {matchingProducts.map(({ prod, stockQty, stockUnit, stageCheck }, pIdx) => {
+                                    const inStock = stockQty > 0;
+                                    return (
+                                      <button
+                                        key={`${prod.name}-${pIdx}`}
+                                        type="button"
+                                        onClick={() => {
+                                          if (onSelectIngredient) {
+                                            onSelectIngredient(ingredient, activePest, prod);
+                                          }
+                                          onOpenChange(false);
+                                        }}
+                                        className={`w-full min-w-0 text-start rounded-xl border p-2.5 transition cursor-pointer space-y-1.5 ${
+                                          stageCheck.blocked
+                                            ? 'bg-destructive/5 border-destructive/30 hover:border-destructive/60'
+                                            : inStock
+                                              ? 'bg-emerald-500/10 border-emerald-500/40 hover:border-emerald-600 shadow-xs'
+                                              : 'bg-card border-input hover:border-primary/60'
+                                        }`}
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-1.5 min-w-0">
+                                          <span className="font-black text-xs text-foreground break-words">
+                                            {prod.name}
+                                          </span>
+                                          <div className="flex flex-wrap items-center gap-1">
+                                            {inStock ? (
+                                              <span className="rounded-full bg-emerald-600 text-white px-2 py-0.5 text-[9px] font-black whitespace-nowrap">
+                                                {isAr
+                                                  ? `في المخزون · ${stockQty.toLocaleString('fr-FR')} ${stockUnit}`
+                                                  : `En stock · ${stockQty.toLocaleString('fr-FR')} ${stockUnit}`}
+                                              </span>
+                                            ) : (
+                                              <span className="rounded-full bg-sky-500/15 text-sky-800 dark:text-sky-200 border border-sky-500/30 px-2 py-0.5 text-[9px] font-black whitespace-nowrap">
+                                                INPV Algérie
+                                              </span>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px] text-muted-foreground">
+                                          {prod.homologation && (
+                                            <span>
+                                              <strong>N°:</strong>{" "}
+                                              <span dir="ltr" className="font-mono">{prod.homologation}</span>
+                                            </span>
+                                          )}
+                                          <span>
+                                            <strong>{isAr ? "الجرعة:" : "Dose:"}</strong>{" "}
+                                            <span dir="ltr" className="font-mono">{prod.dosage}</span>
+                                          </span>
+                                          <span>
+                                            <strong>DAR:</strong>{" "}
+                                            <span dir="ltr" className="font-mono">{prod.dar}</span>
+                                          </span>
+                                        </div>
+
+                                        {stageCheck.blocked && (
+                                          <p className="text-[10px] font-bold text-destructive flex items-start gap-1 leading-tight">
+                                            <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                                            <span className="break-words">
+                                              {isAr ? "محظور في هذا الطور: " : "Bloqué au stade actuel : "}
+                                              {stageCheck.reason || prod.blockedReason || (isAr ? "غير مسموح" : "Non autorisé")}
+                                            </span>
+                                          </p>
+                                        )}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
 
                             {/* Indicateurs techniques : DAR, DRE, Dose, Quota saison */}
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-2.5 border-t text-[11px]">

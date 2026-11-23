@@ -383,20 +383,31 @@ export function RecommendationForm({
   const [phytoHistoryOpen, setPhytoHistoryOpen] = useState(false);
   const [phytoAdvisorOpen, setPhytoAdvisorOpen] = useState(false);
 
-  const handleSelectFromAdvisor = (ingredient: any, pest: any) => {
-    const matchedOption = phytoDropdownOptions.find(
-      opt => opt.name.toLowerCase().trim() === ingredient.name.toLowerCase().trim()
-    );
-    const chosenName = matchedOption ? matchedOption.name : ingredient.name;
+  const handleSelectFromAdvisor = (ingredient: any, pest: any, commercialProduct?: any) => {
+    const matchedOption = commercialProduct
+      ? null
+      : phytoDropdownOptions.find(
+          (opt) => opt.name.toLowerCase().trim() === ingredient.name.toLowerCase().trim(),
+        );
+    const chosenName = commercialProduct?.name || (matchedOption ? matchedOption.name : ingredient.name);
+    const codeGroup = commercialProduct?.codeGroup || ingredient.codeGroup || "";
+    const activeLabel = isAr
+      ? commercialProduct?.matiereActiveAr || commercialProduct?.matiereActive || ingredient.name
+      : commercialProduct?.matiereActive || ingredient.name;
+    const pestLabel = isAr ? pest.nameAr || pest.nameFr : pest.nameFr;
+    const chosenDosage = commercialProduct?.dosage || ingredient.standardDose || "";
+    const chosenDar = commercialProduct?.dar || `${ingredient.phiDays}j`;
+    const chosenPrice = commercialProduct?.price || "0";
+    const chosenVolume = commercialProduct?.volume || "100 L";
 
-    const targetIdx = phyProducts.findIndex(p => !p.product);
+    const targetIdx = phyProducts.findIndex((p) => !p.product);
     const newRow = {
       product: chosenName,
-      cible: `${pest.nameFr} (${ingredient.codeGroup})`,
-      dosage: ingredient.standardDose,
-      volume: "100 L",
-      dar: `${ingredient.phiDays}j`,
-      price: "0",
+      cible: `${pestLabel} — ${activeLabel}${codeGroup ? ` (${codeGroup})` : ""}`,
+      dosage: chosenDosage,
+      volume: chosenVolume,
+      dar: chosenDar,
+      price: chosenPrice,
     };
     if (targetIdx !== -1) {
       updatePhyItem(targetIdx, newRow);
@@ -405,8 +416,8 @@ export function RecommendationForm({
     }
     toast.success(
       isAr
-        ? `تم اختيار ${chosenName} (${ingredient.codeGroup}) لمكافحة ${pest.nameAr}`
-        : `${chosenName} (${ingredient.codeGroup}) sélectionné contre ${pest.nameFr}`
+        ? `تم اختيار ${chosenName} — ${activeLabel} (${codeGroup}) · الجرعة: ${chosenDosage} · DAR: ${chosenDar}`
+        : `${chosenName} — ${activeLabel} (${codeGroup}) · Dose : ${chosenDosage} · DAR : ${chosenDar}`,
     );
   };
   const currentPhyPassage = phyPassages[activePhyIndex] || phyPassages[0];
