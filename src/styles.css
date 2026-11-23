@@ -205,4 +205,9 @@
   body.printing-bordereau .no-print {
     display: none !important;
   }
+
+  nav,
+  .no-print {
+    display: none !important;
+  }
 }

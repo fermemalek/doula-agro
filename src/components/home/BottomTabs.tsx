@@ -1,5 +1,5 @@
 import { Link } from "@/lib/router-compat";
-import { Home, Map, Plus, History, BellRing, User, ListTodo, Wrench, Lightbulb, CalendarRange, CloudSun } from "lucide-react";
+import { Home, Map, Plus, History, BellRing, User, ListTodo, Wrench, Lightbulb, CalendarRange, CloudSun, TrendingUp } from "lucide-react";
 import { useDisplayRole } from "@/lib/display-role";
 import { useTranslation } from "@/lib/i18n";
 import { useMyAssignedTasks, useTasks } from "@/lib/cloud/tasks";
@@ -29,6 +29,7 @@ export function BottomTabs() {
   const ADMIN_TABS = [
     { to: "/", label: t("tabs.home", "Accueil"), icon: Home },
     { to: "/programmes", label: t("tabs.programs", "Programmes"), icon: CalendarRange },
+    { to: "/rendement", label: t("tabs.rendement", "Rendement"), icon: TrendingUp },
     { to: "/tache", label: t("tabs.tasks", "Tâche"), icon: ListTodo },
     { to: "/maintenance", label: t("tabs.maintenance", "Maintenance"), icon: Wrench },
     { to: "/profil", label: t("tabs.profile", "Profil"), icon: User },
@@ -45,6 +46,7 @@ export function BottomTabs() {
   const INGE_TABS = [
     { to: "/", label: t("tabs.home", "Accueil"), icon: Home },
     { to: "/recommandations", label: t("tabs.recos", "Recos"), icon: Lightbulb },
+    { to: "/rendement", label: t("tabs.rendement", "Rendement"), icon: TrendingUp },
     { to: "/meteo", label: t("tabs.weather", "Météo"), icon: CloudSun },
     { to: "/profil", label: t("tabs.profile", "Profil"), icon: User },
   ] as const;

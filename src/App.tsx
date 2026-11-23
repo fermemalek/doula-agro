@@ -21,6 +21,7 @@ import NotFound from "@/pages/NotFound";
 import DonneesEnAttente from "@/pages/DonneesEnAttente";
 import ManageUsers from "@/pages/ManageUsers";
 import Meteo from "@/pages/Meteo";
+import Rendement from "@/pages/Rendement";
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="donnees-en-attente" element={<DonneesEnAttente />} />
         <Route path="utilisateurs" element={<ManageUsers />} />
         <Route path="meteo" element={<Meteo />} />
+        <Route path="rendement" element={<Rendement />} />
       </Route>
       <Route path="*" element={<NotFound />} />
     </Routes>

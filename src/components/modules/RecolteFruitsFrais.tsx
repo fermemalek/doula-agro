@@ -109,6 +109,7 @@ export interface FreshFruitHarvestRecord {
   recordMode?: "fruits_frais";
   schemaVersion?: 2;
   date: string;
+  parcelIds?: string[];
   selectedParcelIds?: string[];
   unit: HarvestUnit | "Caisses" | string;
   avgCrateWeightKg?: string;
@@ -2356,6 +2357,11 @@ export function RecolteFruitsFrais({
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusBadge.cls}`}>
                         {statusBadge.label}
                       </span>
+                      {(r.parcelIds || r.selectedParcelIds || []).length > 1 && (
+                        <span className="rounded-full border border-indigo-500/35 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 text-[10px] font-bold">
+                          {isAr ? "دفعة مشتركة : تفاح 1 و 2" : "Lot partagé : Pommier 1 & 2"}
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1.5">
