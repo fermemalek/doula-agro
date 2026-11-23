@@ -334,7 +334,7 @@ export function BordereauPrintModal({
                 </div>
                 <div className="flex items-center justify-between px-3.5 py-2">
                   <span className="font-semibold text-slate-700">
-                    {isAr ? "حقوق السوق (D. de marché)" : "D. de marché"}
+                    {isAr ? "حقوق الدخول (Droit d'entrée)" : "Droit d'entrée"}
                   </span>
                   <span dir="ltr" className="font-mono font-bold text-rose-700">
                     − {formatNumber(totals.droitsMarche, 2)} DA

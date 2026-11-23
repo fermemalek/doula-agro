@@ -17,6 +17,8 @@ import {
   ArrowDownToLine,
   CheckCircle2,
   AlertTriangle,
+  FileText,
+  Paperclip,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
@@ -43,6 +45,13 @@ import { seedBordereau36387IfNeeded } from "@/lib/recolte-seed";
 export type FruitDestination = "mandataire" | "frigo" | "direct" | "mixte";
 export type PaymentStatus = "paye" | "en_attente" | "partiel";
 export type HarvestUnit = "Kg" | "Quintal" | "Caisse/Colis";
+
+export interface HarvestAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  dataUrl: string;
+}
 
 export interface HarvestLotLine {
   id: string;
@@ -154,6 +163,7 @@ export interface FreshFruitHarvestRecord {
   net?: number;
   notes: string;
   photo?: string;
+  attachments?: HarvestAttachment[];
 }
 
 function parseNum(v: string | number | undefined): number {
@@ -521,6 +531,7 @@ export function RecolteFruitsFrais({
   const [harvestLots, setHarvestLots] = useState<HarvestLotLine[]>([createEmptyHarvestLot("")]);
   const [rebutKg, setRebutKg] = useState("");
   const [photo, setPhoto] = useState<string | undefined>(undefined);
+  const [attachments, setAttachments] = useState<HarvestAttachment[]>([]);
   const [notes, setNotes] = useState(prefillNotes || "");
 
   // ÉTAPE 2 — Destination (4 modes)
@@ -701,6 +712,7 @@ export function RecolteFruitsFrais({
     setHarvestLots([createEmptyHarvestLot("")]);
     setRebutKg("");
     setPhoto(undefined);
+    setAttachments([]);
     setNotes(prefillNotes || "");
     setDestination("mandataire");
     setBordereaux([createEmptyBordereau(prefillDate || todayIso)]);
@@ -758,11 +770,27 @@ export function RecolteFruitsFrais({
     }
   }
 
-  function onPhoto(file?: File) {
-    if (!file) return;
-    const r = new FileReader();
-    r.onload = () => setPhoto(String(r.result));
-    r.readAsDataURL(file);
+  function onAddAttachments(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    for (const file of files) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result || "");
+        if (!dataUrl) return;
+        const item: HarvestAttachment = {
+          id: `att_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          name: file.name,
+          mimeType: file.type || (file.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "image/jpeg"),
+          dataUrl,
+        };
+        setAttachments((prev) => [...prev, item]);
+        if (item.mimeType.startsWith("image/")) {
+          setPhoto((prev) => prev || dataUrl);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
   }
 
   function handleSaveHarvest() {
@@ -812,7 +840,8 @@ export function RecolteFruitsFrais({
       total: Number((formFinancials.chargesFerme + formFinancials.deductionsMandataire).toFixed(2)),
       net: Number(formFinancials.beneficeNetFerme.toFixed(2)),
       notes,
-      photo,
+      photo: attachments.find((a) => a.mimeType.startsWith("image/"))?.dataUrl || photo,
+      attachments,
     };
 
     if (editingHarvestId) {
@@ -873,6 +902,20 @@ export function RecolteFruitsFrais({
 
     setRebutKg(r.rebutKg || r.rebutQty || "");
     setPhoto(r.photo);
+    if (Array.isArray(r.attachments) && r.attachments.length > 0) {
+      setAttachments(r.attachments.map((a) => ({ ...a })));
+    } else if (r.photo) {
+      setAttachments([
+        {
+          id: `legacy_photo_${r.id}`,
+          name: "Photo bordereau",
+          mimeType: "image/jpeg",
+          dataUrl: r.photo,
+        },
+      ]);
+    } else {
+      setAttachments([]);
+    }
     setNotes(r.notes || "");
     setDestination(r.destination || "mandataire");
 
@@ -1452,21 +1495,70 @@ export function RecolteFruitsFrais({
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-input bg-background px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
-                  <ImageIcon className="h-3.5 w-3.5" />
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-primary/40 bg-background px-3 py-1.5 text-xs font-bold text-primary hover:bg-primary/5 transition">
+                  <Paperclip className="h-3.5 w-3.5" />
                   <span>
-                    {photo
+                    {attachments.length > 0
                       ? isAr
-                        ? "تمت إضافة صورة الكشف ✓"
-                        : "Photo bordereau / caisses ✓"
+                        ? `إضافة صور أو PDF (${attachments.length} مرفق)`
+                        : `Ajouter photos / PDF (${attachments.length} fichier${attachments.length > 1 ? "s" : ""})`
                       : isAr
-                        ? "صورة الكشف أو الصناديق"
-                        : "Photo (bordereau / caisses)"}
+                        ? "إرفاق صور أو ملف PDF (متعدد)"
+                        : "Attacher photos ou fichier PDF (multiple)"}
                   </span>
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => onPhoto(e.target.files?.[0])} />
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf,.pdf"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      onAddAttachments(e.target.files);
+                      e.currentTarget.value = "";
+                    }}
+                  />
                 </label>
               </div>
             </div>
+
+            {/* Aperçu des pièces jointes (photos & PDF) */}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {attachments.map((att) => {
+                  const isPdf = att.mimeType === "application/pdf" || att.name.toLowerCase().endsWith(".pdf");
+                  return (
+                    <div
+                      key={att.id}
+                      className="relative group rounded-lg border bg-background p-1.5 flex items-center gap-2 max-w-[200px]"
+                    >
+                      {isPdf ? (
+                        <a
+                          href={att.dataUrl}
+                          download={att.name}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center gap-1.5 text-[11px] font-bold text-rose-700 dark:text-rose-300 truncate pr-4"
+                        >
+                          <FileText className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{att.name}</span>
+                        </a>
+                      ) : (
+                        <a href={att.dataUrl} target="_blank" rel="noreferrer" className="block">
+                          <img src={att.dataUrl} alt={att.name} className="h-14 w-14 rounded object-cover" />
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setAttachments((prev) => prev.filter((a) => a.id !== att.id))}
+                        className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center shadow-xs cursor-pointer"
+                        title={isAr ? "حذف المرفق" : "Retirer ce fichier"}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <textarea
               value={notes}
@@ -2088,7 +2180,7 @@ export function RecolteFruitsFrais({
               </div>
               <div>
                 <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">
-                  {isAr ? "الصناديق / التغليف" : "Caisses / Emballage (DA)"}
+                  {isAr ? "الصناديق / الألفيول (دج)" : "Caisses / Alvéole (DA)"}
                 </label>
                 <input dir="ltr" inputMode="decimal" value={emballages} onChange={(e) => setEmballages(e.target.value)} placeholder="0" className={cls} />
               </div>
@@ -2119,7 +2211,7 @@ export function RecolteFruitsFrais({
               <strong dir="ltr">{formatDA(formFinancials.totalVenteBrute, 2)}</strong>
             </div>
             <div className="flex justify-between text-rose-700 dark:text-rose-400">
-              <span>{isAr ? "اقتطاعات الوكيل (العمولة + حقوق السوق)" : "Déductions Mandataire (COM + D. de marché)"}</span>
+              <span>{isAr ? "اقتطاعات الوكيل (العمولة + حقوق الدخول)" : "Déductions Mandataire (COM + Droit d'entrée)"}</span>
               <span dir="ltr">− {formatDA(formFinancials.deductionsMandataire, 2)}</span>
             </div>
             <div className="flex justify-between font-bold text-foreground">
@@ -2317,7 +2409,7 @@ export function RecolteFruitsFrais({
                     </span>
                     {fin.deductionsMandataire > 0 && (
                       <span dir="ltr">
-                        {isAr ? "اقتطاعات الوكيل" : "COM + D. marché"} : −{formatDA(fin.deductionsMandataire)}
+                        {isAr ? "اقتطاعات الوكيل" : "COM + Droit d'entrée"} : −{formatDA(fin.deductionsMandataire)}
                       </span>
                     )}
                     {fin.chargesFerme > 0 && (
@@ -2392,7 +2484,43 @@ export function RecolteFruitsFrais({
                   )}
 
                   {r.notes && <p className="text-[11px] italic text-muted-foreground">{r.notes}</p>}
-                  {r.photo && <img src={r.photo} alt="" className="h-20 rounded-lg border object-cover" />}
+                  {(() => {
+                    const listAtt: HarvestAttachment[] =
+                      Array.isArray(r.attachments) && r.attachments.length > 0
+                        ? r.attachments
+                        : r.photo
+                          ? [{ id: `p_${r.id}`, name: "Photo", mimeType: "image/jpeg", dataUrl: r.photo }]
+                          : [];
+                    if (listAtt.length === 0) return null;
+                    return (
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        {listAtt.map((att) => {
+                          const isPdf = att.mimeType === "application/pdf" || att.name.toLowerCase().endsWith(".pdf");
+                          return isPdf ? (
+                            <a
+                              key={att.id}
+                              href={att.dataUrl}
+                              download={att.name}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/35 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:text-rose-300 transition"
+                            >
+                              <FileText className="h-3.5 w-3.5 shrink-0" />
+                              <span className="max-w-[160px] truncate">{att.name}</span>
+                            </a>
+                          ) : (
+                            <a key={att.id} href={att.dataUrl} target="_blank" rel="noreferrer" className="block">
+                              <img
+                                src={att.dataUrl}
+                                alt={att.name}
+                                className="h-16 w-16 rounded-lg border object-cover hover:opacity-90 transition"
+                              />
+                            </a>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </li>
               );
             })}

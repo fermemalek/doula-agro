@@ -431,7 +431,7 @@ export function BordereauEditorCard({
 
           <div>
             <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-              {isAr ? "تعديل العمولة يدوياً (دج - اختياري)" : "Ajustement COM (DA, optionnel)"}
+              {isAr ? "تعديل العمولة" : "Ajust Commission"}
             </label>
             <input
               dir="ltr"
@@ -445,7 +445,7 @@ export function BordereauEditorCard({
 
           <div>
             <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-              {isAr ? "حقوق السوق (D. de marché)" : "D. de marché (DA)"}
+              {isAr ? "حقوق الدخول (دج)" : "Droit d'entrée (DA)"}
             </label>
             <input
               dir="ltr"
@@ -482,7 +482,7 @@ export function BordereauEditorCard({
             <strong dir="ltr" className="font-mono text-rose-700 dark:text-rose-400">− {formatDA(totals.comDA, 2)}</strong>
           </div>
           <div className="rounded-lg bg-muted/40 p-2">
-            <span className="text-muted-foreground block text-[10px]">{isAr ? "حقوق السوق" : "D. marché"}</span>
+            <span className="text-muted-foreground block text-[10px]">{isAr ? "حقوق الدخول" : "Droit d'entrée"}</span>
             <strong dir="ltr" className="font-mono text-rose-700 dark:text-rose-400">− {formatDA(totals.droitsMarche, 2)}</strong>
           </div>
           <div className="rounded-lg bg-muted/40 p-2">
