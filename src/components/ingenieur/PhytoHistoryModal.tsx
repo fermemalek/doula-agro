@@ -986,21 +986,6 @@ export function PhytoHistoryModal({
                 )}
               </span>
               <div className="flex items-center gap-2">
-                {canBulkClear && filteredTreatments.length > 0 && (
-                  <button
-                    type="button"
-                    disabled={clearingAll}
-                    onClick={handleDeleteAllDisplayed}
-                    className="inline-flex items-center gap-1 rounded-lg border border-destructive/40 bg-destructive/10 hover:bg-destructive/20 text-destructive px-2.5 py-1 text-[11px] font-black transition cursor-pointer disabled:opacity-50"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    <span>
-                      {clearingAll
-                        ? isAr ? "جارٍ المسح..." : "Suppression..."
-                        : isAr ? "مسح السجل المعروض" : "Tout supprimer"}
-                    </span>
-                  </button>
-                )}
                 {(selectedCrop !== defaultCropFilter || selectedSeason !== "all" || selectedMonth !== "all" || selectedActive !== "all" || searchTerm) && (
                   <button
                     type="button"
@@ -1064,16 +1049,6 @@ export function PhytoHistoryModal({
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                           {item.status}
                         </span>
-
-                        {/* Bouton pour supprimer manuellement ce produit de l'historique */}
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteEntry(item)}
-                          title={isAr ? "حذف هذا المنتج من السجل التاريخي" : "Supprimer ce produit de l'historique"}
-                          className="p-1 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
                       </div>
                     </div>
 
@@ -1108,13 +1083,13 @@ export function PhytoHistoryModal({
           </div>
         </div>
 
-        <div className="border-t pt-3 flex justify-between items-center">
+        <div className="border-t pt-3 flex justify-between items-center gap-2">
           <span className="text-[11px] text-muted-foreground">
             {isAr
-              ? "يمكنك حذف أي معاملة سابقة أو ملغاة بالضغط على أيقونة سلة المهملات 🗑️"
-              : "Vous pouvez retirer un traitement erroné ou annulé en cliquant sur la corbeille 🗑️"}
+              ? "السجل للعرض والتصفية فقط — تتم إدارة وحذف المعاملات حصرياً من صفحة التوصيات."
+              : "Historique en lecture seule — la suppression des traitements s'effectue exclusivement depuis Recommandations."}
           </span>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="rounded-xl font-bold">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="rounded-xl font-bold shrink-0">
             {isAr ? "إغلاق" : "Fermer"}
           </Button>
         </div>

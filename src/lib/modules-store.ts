@@ -296,22 +296,100 @@ export function getAllModuleRecordsSnapshot<T = any>(mod: ModuleName): Array<T &
   return all;
 }
 
-export function removeModuleRecordsByRecoId(recoId: string) {
+export interface RecoCascadeFallback {
+  date?: string;
+  productNames?: string[];
+  title?: string;
+  parcelIds?: string[];
+}
+
+export function removeModuleRecordsByRecoId(recoId: string, fallback?: RecoCascadeFallback) {
   let changed = false;
   const deletedIds: string[] = [];
+  const fbDate = (fallback?.date || "").slice(0, 10);
+  const fbProds = (fallback?.productNames || [])
+    .map((n) => n.trim().toLowerCase())
+    .filter((n) => n.length >= 3);
+  const fbTitle = (fallback?.title || "").trim().toLowerCase();
+  const fbParcels = new Set((fallback?.parcelIds || []).map((p) => p.toLowerCase()));
+
   for (const pid of Object.keys(data)) {
     if (!data[pid]) continue;
     for (const mod of Object.keys(data[pid]) as ModuleName[]) {
-      if (Array.isArray(data[pid][mod])) {
-        const initialLen = data[pid][mod].length;
-        data[pid][mod] = data[pid][mod].filter((r: any) => {
-          const match = r.reco_id === recoId || r.payload?.reco_id === recoId || (typeof r.id === "string" && r.id.includes(recoId));
-          if (match && r.id) deletedIds.push(r.id);
-          return !match;
-        });
-        if (data[pid][mod].length !== initialLen) {
-          changed = true;
+      if (!Array.isArray(data[pid][mod])) continue;
+      const initialLen = data[pid][mod].length;
+      const isTargetMod = mod === "phytosanitaire" || mod === "pulverisation" || mod === "fertilisation";
+
+      data[pid][mod] = data[pid][mod].filter((r: any) => {
+        const directMatch =
+          r.id === recoId ||
+          r.reco_id === recoId ||
+          r.recommendationId === recoId ||
+          r.sourceRecommendationId === recoId ||
+          r.payload?.reco_id === recoId ||
+          r.payload?.recommendationId === recoId ||
+          r.payload?.sourceRecommendationId === recoId ||
+          (typeof r.id === "string" && r.id.includes(recoId));
+
+        let fallbackMatch = false;
+        if (!directMatch && isTargetMod && fbDate) {
+          const recDate = String(r.date || r.executed_at || r.executedAt || r.scheduled_at || "").slice(0, 10);
+          const parcelOk = fbParcels.size === 0 || fbParcels.has(pid.toLowerCase());
+          if (recDate === fbDate && parcelOk) {
+            const rStr = JSON.stringify(r).toLowerCase();
+            if (fbProds.length > 0 && fbProds.some((p) => rStr.includes(p))) {
+              fallbackMatch = true;
+            } else if (fbTitle && rStr.includes(fbTitle)) {
+              fallbackMatch = true;
+            }
+          }
         }
+
+        const match = directMatch || fallbackMatch;
+        if (match && r.id) deletedIds.push(r.id);
+        return !match;
+      });
+
+      if (data[pid][mod].length !== initialLen) {
+        changed = true;
+      }
+    }
+  }
+  if (changed) {
+    persist();
+  }
+  if (deletedIds.length > 0) {
+    for (const id of deletedIds) {
+      void deleteFromCloud(id);
+    }
+  }
+}
+
+export function removeAllRecoLinkedModuleRecords() {
+  let changed = false;
+  const deletedIds: string[] = [];
+  const targetMods: ModuleName[] = ["phytosanitaire", "pulverisation", "fertilisation"];
+
+  for (const pid of Object.keys(data)) {
+    if (!data[pid]) continue;
+    for (const mod of targetMods) {
+      if (!Array.isArray(data[pid][mod])) continue;
+      const initialLen = data[pid][mod].length;
+      data[pid][mod] = data[pid][mod].filter((r: any) => {
+        const isFromReco = Boolean(
+          r.reco_id ||
+            r.recommendationId ||
+            r.sourceRecommendationId ||
+            r.payload?.reco_id ||
+            r.payload?.recommendationId ||
+            r.payload?.sourceRecommendationId ||
+            r.weatherNote === "Validé par l'Ingénieur",
+        );
+        if (isFromReco && r.id) deletedIds.push(r.id);
+        return !isFromReco;
+      });
+      if (data[pid][mod].length !== initialLen) {
+        changed = true;
       }
     }
   }

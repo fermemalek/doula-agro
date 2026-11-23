@@ -29,7 +29,7 @@ import { RecommendationForm } from "@/components/ingenieur/RecommendationForm";
 import { RecommendationDetailDialog } from "@/components/RecommendationDetailDialog";
 import seededRecos from "@/data/seeded_recommendations.json";
 import { toast } from "sonner";
-import { useAllModuleRecords, useModuleActions, removeModuleRecordsByRecoId, fetchCloudModules } from "@/lib/modules-store";
+import { useAllModuleRecords, useModuleActions, removeModuleRecordsByRecoId, removeAllRecoLinkedModuleRecords, fetchCloudModules } from "@/lib/modules-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -552,60 +552,32 @@ function RecommandationsPageContent() {
         deletedIds.add(r.id);
       }
 
-      // 2. Si la case est cochée : supprimer aussi les traitements exécutés liés dans l'historique des parcelles
+      // 2. Si la case est cochée : supprimer aussi tous les traitements exécutés liés (phyto, pulvérisation, fertigation)
       if (deleteLinkedParcelPhyto) {
+        removeAllRecoLinkedModuleRecords();
         for (const r of itemsToDelete) {
           removeModuleRecordsByRecoId(r.id);
         }
 
-        // Nettoyage complémentaire dans doula-modules localStorage + Supabase module_records (phytosanitaire liés)
-        const phytoItems = itemsToDelete.filter((r) => r.kind === "phytosanitaire");
+        // Supprimer aussi dans Supabase module_records toutes les lignes issues de recommandations (phyto, pulvérisation, fertigation)
         try {
-          const rawMod = localStorage.getItem("doula-modules");
-          if (rawMod) {
-            const parsed = JSON.parse(rawMod);
-            let changed = false;
-            for (const pid of Object.keys(parsed)) {
-              const arr = parsed[pid]?.phytosanitaire;
-              if (Array.isArray(arr)) {
-                const filtered = arr.filter((rec: any) => {
-                  if (rec.reco_id && deletedIds.has(rec.reco_id)) return false;
-                  if (rec.payload?.reco_id && deletedIds.has(rec.payload.reco_id)) return false;
-                  if (phytoItems.length > 0 && rec.reco_id) return false;
-                  return true;
-                });
-                if (filtered.length !== arr.length) {
-                  parsed[pid].phytosanitaire = filtered;
-                  changed = true;
-                }
-              }
-            }
-            if (changed) {
-              localStorage.setItem("doula-modules", JSON.stringify(parsed));
+          const { data: cloudMods } = await supabase
+            .from("module_records")
+            .select("id, kind, payload")
+            .in("kind", ["phytosanitaire", "pulverisation", "fertilisation"]);
+          if (Array.isArray(cloudMods)) {
+            const cloudIdsToDelete = cloudMods
+              .filter((row: any) => {
+                const p = row?.payload || {};
+                const rid = p.reco_id || p.recommendationId || p.sourceRecommendationId;
+                return Boolean(rid) || p.weatherNote === "Validé par l'Ingénieur";
+              })
+              .map((row: any) => row.id);
+            if (cloudIdsToDelete.length > 0) {
+              await supabase.from("module_records").delete().in("id", cloudIdsToDelete);
             }
           }
         } catch {}
-
-        // Supprimer aussi dans Supabase module_records les lignes phytosanitaires créées via recommandations
-        if (phytoItems.length > 0) {
-          try {
-            const { data: cloudPhyto } = await supabase
-              .from("module_records")
-              .select("id, payload")
-              .eq("kind", "phytosanitaire");
-            if (Array.isArray(cloudPhyto)) {
-              const cloudIdsToDelete = cloudPhyto
-                .filter((row: any) => {
-                  const rid = row?.payload?.reco_id;
-                  return rid && deletedIds.has(rid);
-                })
-                .map((row: any) => row.id);
-              if (cloudIdsToDelete.length > 0) {
-                await supabase.from("module_records").delete().in("id", cloudIdsToDelete);
-              }
-            }
-          } catch {}
-        }
 
         await fetchCloudModules();
       }

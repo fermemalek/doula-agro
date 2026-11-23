@@ -326,7 +326,15 @@ export function useRecommendationActions() {
 
       return newRecord as Recommendation;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+      void qc.invalidateQueries({ queryKey: ["phyto-executions"] });
+      void qc.invalidateQueries({ queryKey: ["executions"] });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("doula:farm-reset"));
+      }
+    },
   });
 
   const queueReview = async (id: string, status: "acceptee" | "rejetee") => {
@@ -384,12 +392,28 @@ export function useRecommendationActions() {
 
   const accept = useMutation({
     mutationFn: async (id: string) => queueReview(id, "acceptee"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+      void qc.invalidateQueries({ queryKey: ["phyto-executions"] });
+      void qc.invalidateQueries({ queryKey: ["executions"] });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("doula:farm-reset"));
+      }
+    },
   });
 
   const reject = useMutation({
     mutationFn: async (id: string) => queueReview(id, "rejetee"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+      void qc.invalidateQueries({ queryKey: ["phyto-executions"] });
+      void qc.invalidateQueries({ queryKey: ["executions"] });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("doula:farm-reset"));
+      }
+    },
   });
 
   const resetAllToPending = useMutation({
@@ -492,7 +516,15 @@ export function useRecommendationActions() {
 
       return { id: input.id, ...patch } as unknown as Recommendation;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+      void qc.invalidateQueries({ queryKey: ["phyto-executions"] });
+      void qc.invalidateQueries({ queryKey: ["executions"] });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("doula:farm-reset"));
+      }
+    },
   });
 
   const remove = useMutation({
@@ -500,11 +532,12 @@ export function useRecommendationActions() {
       // 1. Enregistrer immédiatement dans le cache local permanent
       addLocalDeletedRecoId(id);
 
-      // Nettoyer aussi les achats fournisseurs générés par cette recommandation
+      // Nettoyer aussi les achats fournisseurs & traitements parcelles générés par cette recommandation (cascade complète)
+      const targetReco = qc.getQueryData<Recommendation[]>(KEY)?.find((r) => r.id === id);
+      const productNames: string[] = [];
+      const pProgram = (targetReco?.payload as any)?.program;
+      const recoDate = String(pProgram?.date || (targetReco?.payload as any)?.date || targetReco?.created_at || "").slice(0, 10);
       try {
-        const targetReco = qc.getQueryData<Recommendation[]>(KEY)?.find((r) => r.id === id);
-        const productNames: string[] = [];
-        const pProgram = (targetReco?.payload as any)?.program;
         if (Array.isArray(pProgram?.products)) {
           for (const pr of pProgram.products) {
             const n = (pr.product || pr.name)?.trim();
@@ -532,33 +565,48 @@ export function useRecommendationActions() {
         console.warn("deletePurchasesForReco error:", err);
       }
 
-      // 2. Nettoyer aussi les modules et l'historique phyto locaux
+      // 2. Suppression en cascade dans modules-store (mémoire + localStorage + Supabase module_records)
+      try {
+        const modStore = await import("@/lib/modules-store");
+        modStore.removeModuleRecordsByRecoId(id, {
+          date: recoDate,
+          productNames,
+          title: targetReco?.title,
+          parcelIds: targetReco?.parcel_ids,
+        });
+      } catch {}
+
       if (typeof window !== "undefined") {
         try {
-          const rawMod = localStorage.getItem("doula-modules");
-          if (rawMod) {
-            const parsed = JSON.parse(rawMod);
-            let changed = false;
-            for (const pid of Object.keys(parsed)) {
-              for (const modKey of ["phytosanitaire", "fertilisation", "irrigation", "pulverisation"]) {
-                const arr = parsed[pid]?.[modKey];
-                if (Array.isArray(arr)) {
-                  const f = arr.filter((r: any) => r.id !== id && r.reco_id !== id);
-                  if (f.length !== arr.length) {
-                    parsed[pid][modKey] = f;
-                    changed = true;
-                  }
-                }
-              }
-            }
-            if (changed) localStorage.setItem("doula-modules", JSON.stringify(parsed));
-          }
           const rawHist = localStorage.getItem("doula_dismissed_phyto_history");
           const histList: string[] = rawHist ? JSON.parse(rawHist) : [];
           if (!histList.includes(id)) histList.push(id, `reco-${id}`);
           localStorage.setItem("doula_dismissed_phyto_history", JSON.stringify(histList));
         } catch { }
       }
+
+      // Supprimer aussi dans Supabase module_records par reco_id / recommendationId
+      try {
+        const { data: cloudRows } = await supabase
+          .from("module_records")
+          .select("id, kind, payload")
+          .in("kind", ["phytosanitaire", "pulverisation", "fertilisation"]);
+        if (Array.isArray(cloudRows)) {
+          const idsToDrop = cloudRows
+            .filter((row: any) => {
+              const p = row?.payload || {};
+              return (
+                p.reco_id === id ||
+                p.recommendationId === id ||
+                p.sourceRecommendationId === id
+              );
+            })
+            .map((row: any) => row.id);
+          if (idsToDrop.length > 0) {
+            await supabase.from("module_records").delete().in("id", idsToDrop);
+          }
+        }
+      } catch {}
 
       // 3. Retrait optimiste immédiat du cache React Query
       qc.setQueryData<Recommendation[]>(KEY, (old) => {
@@ -618,7 +666,15 @@ export function useRecommendationActions() {
         scheduleSync();
       } catch { }
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+      void qc.invalidateQueries({ queryKey: ["phyto-executions"] });
+      void qc.invalidateQueries({ queryKey: ["executions"] });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("doula:farm-reset"));
+      }
+    },
   });
 
   return { create, update, accept, reject, remove, resetAllToPending };
