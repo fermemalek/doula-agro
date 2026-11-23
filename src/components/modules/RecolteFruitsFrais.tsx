@@ -412,7 +412,7 @@ export function RecolteFruitsFrais({
     }
   });
   const [selectedSpecies, setSelectedSpecies] = useState<string>("");
-  const [selectedCalibre, setSelectedCalibre] = useState<string>("22");
+  const [selectedCalibre, setSelectedCalibre] = useState<string>("21");
   const [addingCustomSpecies, setAddingCustomSpecies] = useState<boolean>(false);
   const [newSpeciesName, setNewSpeciesName] = useState<string>("");
 
@@ -439,7 +439,7 @@ export function RecolteFruitsFrais({
   }
 
   function handleAddLotFromPicker() {
-    const calLabel = selectedCalibre === "Frag" ? "Frag" : `Cal. ${selectedCalibre}`;
+    const calLabel = /^\d+$/.test(selectedCalibre) ? `Cal. ${selectedCalibre}` : selectedCalibre;
     const composed = selectedSpecies ? `${selectedSpecies} — ${calLabel}` : calLabel;
     const emptyIdx = harvestLots.findIndex((l) => !l.nature.trim() && !l.poidsNetKg && !l.colis);
     if (emptyIdx >= 0) {
@@ -1173,12 +1173,12 @@ export function RecolteFruitsFrais({
               </div>
             </div>
 
-            {/* Sélecteur Espèce / Variété + Calibre (16 à 30 & Frag) */}
+            {/* Sélecteur Espèce / Variété + Calibre (impairs 17 à 29, Frag, Piqué, Rebut) */}
             <div className="rounded-xl border border-primary/25 bg-primary/[0.03] p-2.5 space-y-2">
               <span className="text-[10px] font-black uppercase text-primary block">
                 {isAr
-                  ? "اختيار الصنف والعيار (من 16 إلى 30 أو Frag) لإضافته إلى الدفعات :"
-                  : "Choix de l'espèce & du calibre (16 à 30 ou Frag) :"}
+                  ? "اختيار الصنف والعيار (17 إلى 29 فردي / Frag / مثقوب / فضلات) :"
+                  : "Choix de l'espèce & du calibre (17 à 29 impairs / Frag / Piqué / Rebut) :"}
               </span>
 
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
@@ -1211,10 +1211,10 @@ export function RecolteFruitsFrais({
                   </select>
                 </div>
 
-                {/* Choix calibre 16 à 30 + Frag */}
+                {/* Choix calibre impairs 17 à 29 + Frag + Piqué + Rebut */}
                 <div className="sm:col-span-4">
                   <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-                    {isAr ? "العيار (16 إلى 30 / Frag)" : "Calibre (16 à 30 / Frag)"}
+                    {isAr ? "العيار / الفئة" : "Calibre / Rubrique"}
                   </label>
                   <select
                     dir="ltr"
@@ -1224,7 +1224,13 @@ export function RecolteFruitsFrais({
                   >
                     {CALIBRE_OPTIONS.map((cal) => (
                       <option key={cal} value={cal}>
-                        {cal === "Frag" ? (isAr ? "Frag / فراك" : "Frag") : `Calibre ${cal}`}
+                        {cal === "Frag"
+                          ? isAr ? "Frag / فراك" : "Frag"
+                          : cal === "Piqué"
+                            ? isAr ? "Piqué / مثقوب" : "Piqué"
+                            : cal === "Rebut"
+                              ? isAr ? "Rebut / فضلات" : "Rebut"
+                              : `Calibre ${cal}`}
                       </option>
                     ))}
                   </select>

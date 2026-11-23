@@ -26,13 +26,21 @@ export const APPLE_VARIETY_OPTIONS = [
 ];
 
 export const CALIBRE_OPTIONS: string[] = [
-  ...Array.from({ length: 15 }, (_, i) => String(16 + i)), // 16 à 30
+  "17",
+  "19",
+  "21",
+  "23",
+  "25",
+  "27",
+  "29",
   "Frag",
+  "Piqué",
+  "Rebut",
 ];
 
 export const NATURE_SUGGESTIONS = [
   ...APPLE_VARIETY_OPTIONS,
-  ...CALIBRE_OPTIONS.map((c) => (c === "Frag" ? "Frag" : `Cal. ${c}`)),
+  ...CALIBRE_OPTIONS.map((c) => (/^\d+$/.test(c) ? `Cal. ${c}` : c)),
 ];
 
 function parseNum(v: string | number | undefined): number {
