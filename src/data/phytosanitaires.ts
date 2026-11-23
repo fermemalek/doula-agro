@@ -322,6 +322,51 @@ function resolveFullActiveFr(productName: string): string {
   return dbMatch?.matiereActive || "";
 }
 
+const MULTISITE_TANK_CODE_RE = /\b(FRAC\s*M0?[1-9]|IRAC\s*UN|ADJUVANT|ATTRACTIF|DIVERS)\b/i;
+
+const RESISTANCE_GROUP_LABELS: Record<string, string> = {
+  "FRAC 1": "MBC / Benzimidazole",
+  "FRAC 3": "Triazole / DMI",
+  "FRAC 7": "SDHI",
+  "FRAC 9": "AP / Anilinopyrimidine",
+  "FRAC 11": "QoI / Strobilurine",
+  "FRAC 12": "PP / Phénylpyrrole",
+  "FRAC 17": "Hydroxyanilide",
+  "FRAC 40": "CAA",
+  "IRAC 1A": "Carbamate",
+  "IRAC 1B": "Organophosphoré",
+  "IRAC 3A": "Pyréthrinoïde",
+  "IRAC 4A": "Néonicotinoïde",
+  "IRAC 4D": "Buténolide",
+  "IRAC 5": "Spinosyne",
+  "IRAC 6": "Avermectine",
+  "IRAC 15": "Benzoylurée",
+  "IRAC 21A": "METI",
+  "IRAC 23": "Dérivé d'acide tétronique",
+  "IRAC 28": "Diamide",
+  "IRAC 29": "Flonicamide",
+};
+
+function splitResistanceCodes(rawCode: string): string[] {
+  if (!rawCode) return [];
+  return Array.from(
+    new Set(
+      rawCode
+        .split(/[+/,]/)
+        .map((c) => c.trim().replace(/\s+/g, " ").toUpperCase())
+        .filter((c) => /^(FRAC|IRAC|HRAC)\s+[A-Z0-9]+$/i.test(c)),
+    ),
+  );
+}
+
+function resolveFullCodeGroup(productName: string): string {
+  const fromMap = getIracFracCode(productName);
+  if (fromMap) return fromMap;
+  const lower = productName.trim().toLowerCase();
+  const dbMatch = PHYTO_DATABASE.find((p) => p.name.trim().toLowerCase() === lower);
+  return dbMatch?.codeGroup || "";
+}
+
 export function checkTankMixCompatibility(
   prodNameA: string,
   prodNameB: string,
@@ -333,8 +378,8 @@ export function checkTankMixCompatibility(
   const cleanA = prodNameA.trim();
   const cleanB = prodNameB.trim();
 
-  const codeA = getIracFracCode(cleanA);
-  const codeB = getIracFracCode(cleanB);
+  const codeA = resolveFullCodeGroup(cleanA);
+  const codeB = resolveFullCodeGroup(cleanB);
 
   const activeFrRawA = resolveFullActiveFr(cleanA);
   const activeFrRawB = resolveFullActiveFr(cleanB);
@@ -470,6 +515,34 @@ export function checkTankMixCompatibility(
         ? "استعمل الكابتان منفرداً دون خلطه بالزيوت."
         : "Délai de 21 jours obligatoire entre ces deux applications.",
       codeA, codeB, typeA, typeB
+    };
+  }
+
+  // 2 bis. Intersection individuelle des codes FRAC / IRAC site-spécifiques (ex: Luna FRAC 7+3 vs Bellis FRAC 7+11 → FRAC 7 commun)
+  const siteCodesA = splitResistanceCodes(codeA).filter((c) => !MULTISITE_TANK_CODE_RE.test(c));
+  const siteCodesB = splitResistanceCodes(codeB).filter((c) => !MULTISITE_TANK_CODE_RE.test(c));
+  const sharedSiteCodes = siteCodesA.filter((c) => siteCodesB.includes(c));
+  if (sharedSiteCodes.length > 0) {
+    const sharedShort = sharedSiteCodes.join(" + ");
+    const sharedDetailed = sharedSiteCodes
+      .map((c) => (RESISTANCE_GROUP_LABELS[c] ? `${c} - ${RESISTANCE_GROUP_LABELS[c]}` : c))
+      .join(" + ");
+    return {
+      status: "incompatible",
+      isBlocking: true,
+      title: isAr
+        ? `⛔ تعارض في مجموعة المقاومة (${sharedShort} مشترك)`
+        : `⛔ Conflit de groupe de résistance (${sharedShort} commun)`,
+      message: isAr
+        ? `⛔ لا يمكن خلط ${cleanA} و ${cleanB}: كلاهما يحتوي على نفس مجموعة المقاومة (${sharedDetailed}). هذا يسبب تسريع مقاومة الأمراض وجرعة مزدوجة على نفس الهدف.`
+        : `⛔ Mélange interdit : ${cleanA} et ${cleanB} partagent le même mode d'action (${sharedDetailed}). Risque élevé de résistance croisée.`,
+      advice: isAr
+        ? "استبدل أحد المنتجين بدواء ينتمي لمجموعة مقاومة (FRAC/IRAC) مختلفة تماماً دون أي تداخل."
+        : "Remplacez l'un des deux produits par une spécialité sans aucun groupe FRAC/IRAC en commun.",
+      codeA,
+      codeB,
+      typeA,
+      typeB,
     };
   }
 
