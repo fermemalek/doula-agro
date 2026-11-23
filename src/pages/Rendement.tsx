@@ -37,6 +37,7 @@ import {
   seedBordereau002_2026IfNeeded,
   seedBordereau2026_03IfNeeded,
 } from "@/lib/recolte-seed";
+import { ChambreFroideNegoceSection } from "@/components/rendement/ChambreFroideNegoceSection";
 
 type SpeciesBlockId = "pommier" | "nectarine" | "olivier";
 type BlockFilter = "all" | SpeciesBlockId;
@@ -215,6 +216,9 @@ export default function RendementPage() {
     seedBordereau2026_03IfNeeded(pommier1Recs, add);
   }, [allRecoltes, add]);
 
+  // Onglet actif (Bilan Verger vs Chambre Froide & Négoce)
+  const [activeTab, setActiveTab] = useState<"verger" | "frigo">("verger");
+
   // Filtres
   const [selectedCampaign, setSelectedCampaign] = useState<string>("2026");
   const [selectedBlock, setSelectedBlock] = useState<BlockFilter>("all");
@@ -351,38 +355,38 @@ export default function RendementPage() {
       defaultTrees: number;
       isOlive?: boolean;
     }> = [
-      {
-        id: "pommier",
-        icon: "🍎",
-        labelFr: "Pommiers (Pommier 1 & 2 · P7+P8)",
-        labelAr: "التفاح (تفاح 1 و 2)",
-        campaignHintFr: "1 nov → 31 oct",
-        campaignHintAr: "1 نوفمبر → 31 أكتوبر",
-        defaultSurfaceHa: 2,
-        defaultTrees: 2915,
-      },
-      {
-        id: "nectarine",
-        icon: "🍑",
-        labelFr: "Nectarines (Nablara & Redix 25 · P5+P6)",
-        labelAr: "النكتارين (نابلارا وريديكس 25)",
-        campaignHintFr: "1 nov → 31 oct",
-        campaignHintAr: "1 نوفمبر → 31 أكتوبر",
-        defaultSurfaceHa: 2,
-        defaultTrees: 3744,
-      },
-      {
-        id: "olivier",
-        icon: "🫒",
-        labelFr: "Oliviers (P1 à P4)",
-        labelAr: "الزيتون (P1 إلى P4)",
-        campaignHintFr: "1 déc → 30 nov",
-        campaignHintAr: "1 ديسمبر → 30 نوفمبر",
-        defaultSurfaceHa: 8,
-        defaultTrees: 2600,
-        isOlive: true,
-      },
-    ];
+        {
+          id: "pommier",
+          icon: "🍎",
+          labelFr: "Pommiers (Pommier 1 & 2 · P7+P8)",
+          labelAr: "التفاح (تفاح 1 و 2)",
+          campaignHintFr: "1 nov → 31 oct",
+          campaignHintAr: "1 نوفمبر → 31 أكتوبر",
+          defaultSurfaceHa: 2,
+          defaultTrees: 2915,
+        },
+        {
+          id: "nectarine",
+          icon: "🍑",
+          labelFr: "Nectarines (Nablara & Redix 25 · P5+P6)",
+          labelAr: "النكتارين (نابلارا وريديكس 25)",
+          campaignHintFr: "1 nov → 31 oct",
+          campaignHintAr: "1 نوفمبر → 31 أكتوبر",
+          defaultSurfaceHa: 2,
+          defaultTrees: 3744,
+        },
+        {
+          id: "olivier",
+          icon: "🫒",
+          labelFr: "Oliviers (P1 à P4)",
+          labelAr: "الزيتون (P1 إلى P4)",
+          campaignHintFr: "1 déc → 30 nov",
+          campaignHintAr: "1 ديسمبر → 30 نوفمبر",
+          defaultSurfaceHa: 8,
+          defaultTrees: 2600,
+          isOlive: true,
+        },
+      ];
 
     return defs.map((def) => {
       // Surface & Arbres depuis les parcelles du bloc
@@ -635,13 +639,41 @@ export default function RendementPage() {
           </p>
         </div>
 
+        {activeTab === "verger" && (
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="no-print inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
+          >
+            <Printer className="h-4 w-4" />
+            <span>{isAr ? "طباعة / PDF حصيلة الموسم" : "Imprimer / PDF Bilan Campagne"}</span>
+          </button>
+        )}
+      </div>
+
+      {/* Onglets principaux : Bilan Verger vs Chambre Froide & Négoce */}
+      <div className="no-print flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => window.print()}
-          className="no-print inline-flex items-center gap-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-2 text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
+          onClick={() => setActiveTab("verger")}
+          className={`inline-flex items-center gap-1.5 rounded-2xl border px-4 py-2 text-xs font-black transition cursor-pointer ${activeTab === "verger"
+              ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+              : "bg-card text-foreground hover:bg-muted"
+            }`}
         >
-          <Printer className="h-4 w-4" />
-          <span>{isAr ? "طباعة / PDF حصيلة الموسم" : "Imprimer / PDF Bilan Campagne"}</span>
+          <Sprout className="h-4 w-4" />
+          <span>{isAr ? "حصيلة البستان والمزرعة" : "Bilan Verger & Ferme"}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("frigo")}
+          className={`inline-flex items-center gap-1.5 rounded-2xl border px-4 py-2 text-xs font-black transition cursor-pointer ${activeTab === "frigo"
+              ? "bg-sky-600 text-white border-sky-600 shadow-xs"
+              : "bg-card text-foreground hover:bg-muted"
+            }`}
+        >
+          <Snowflake className="h-4 w-4" />
+          <span>{isAr ? "غرف التبريد والتجارة (الكبيرة والصغيرة)" : "Chambre Froide & Négoce (Grande & Petite)"}</span>
         </button>
       </div>
 
@@ -656,11 +688,10 @@ export default function RendementPage() {
               key={yr}
               type="button"
               onClick={() => setSelectedCampaign(yr)}
-              className={`rounded-xl px-3 py-1 text-xs font-black transition cursor-pointer ${
-                selectedCampaign === yr
+              className={`rounded-xl px-3 py-1 text-xs font-black transition cursor-pointer ${selectedCampaign === yr
                   ? "bg-primary text-primary-foreground shadow-xs"
                   : "bg-muted text-muted-foreground hover:text-foreground"
-              }`}
+                }`}
             >
               <span dir="ltr">{yr}</span>
             </button>
@@ -668,556 +699,559 @@ export default function RendementPage() {
           <button
             type="button"
             onClick={() => setSelectedCampaign("all")}
-            className={`rounded-xl px-3 py-1 text-xs font-bold transition cursor-pointer ${
-              selectedCampaign === "all"
+            className={`rounded-xl px-3 py-1 text-xs font-bold transition cursor-pointer ${selectedCampaign === "all"
                 ? "bg-primary text-primary-foreground shadow-xs"
                 : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             {isAr ? "الكل" : "Toutes"}
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {(
-            [
-              { id: "all", fr: "🌱 Toutes", ar: "🌱 الكل" },
-              { id: "pommier", fr: "🍎 Pommiers (P7+P8)", ar: "🍎 التفاح (P7+P8)" },
-              { id: "nectarine", fr: "🍑 Nectarines (P5+P6)", ar: "🍑 النكتارين (P5+P6)" },
-              { id: "olivier", fr: "🫒 Oliviers (P1–P4)", ar: "🫒 الزيتون (P1–P4)" },
-            ] as const
-          ).map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => setSelectedBlock(opt.id)}
-              className={`rounded-xl border px-2.5 py-1 text-xs font-bold transition cursor-pointer ${
-                selectedBlock === opt.id
-                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs font-black"
-                  : "bg-background text-foreground hover:bg-muted"
-              }`}
-            >
-              {isAr ? opt.ar : opt.fr}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* 4 KPI GLOBAUX FERME */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="rounded-2xl border bg-card p-3.5 shadow-xs space-y-1">
-          <span className="text-[10px] font-black uppercase text-muted-foreground flex items-center gap-1">
-            <Package className="h-3.5 w-3.5 text-primary" />
-            <span>{isAr ? "الإنتاج الإجمالي" : "Production Totale"}</span>
-          </span>
-          <p dir="ltr" className="text-lg font-black text-foreground">
-            {formatNumber(globalKpis.totalFruitKg, 1)} kg{" "}
-            <span className="text-xs font-bold text-muted-foreground">
-              ({formatNumber(globalKpis.totalFruitKg / 1000, 2)} t)
-            </span>
-          </p>
-          <div className="text-[10px] text-muted-foreground font-semibold flex flex-wrap gap-x-2">
-            {globalKpis.totalOilL > 0 && <span dir="ltr">🫒 {formatNumber(globalKpis.totalOilL, 0)} L huile</span>}
-            {globalKpis.totalFrigoKg > 0 && <span dir="ltr">❄️ Frigo: {formatNumber(globalKpis.totalFrigoKg, 0)} kg</span>}
-            {globalKpis.totalCuveL > 0 && <span dir="ltr">🛢️ Cuve: {formatNumber(globalKpis.totalCuveL, 0)} L</span>}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-3.5 shadow-xs space-y-1">
-          <span className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-300 flex items-center gap-1">
-            <Coins className="h-3.5 w-3.5" />
-            <span>{isAr ? "صافي المبيعات (الوكلاء / مباشر)" : "Ventes Nettes (DA)"}</span>
-          </span>
-          <p dir="ltr" className="text-lg font-black text-blue-700 dark:text-blue-300">
-            {formatDA(globalKpis.totalNetSalesDA, 0)}
-          </p>
-          <p className="text-[10px] text-muted-foreground">
-            {isAr ? "الخام − العمولات − حقوق الدخول" : "Brut − Commissions − Droits d'entrée"}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3.5 shadow-xs space-y-1">
-          <span className="text-[10px] font-black uppercase text-amber-800 dark:text-amber-300 flex items-center gap-1">
-            <Wallet className="h-3.5 w-3.5" />
-            <span>{isAr ? "التكلفة الإجمالية للمزرعة" : "Coût Total Ferme (DA)"}</span>
-          </span>
-          <p dir="ltr" className="text-lg font-black text-amber-800 dark:text-amber-300">
-            {formatDA(globalKpis.totalFarmCostDA, 0)}
-          </p>
-          <p className="text-[10px] text-muted-foreground">
-            {isAr ? "الجني + التسميد + الرش + المبيدات + أخرى" : "Récolte + Fert. + Foliaire + Phyto + Autres"}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border-2 border-emerald-500/40 bg-emerald-500/10 p-3.5 shadow-xs space-y-1">
-          <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
-            <TrendingUp className="h-3.5 w-3.5" />
-            <span>{isAr ? "الربح الصافي الحقيقي للمزرعة" : "Bénéfice Net Réel Ferme"}</span>
-          </span>
-          <p
-            dir="ltr"
-            className={`text-lg font-black ${
-              globalKpis.totalNetProfitDA >= 0
-                ? "text-emerald-700 dark:text-emerald-300"
-                : "text-destructive"
-            }`}
-          >
-            {formatDA(globalKpis.totalNetProfitDA, 0)}
-          </p>
-          <p dir="ltr" className="text-[10px] font-bold text-emerald-800/80 dark:text-emerald-200/80">
-            {formatDA(globalKpis.marginPerKg, 1)}/kg · {formatDA(globalKpis.marginPerHa, 0)}/ha
-          </p>
-        </div>
-      </div>
-
-      {/* TABLEAU DE DIAGNOSTIC PAR ESPÈCE / BLOC */}
-      <section className="space-y-3">
-        <h2 className="text-sm font-black uppercase tracking-wide text-foreground flex items-center gap-2">
-          <Sprout className="h-4 w-4 text-emerald-600" />
-          <span>{isAr ? "التشخيص المالي والفلاحي حسب الصنف / الكتلة" : "Diagnostic par Espèce / Bloc"}</span>
-        </h2>
-
-        <div className="space-y-3">
-          {visibleBlocks.map((b) => (
-            <div key={b.id} className="rounded-2xl border bg-card p-4 shadow-xs space-y-3">
-              {/* En-tête du bloc */}
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
-                <div>
-                  <h3 className="text-sm font-black text-foreground flex items-center gap-1.5">
-                    <span>{b.icon}</span>
-                    <span>{isAr ? b.labelAr : b.labelFr}</span>
-                  </h3>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    <span dir="ltr" className="font-bold text-foreground">
-                      {formatNumber(b.surfaceHa, 1)} ha
-                    </span>{" "}
-                    ·{" "}
-                    <span dir="ltr" className="font-bold text-foreground">
-                      {formatNumber(b.treeCount, 0)}
-                    </span>{" "}
-                    {isAr ? "شجرة" : "arbres"} ·{" "}
-                    <span>
-                      {isAr ? `الموسم (${b.campaignHintAr})` : `Campagne (${b.campaignHintFr})`}
-                    </span>{" "}
-                    · {b.harvestCount} {isAr ? "عملية جني/بيع" : `vente${b.harvestCount > 1 ? "s" : ""}`}
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    dir="ltr"
-                    className="rounded-xl bg-primary/10 text-primary px-2.5 py-1 text-xs font-black"
-                  >
-                    {b.isOlive
-                      ? `${formatNumber(b.oilProducedL, 0)} L huile`
-                      : `${formatNumber(b.tonsPerHa, 2)} t/ha · ${formatNumber(b.kgPerTree, 2)} kg/arbre`}
-                  </span>
-                  <span
-                    dir="ltr"
-                    className={`rounded-xl px-3 py-1 text-xs font-black ${
-                      b.netBlockResultDA >= 0
-                        ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200"
-                        : "bg-destructive/15 text-destructive"
-                    }`}
-                  >
-                    {isAr ? "الصافي :" : "Net :"} {formatDA(b.netBlockResultDA, 0)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Grille 2 colonnes : Production/Revenus vs Détail Coûts d'Intrants */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                {/* Colonne 1 : Production & Ventes */}
-                <div className="rounded-xl bg-muted/30 border p-3 space-y-1.5">
-                  <p className="text-[10px] font-black uppercase text-muted-foreground mb-1">
-                    {isAr ? "الإنتاج والمداخيل (الإنتاج الخاص بالمزرعة)" : "Production propre & Ventes"}
-                  </p>
-                  <div className="flex justify-between">
-                    <span>{isAr ? "الإنتاج الصافي" : "Production nette"}</span>
-                    <strong dir="ltr">
-                      {b.isOlive
-                        ? `${formatNumber(b.productionKg, 0)} kg olives → ${formatNumber(b.oilProducedL, 0)} L`
-                        : `${formatNumber(b.productionKg, 1)} kg (${formatNumber(b.productionColis, 0)} colis)`}
-                    </strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>{isAr ? "المبيعات الخام" : "Ventes brutes"}</span>
-                    <strong dir="ltr">{formatDA(b.grossSalesDA, 0)}</strong>
-                  </div>
-                  {b.deductionsMandataireDA > 0 && (
-                    <div className="flex justify-between text-rose-700 dark:text-rose-400">
-                      <span>{isAr ? "عمولات وحقوق الدخول" : "Commissions + Droits d'entrée"}</span>
-                      <span dir="ltr">− {formatDA(b.deductionsMandataireDA, 0)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between font-bold border-t pt-1">
-                    <span>{isAr ? "صافي المبيعات" : "Ventes nettes"}</span>
-                    <span dir="ltr" className="text-blue-700 dark:text-blue-300">
-                      {formatDA(b.netSalesDA, 0)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between font-bold">
-                    <span>{isAr ? "تكلفة الإنتاج الحقيقية" : "Coût de revient réel"}</span>
-                    <span dir="ltr">
-                      {formatDA(b.costPerUnitDA, 1)}/{b.isOlive ? "L" : "kg"}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Colonne 2 : Coûts d'Intrants + Saisie Autres Frais */}
-                <div className="rounded-xl bg-muted/30 border p-3 space-y-1.5">
-                  <p className="text-[10px] font-black uppercase text-muted-foreground mb-1">
-                    {isAr ? "تكاليف المدخلات والمصاريف (المنفّذة)" : "Coûts d'intrants & charges campagne"}
-                  </p>
-                  <div className="flex justify-between">
-                    <span className="flex items-center gap-1">
-                      <Droplets className="h-3 w-3 text-emerald-600" />
-                      {isAr ? "التسميد عبر الري" : "Engrais Irrigation (Fertigation)"}
-                    </span>
-                    <strong dir="ltr">{formatDA(b.fertCostDA, 0)}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="flex items-center gap-1">
-                      <SprayCan className="h-3 w-3 text-sky-600" />
-                      {isAr ? "التسميد الورقي" : "Pulvérisation Foliaire"}
-                    </span>
-                    <strong dir="ltr">{formatDA(b.pulvCostDA, 0)}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="flex items-center gap-1">
-                      <FlaskConical className="h-3 w-3 text-amber-600" />
-                      {isAr ? "المعاملات الوقائية (مبيدات)" : "Traitements Phytosanitaires"}
-                    </span>
-                    <strong dir="ltr">{formatDA(b.phytoCostDA, 0)}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="flex items-center gap-1">
-                      <Scissors className="h-3 w-3 text-muted-foreground" />
-                      {isAr ? "التقليم" : "Taille"}
-                      {selectedCampaign !== "all" && (
-                        <span className="text-[10px] text-muted-foreground font-semibold">({selectedCampaign})</span>
-                      )}
-                    </span>
-                    <strong dir="ltr">{formatDA(b.tailleCostDA, 0)}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="flex items-center gap-1">
-                      <Sprout className="h-3 w-3 text-emerald-700" />
-                      {isAr ? "التسميد العضوي (Amendement)" : "Amendement"}
-                      {selectedCampaign !== "all" && (
-                        <span className="text-[10px] text-muted-foreground font-semibold">
-                          ({parseInt(selectedCampaign, 10) - 1})
-                        </span>
-                      )}
-                    </span>
-                    <strong dir="ltr">{formatDA(b.amendCostDA, 0)}</strong>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="flex items-center gap-1">
-                      <Package className="h-3 w-3 text-amber-700" />
-                      {isAr ? "مصاريف الجني والنقل والتغليف" : "Charges de récolte"}
-                    </span>
-                    <strong dir="ltr">{formatDA(b.harvestChargesDA, 0)}</strong>
-                  </div>
-
-                  {/* Saisie libre Autres frais campagne */}
-                  <div className="flex items-center justify-between gap-2 pt-1.5 border-t">
-                    <label className="text-[11px] font-bold text-foreground">
-                      {isAr ? "مصاريف أخرى (ماء، كهرباء، تقليم، عمالة) :" : "Autres frais campagne (DA) :"}
-                    </label>
-                    <input
-                      type="number"
-                      dir="ltr"
-                      inputMode="decimal"
-                      value={otherFees[`${selectedCampaign}_${b.id}`] ?? ""}
-                      onChange={(e) => updateOtherFee(b.id, e.target.value)}
-                      placeholder="0"
-                      className="w-28 rounded-lg border border-input bg-background px-2 py-1 text-right text-xs font-bold"
-                    />
-                  </div>
-
-                  <div className="flex justify-between font-black border-t pt-1 text-amber-800 dark:text-amber-300">
-                    <span>{isAr ? "إجمالي تكاليف الكتلة" : "Total coûts du bloc"}</span>
-                    <span dir="ltr">{formatDA(b.totalBlockCostDA, 0)}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ================================================================= */}
-      {/* BLOC SÉPARÉ : NÉGOCE / ACHAT-REVENTE & CHAMBRE FROIDE             */}
-      {/* ================================================================= */}
-      <section className="rounded-2xl border-2 border-indigo-500/30 bg-indigo-500/[0.03] p-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-500/20 pb-2.5">
-          <div>
-            <h2 className="text-sm font-black text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
-              <ShoppingBag className="h-4 w-4 text-indigo-600" />
-              <span>
-                {isAr
-                  ? "التجارة الخارجية (شراء وإعادة بيع) وغرفة التبريد"
-                  : "Négoce / Achat-Revente & Chambre froide"}
-              </span>
-            </h2>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              {isAr
-                ? "مستبعد تلقائياً من المردودية الفلاحية (كغ/شجرة و طن/هكتار)، لكن هامشه الصافي يُضاف للربح الإجمالي للمزرعة"
-                : "Exclu du rendement agronomique (kg/arbre, t/ha) — marge nette ajoutée au bénéfice global"}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setNegoceFormOpen((v) => !v)}
-            className="no-print inline-flex items-center gap-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 text-xs font-black transition cursor-pointer"
-          >
-            {negoceFormOpen ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-            <span>
-              {negoceFormOpen
-                ? isAr ? "إغلاق" : "Fermer"
-                : isAr ? "+ شراء خارجي (Négoce)" : "+ Achat externe (Négoce)"}
-            </span>
-          </button>
-        </div>
-
-        {/* Résumé KPI Négoce */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-          <div className="rounded-xl bg-card border p-2.5">
-            <span className="text-[10px] font-bold text-muted-foreground block">
-              {isAr ? "الكمية المشتراة" : "Volume acheté"}
-            </span>
-            <strong dir="ltr" className="text-sm font-black">
-              {formatNumber(negoceTotals.totalBoughtKg, 1)} kg
-            </strong>
-          </div>
-          <div className="rounded-xl bg-card border p-2.5">
-            <span className="text-[10px] font-bold text-muted-foreground block">
-              {isAr ? "مخزون التبريد (تجارة)" : "En stock frigo"}
-            </span>
-            <strong dir="ltr" className="text-sm font-black text-sky-700 dark:text-sky-300">
-              {formatNumber(negoceTotals.inStockFrigoKg, 1)} kg
-            </strong>
-          </div>
-          <div className="rounded-xl bg-card border p-2.5">
-            <span className="text-[10px] font-bold text-muted-foreground block">
-              {isAr ? "الشراء + التبريد" : "Achat + Frigo"}
-            </span>
-            <strong dir="ltr" className="text-sm font-black text-amber-800 dark:text-amber-300">
-              {formatDA(negoceTotals.totalPurchaseDA + negoceTotals.totalFrigoCostDA, 0)}
-            </strong>
-          </div>
-          <div className="rounded-xl bg-card border border-indigo-500/30 p-2.5">
-            <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 block">
-              {isAr ? "الهامش الصافي للتجارة" : "Marge nette Négoce"}
-            </span>
-            <strong
-              dir="ltr"
-              className={`text-sm font-black ${
-                negoceTotals.netMarginDA >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"
-              }`}
-            >
-              {formatDA(negoceTotals.netMarginDA, 0)}
-            </strong>
-          </div>
-        </div>
-
-        {/* Formulaire Achat Externe (Négoce) */}
-        {negoceFormOpen && (
-          <div className="no-print rounded-xl border bg-card p-3.5 space-y-3 text-xs">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <div>
-                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-                  {isAr ? "التاريخ" : "Date"}
-                </label>
-                <input
-                  type="date"
-                  dir="ltr"
-                  value={nf.date}
-                  onChange={(e) => setNf({ ...nf, date: e.target.value })}
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-                  {isAr ? "المورد / المصدر" : "Fournisseur / Origine"}
-                </label>
-                <input
-                  value={nf.supplier}
-                  onChange={(e) => setNf({ ...nf, supplier: e.target.value })}
-                  placeholder={isAr ? "مثال: مزرعة سطيف..." : "Ex: Producteur Sétif / Batna..."}
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-                  {isAr ? "الصنف" : "Espèce / Variété"}
-                </label>
-                <input
-                  value={nf.species}
-                  onChange={(e) => setNf({ ...nf, species: e.target.value })}
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-                  {isAr ? "الوزن (كغ)" : "Poids acheté (kg)"}
-                </label>
-                <input
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={nf.weightKg}
-                  onChange={(e) => setNf({ ...nf, weightKg: e.target.value })}
-                  placeholder="0"
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-                  {isAr ? "سعر الشراء الإجمالي (دج)" : "Prix d'achat total (DA)"}
-                </label>
-                <input
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={nf.purchasePriceDA}
-                  onChange={(e) => setNf({ ...nf, purchasePriceDA: e.target.value })}
-                  placeholder="0"
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-                  {isAr ? "مصاريف التبريد / النقل (دج)" : "Frais frigo / transport (DA)"}
-                </label>
-                <input
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={nf.frigoCostDA}
-                  onChange={(e) => setNf({ ...nf, frigoCostDA: e.target.value })}
-                  placeholder="0"
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-                  {isAr ? "الوجهة" : "Destination"}
-                </label>
-                <select
-                  value={nf.destination}
-                  onChange={(e) => setNf({ ...nf, destination: e.target.value as any })}
-                  className={inputCls}
-                >
-                  <option value="frigo">{isAr ? "❄️ غرفة التبريد" : "❄️ Chambre froide"}</option>
-                  <option value="mandataire">{isAr ? "🤝 وكيل السوق" : "🤝 Revente Mandataire"}</option>
-                  <option value="direct">{isAr ? "🏪 بيع مباشر" : "🏪 Revente Directe"}</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-                  {isAr ? "مبلغ البيع الصافي (دج)" : "Montant vente nette (DA)"}
-                </label>
-                <input
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={nf.saleNetDA}
-                  onChange={(e) => setNf({ ...nf, saleNetDA: e.target.value })}
-                  placeholder="0"
-                  className={inputCls}
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
-                  {isAr ? "الحالة" : "Statut"}
-                </label>
-                <select
-                  value={nf.status}
-                  onChange={(e) => setNf({ ...nf, status: e.target.value as any })}
-                  className={inputCls}
-                >
-                  <option value="en_stock">{isAr ? "في غرفة التبريد" : "En stock frigo"}</option>
-                  <option value="vendu_paye">{isAr ? "مباع (مدفوع)" : "Vendu (Payé)"}</option>
-                  <option value="vendu_attente">{isAr ? "مباع (قيد الانتظار)" : "Vendu (En attente)"}</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
+        {activeTab === "verger" && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {(
+              [
+                { id: "all", fr: "🌱 Toutes", ar: "🌱 الكل" },
+                { id: "pommier", fr: "🍎 Pommiers (P7+P8)", ar: "🍎 التفاح (P7+P8)" },
+                { id: "nectarine", fr: "🍑 Nectarines (P5+P6)", ar: "🍑 النكتارين (P5+P6)" },
+                { id: "olivier", fr: "🫒 Oliviers (P1–P4)", ar: "🫒 الزيتون (P1–P4)" },
+              ] as const
+            ).map((opt) => (
               <button
+                key={opt.id}
                 type="button"
-                onClick={() => setNegoceFormOpen(false)}
-                className="rounded-lg border px-3 py-1.5 font-bold text-muted-foreground cursor-pointer"
+                onClick={() => setSelectedBlock(opt.id)}
+                className={`rounded-xl border px-2.5 py-1 text-xs font-bold transition cursor-pointer ${selectedBlock === opt.id
+                    ? "bg-emerald-600 text-white border-emerald-600 shadow-xs font-black"
+                    : "bg-background text-foreground hover:bg-muted"
+                  }`}
               >
-                {isAr ? "إلغاء" : "Annuler"}
+                {isAr ? opt.ar : opt.fr}
               </button>
-              <button
-                type="button"
-                onClick={handleAddNegoce}
-                className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 font-black cursor-pointer"
-              >
-                <Save className="h-3.5 w-3.5" />
-                <span>{isAr ? "حفظ" : "Enregistrer"}</span>
-              </button>
-            </div>
+            ))}
           </div>
         )}
+      </div>
 
-        {/* Liste des lots Négoce */}
-        {filteredNegoce.length === 0 ? (
-          <p className="text-center text-xs text-muted-foreground py-3">
-            {isAr
-              ? "لا توجد مشتريات خارجية مسجلة لهذا الموسم."
-              : "Aucun achat externe (Négoce) enregistré pour cette campagne."}
-          </p>
-        ) : (
-          <ul className="divide-y rounded-xl border bg-card overflow-hidden">
-            {filteredNegoce.map((n) => {
-              const margin = n.saleNetDA - n.purchasePriceDA - n.frigoCostDA;
-              return (
-                <li key={n.id} className="p-3 text-xs flex flex-wrap items-center justify-between gap-2">
-                  <div className="space-y-0.5">
-                    <div className="flex flex-wrap items-center gap-1.5 font-bold">
-                      <span dir="ltr">{formatDateFR(n.date)}</span>
-                      <span>·</span>
-                      <span>{n.species}</span>
-                      <span className="text-muted-foreground">({n.supplier})</span>
-                      <span className="rounded-full bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 text-[10px]">
-                        <Snowflake className="h-2.5 w-2.5 inline mr-0.5" />
-                        {n.status === "en_stock"
-                          ? isAr ? "في المخزون" : "En stock"
-                          : n.status === "vendu_paye"
-                            ? isAr ? "مباع - مدفوع" : "Vendu · Payé"
-                            : isAr ? "مباع - قيد الانتظار" : "Vendu · En attente"}
+      {activeTab === "frigo" ? (
+        <ChambreFroideNegoceSection selectedCampaign={selectedCampaign} isAr={isAr} />
+      ) : (
+        <>
+
+          {/* 4 KPI GLOBAUX FERME */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-2xl border bg-card p-3.5 shadow-xs space-y-1">
+              <span className="text-[10px] font-black uppercase text-muted-foreground flex items-center gap-1">
+                <Package className="h-3.5 w-3.5 text-primary" />
+                <span>{isAr ? "الإنتاج الإجمالي" : "Production Totale"}</span>
+              </span>
+              <p dir="ltr" className="text-lg font-black text-foreground">
+                {formatNumber(globalKpis.totalFruitKg, 1)} kg{" "}
+                <span className="text-xs font-bold text-muted-foreground">
+                  ({formatNumber(globalKpis.totalFruitKg / 1000, 2)} t)
+                </span>
+              </p>
+              <div className="text-[10px] text-muted-foreground font-semibold flex flex-wrap gap-x-2">
+                {globalKpis.totalOilL > 0 && <span dir="ltr">🫒 {formatNumber(globalKpis.totalOilL, 0)} L huile</span>}
+                {globalKpis.totalFrigoKg > 0 && <span dir="ltr">❄️ Frigo: {formatNumber(globalKpis.totalFrigoKg, 0)} kg</span>}
+                {globalKpis.totalCuveL > 0 && <span dir="ltr">🛢️ Cuve: {formatNumber(globalKpis.totalCuveL, 0)} L</span>}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-3.5 shadow-xs space-y-1">
+              <span className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-300 flex items-center gap-1">
+                <Coins className="h-3.5 w-3.5" />
+                <span>{isAr ? "صافي المبيعات (الوكلاء / مباشر)" : "Ventes Nettes (DA)"}</span>
+              </span>
+              <p dir="ltr" className="text-lg font-black text-blue-700 dark:text-blue-300">
+                {formatDA(globalKpis.totalNetSalesDA, 0)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {isAr ? "الخام − العمولات − حقوق الدخول" : "Brut − Commissions − Droits d'entrée"}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3.5 shadow-xs space-y-1">
+              <span className="text-[10px] font-black uppercase text-amber-800 dark:text-amber-300 flex items-center gap-1">
+                <Wallet className="h-3.5 w-3.5" />
+                <span>{isAr ? "التكلفة الإجمالية للمزرعة" : "Coût Total Ferme (DA)"}</span>
+              </span>
+              <p dir="ltr" className="text-lg font-black text-amber-800 dark:text-amber-300">
+                {formatDA(globalKpis.totalFarmCostDA, 0)}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {isAr ? "الجني + التسميد + الرش + المبيدات + أخرى" : "Récolte + Fert. + Foliaire + Phyto + Autres"}
+              </p>
+            </div>
+
+            <div className="rounded-2xl border-2 border-emerald-500/40 bg-emerald-500/10 p-3.5 shadow-xs space-y-1">
+              <span className="text-[10px] font-black uppercase text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                <TrendingUp className="h-3.5 w-3.5" />
+                <span>{isAr ? "الربح الصافي الحقيقي للمزرعة" : "Bénéfice Net Réel Ferme"}</span>
+              </span>
+              <p
+                dir="ltr"
+                className={`text-lg font-black ${globalKpis.totalNetProfitDA >= 0
+                    ? "text-emerald-700 dark:text-emerald-300"
+                    : "text-destructive"
+                  }`}
+              >
+                {formatDA(globalKpis.totalNetProfitDA, 0)}
+              </p>
+              <p dir="ltr" className="text-[10px] font-bold text-emerald-800/80 dark:text-emerald-200/80">
+                {formatDA(globalKpis.marginPerKg, 1)}/kg · {formatDA(globalKpis.marginPerHa, 0)}/ha
+              </p>
+            </div>
+          </div>
+
+          {/* TABLEAU DE DIAGNOSTIC PAR ESPÈCE / BLOC */}
+          <section className="space-y-3">
+            <h2 className="text-sm font-black uppercase tracking-wide text-foreground flex items-center gap-2">
+              <Sprout className="h-4 w-4 text-emerald-600" />
+              <span>{isAr ? "التشخيص المالي والفلاحي حسب الصنف / الكتلة" : "Diagnostic par Espèce / Bloc"}</span>
+            </h2>
+
+            <div className="space-y-3">
+              {visibleBlocks.map((b) => (
+                <div key={b.id} className="rounded-2xl border bg-card p-4 shadow-xs space-y-3">
+                  {/* En-tête du bloc */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
+                    <div>
+                      <h3 className="text-sm font-black text-foreground flex items-center gap-1.5">
+                        <span>{b.icon}</span>
+                        <span>{isAr ? b.labelAr : b.labelFr}</span>
+                      </h3>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        <span dir="ltr" className="font-bold text-foreground">
+                          {formatNumber(b.surfaceHa, 1)} ha
+                        </span>{" "}
+                        ·{" "}
+                        <span dir="ltr" className="font-bold text-foreground">
+                          {formatNumber(b.treeCount, 0)}
+                        </span>{" "}
+                        {isAr ? "شجرة" : "arbres"} ·{" "}
+                        <span>
+                          {isAr ? `الموسم (${b.campaignHintAr})` : `Campagne (${b.campaignHintFr})`}
+                        </span>{" "}
+                        · {b.harvestCount} {isAr ? "عملية جني/بيع" : `vente${b.harvestCount > 1 ? "s" : ""}`}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        dir="ltr"
+                        className="rounded-xl bg-primary/10 text-primary px-2.5 py-1 text-xs font-black"
+                      >
+                        {b.isOlive
+                          ? `${formatNumber(b.oilProducedL, 0)} L huile`
+                          : `${formatNumber(b.tonsPerHa, 2)} t/ha · ${formatNumber(b.kgPerTree, 2)} kg/arbre`}
+                      </span>
+                      <span
+                        dir="ltr"
+                        className={`rounded-xl px-3 py-1 text-xs font-black ${b.netBlockResultDA >= 0
+                            ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200"
+                            : "bg-destructive/15 text-destructive"
+                          }`}
+                      >
+                        {isAr ? "الصافي :" : "Net :"} {formatDA(b.netBlockResultDA, 0)}
                       </span>
                     </div>
-                    <p dir="ltr" className="text-[11px] text-muted-foreground">
-                      {formatNumber(n.weightKg, 1)} kg · Achat: {formatDA(n.purchasePriceDA)} · Frigo:{" "}
-                      {formatDA(n.frigoCostDA)} · Vente: {formatDA(n.saleNetDA)}
-                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span
+
+                  {/* Grille 2 colonnes : Production/Revenus vs Détail Coûts d'Intrants */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    {/* Colonne 1 : Production & Ventes */}
+                    <div className="rounded-xl bg-muted/30 border p-3 space-y-1.5">
+                      <p className="text-[10px] font-black uppercase text-muted-foreground mb-1">
+                        {isAr ? "الإنتاج والمداخيل (الإنتاج الخاص بالمزرعة)" : "Production propre & Ventes"}
+                      </p>
+                      <div className="flex justify-between">
+                        <span>{isAr ? "الإنتاج الصافي" : "Production nette"}</span>
+                        <strong dir="ltr">
+                          {b.isOlive
+                            ? `${formatNumber(b.productionKg, 0)} kg olives → ${formatNumber(b.oilProducedL, 0)} L`
+                            : `${formatNumber(b.productionKg, 1)} kg (${formatNumber(b.productionColis, 0)} colis)`}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>{isAr ? "المبيعات الخام" : "Ventes brutes"}</span>
+                        <strong dir="ltr">{formatDA(b.grossSalesDA, 0)}</strong>
+                      </div>
+                      {b.deductionsMandataireDA > 0 && (
+                        <div className="flex justify-between text-rose-700 dark:text-rose-400">
+                          <span>{isAr ? "عمولات وحقوق الدخول" : "Commissions + Droits d'entrée"}</span>
+                          <span dir="ltr">− {formatDA(b.deductionsMandataireDA, 0)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-bold border-t pt-1">
+                        <span>{isAr ? "صافي المبيعات" : "Ventes nettes"}</span>
+                        <span dir="ltr" className="text-blue-700 dark:text-blue-300">
+                          {formatDA(b.netSalesDA, 0)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between font-bold">
+                        <span>{isAr ? "تكلفة الإنتاج الحقيقية" : "Coût de revient réel"}</span>
+                        <span dir="ltr">
+                          {formatDA(b.costPerUnitDA, 1)}/{b.isOlive ? "L" : "kg"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Colonne 2 : Coûts d'Intrants + Saisie Autres Frais */}
+                    <div className="rounded-xl bg-muted/30 border p-3 space-y-1.5">
+                      <p className="text-[10px] font-black uppercase text-muted-foreground mb-1">
+                        {isAr ? "تكاليف المدخلات والمصاريف (المنفّذة)" : "Coûts d'intrants & charges campagne"}
+                      </p>
+                      <div className="flex justify-between">
+                        <span className="flex items-center gap-1">
+                          <Droplets className="h-3 w-3 text-emerald-600" />
+                          {isAr ? "التسميد عبر الري" : "Engrais Irrigation (Fertigation)"}
+                        </span>
+                        <strong dir="ltr">{formatDA(b.fertCostDA, 0)}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="flex items-center gap-1">
+                          <SprayCan className="h-3 w-3 text-sky-600" />
+                          {isAr ? "التسميد الورقي" : "Pulvérisation Foliaire"}
+                        </span>
+                        <strong dir="ltr">{formatDA(b.pulvCostDA, 0)}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="flex items-center gap-1">
+                          <FlaskConical className="h-3 w-3 text-amber-600" />
+                          {isAr ? "المعاملات الوقائية (مبيدات)" : "Traitements Phytosanitaires"}
+                        </span>
+                        <strong dir="ltr">{formatDA(b.phytoCostDA, 0)}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="flex items-center gap-1">
+                          <Scissors className="h-3 w-3 text-muted-foreground" />
+                          {isAr ? "التقليم" : "Taille"}
+                          {selectedCampaign !== "all" && (
+                            <span className="text-[10px] text-muted-foreground font-semibold">({selectedCampaign})</span>
+                          )}
+                        </span>
+                        <strong dir="ltr">{formatDA(b.tailleCostDA, 0)}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="flex items-center gap-1">
+                          <Sprout className="h-3 w-3 text-emerald-700" />
+                          {isAr ? "التسميد العضوي (Amendement)" : "Amendement"}
+                          {selectedCampaign !== "all" && (
+                            <span className="text-[10px] text-muted-foreground font-semibold">
+                              ({parseInt(selectedCampaign, 10) - 1})
+                            </span>
+                          )}
+                        </span>
+                        <strong dir="ltr">{formatDA(b.amendCostDA, 0)}</strong>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="flex items-center gap-1">
+                          <Package className="h-3 w-3 text-amber-700" />
+                          {isAr ? "مصاريف الجني والنقل والتغليف" : "Charges de récolte"}
+                        </span>
+                        <strong dir="ltr">{formatDA(b.harvestChargesDA, 0)}</strong>
+                      </div>
+
+                      {/* Saisie libre Autres frais campagne */}
+                      <div className="flex items-center justify-between gap-2 pt-1.5 border-t">
+                        <label className="text-[11px] font-bold text-foreground">
+                          {isAr ? "مصاريف أخرى (ماء، كهرباء، تقليم، عمالة) :" : "Autres frais campagne (DA) :"}
+                        </label>
+                        <input
+                          type="number"
+                          dir="ltr"
+                          inputMode="decimal"
+                          value={otherFees[`${selectedCampaign}_${b.id}`] ?? ""}
+                          onChange={(e) => updateOtherFee(b.id, e.target.value)}
+                          placeholder="0"
+                          className="w-28 rounded-lg border border-input bg-background px-2 py-1 text-right text-xs font-bold"
+                        />
+                      </div>
+
+                      <div className="flex justify-between font-black border-t pt-1 text-amber-800 dark:text-amber-300">
+                        <span>{isAr ? "إجمالي تكاليف الكتلة" : "Total coûts du bloc"}</span>
+                        <span dir="ltr">{formatDA(b.totalBlockCostDA, 0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ================================================================= */}
+          {/* BLOC SÉPARÉ : NÉGOCE / ACHAT-REVENTE & CHAMBRE FROIDE             */}
+          {/* ================================================================= */}
+          <section className="rounded-2xl border-2 border-indigo-500/30 bg-indigo-500/[0.03] p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-500/20 pb-2.5">
+              <div>
+                <h2 className="text-sm font-black text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                  <ShoppingBag className="h-4 w-4 text-indigo-600" />
+                  <span>
+                    {isAr
+                      ? "التجارة الخارجية (شراء وإعادة بيع) وغرفة التبريد"
+                      : "Négoce / Achat-Revente & Chambre froide"}
+                  </span>
+                </h2>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {isAr
+                    ? "مستبعد تلقائياً من المردودية الفلاحية (كغ/شجرة و طن/هكتار)، لكن هامشه الصافي يُضاف للربح الإجمالي للمزرعة"
+                    : "Exclu du rendement agronomique (kg/arbre, t/ha) — marge nette ajoutée au bénéfice global"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setNegoceFormOpen((v) => !v)}
+                className="no-print inline-flex items-center gap-1 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 text-xs font-black transition cursor-pointer"
+              >
+                {negoceFormOpen ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                <span>
+                  {negoceFormOpen
+                    ? isAr ? "إغلاق" : "Fermer"
+                    : isAr ? "+ شراء خارجي (Négoce)" : "+ Achat externe (Négoce)"}
+                </span>
+              </button>
+            </div>
+
+            {/* Résumé KPI Négoce */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="rounded-xl bg-card border p-2.5">
+                <span className="text-[10px] font-bold text-muted-foreground block">
+                  {isAr ? "الكمية المشتراة" : "Volume acheté"}
+                </span>
+                <strong dir="ltr" className="text-sm font-black">
+                  {formatNumber(negoceTotals.totalBoughtKg, 1)} kg
+                </strong>
+              </div>
+              <div className="rounded-xl bg-card border p-2.5">
+                <span className="text-[10px] font-bold text-muted-foreground block">
+                  {isAr ? "مخزون التبريد (تجارة)" : "En stock frigo"}
+                </span>
+                <strong dir="ltr" className="text-sm font-black text-sky-700 dark:text-sky-300">
+                  {formatNumber(negoceTotals.inStockFrigoKg, 1)} kg
+                </strong>
+              </div>
+              <div className="rounded-xl bg-card border p-2.5">
+                <span className="text-[10px] font-bold text-muted-foreground block">
+                  {isAr ? "الشراء + التبريد" : "Achat + Frigo"}
+                </span>
+                <strong dir="ltr" className="text-sm font-black text-amber-800 dark:text-amber-300">
+                  {formatDA(negoceTotals.totalPurchaseDA + negoceTotals.totalFrigoCostDA, 0)}
+                </strong>
+              </div>
+              <div className="rounded-xl bg-card border border-indigo-500/30 p-2.5">
+                <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 block">
+                  {isAr ? "الهامش الصافي للتجارة" : "Marge nette Négoce"}
+                </span>
+                <strong
+                  dir="ltr"
+                  className={`text-sm font-black ${negoceTotals.netMarginDA >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"
+                    }`}
+                >
+                  {formatDA(negoceTotals.netMarginDA, 0)}
+                </strong>
+              </div>
+            </div>
+
+            {/* Formulaire Achat Externe (Négoce) */}
+            {negoceFormOpen && (
+              <div className="no-print rounded-xl border bg-card p-3.5 space-y-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "التاريخ" : "Date"}
+                    </label>
+                    <input
+                      type="date"
                       dir="ltr"
-                      className={`font-black ${
-                        margin >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"
-                      }`}
-                    >
-                      {margin >= 0 ? "+" : ""}
-                      {formatDA(margin)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => saveNegoceList(negoceLots.filter((x) => x.id !== n.id))}
-                      className="no-print p-1 rounded text-muted-foreground hover:text-destructive cursor-pointer"
-                      title={isAr ? "حذف" : "Supprimer"}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                      value={nf.date}
+                      onChange={(e) => setNf({ ...nf, date: e.target.value })}
+                      className={inputCls}
+                    />
                   </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "المورد / المصدر" : "Fournisseur / Origine"}
+                    </label>
+                    <input
+                      value={nf.supplier}
+                      onChange={(e) => setNf({ ...nf, supplier: e.target.value })}
+                      placeholder={isAr ? "مثال: مزرعة سطيف..." : "Ex: Producteur Sétif / Batna..."}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "الصنف" : "Espèce / Variété"}
+                    </label>
+                    <input
+                      value={nf.species}
+                      onChange={(e) => setNf({ ...nf, species: e.target.value })}
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "الوزن (كغ)" : "Poids acheté (kg)"}
+                    </label>
+                    <input
+                      dir="ltr"
+                      inputMode="decimal"
+                      value={nf.weightKg}
+                      onChange={(e) => setNf({ ...nf, weightKg: e.target.value })}
+                      placeholder="0"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "سعر الشراء الإجمالي (دج)" : "Prix d'achat total (DA)"}
+                    </label>
+                    <input
+                      dir="ltr"
+                      inputMode="decimal"
+                      value={nf.purchasePriceDA}
+                      onChange={(e) => setNf({ ...nf, purchasePriceDA: e.target.value })}
+                      placeholder="0"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "مصاريف التبريد / النقل (دج)" : "Frais frigo / transport (DA)"}
+                    </label>
+                    <input
+                      dir="ltr"
+                      inputMode="decimal"
+                      value={nf.frigoCostDA}
+                      onChange={(e) => setNf({ ...nf, frigoCostDA: e.target.value })}
+                      placeholder="0"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "الوجهة" : "Destination"}
+                    </label>
+                    <select
+                      value={nf.destination}
+                      onChange={(e) => setNf({ ...nf, destination: e.target.value as any })}
+                      className={inputCls}
+                    >
+                      <option value="frigo">{isAr ? "❄️ غرفة التبريد" : "❄️ Chambre froide"}</option>
+                      <option value="mandataire">{isAr ? "🤝 وكيل السوق" : "🤝 Revente Mandataire"}</option>
+                      <option value="direct">{isAr ? "🏪 بيع مباشر" : "🏪 Revente Directe"}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "مبلغ البيع الصافي (دج)" : "Montant vente nette (DA)"}
+                    </label>
+                    <input
+                      dir="ltr"
+                      inputMode="decimal"
+                      value={nf.saleNetDA}
+                      onChange={(e) => setNf({ ...nf, saleNetDA: e.target.value })}
+                      placeholder="0"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "الحالة" : "Statut"}
+                    </label>
+                    <select
+                      value={nf.status}
+                      onChange={(e) => setNf({ ...nf, status: e.target.value as any })}
+                      className={inputCls}
+                    >
+                      <option value="en_stock">{isAr ? "في غرفة التبريد" : "En stock frigo"}</option>
+                      <option value="vendu_paye">{isAr ? "مباع (مدفوع)" : "Vendu (Payé)"}</option>
+                      <option value="vendu_attente">{isAr ? "مباع (قيد الانتظار)" : "Vendu (En attente)"}</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNegoceFormOpen(false)}
+                    className="rounded-lg border px-3 py-1.5 font-bold text-muted-foreground cursor-pointer"
+                  >
+                    {isAr ? "إلغاء" : "Annuler"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAddNegoce}
+                    className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 font-black cursor-pointer"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    <span>{isAr ? "حفظ" : "Enregistrer"}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Liste des lots Négoce */}
+            {filteredNegoce.length === 0 ? (
+              <p className="text-center text-xs text-muted-foreground py-3">
+                {isAr
+                  ? "لا توجد مشتريات خارجية مسجلة لهذا الموسم."
+                  : "Aucun achat externe (Négoce) enregistré pour cette campagne."}
+              </p>
+            ) : (
+              <ul className="divide-y rounded-xl border bg-card overflow-hidden">
+                {filteredNegoce.map((n) => {
+                  const margin = n.saleNetDA - n.purchasePriceDA - n.frigoCostDA;
+                  return (
+                    <li key={n.id} className="p-3 text-xs flex flex-wrap items-center justify-between gap-2">
+                      <div className="space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-1.5 font-bold">
+                          <span dir="ltr">{formatDateFR(n.date)}</span>
+                          <span>·</span>
+                          <span>{n.species}</span>
+                          <span className="text-muted-foreground">({n.supplier})</span>
+                          <span className="rounded-full bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 text-[10px]">
+                            <Snowflake className="h-2.5 w-2.5 inline mr-0.5" />
+                            {n.status === "en_stock"
+                              ? isAr ? "في المخزون" : "En stock"
+                              : n.status === "vendu_paye"
+                                ? isAr ? "مباع - مدفوع" : "Vendu · Payé"
+                                : isAr ? "مباع - قيد الانتظار" : "Vendu · En attente"}
+                          </span>
+                        </div>
+                        <p dir="ltr" className="text-[11px] text-muted-foreground">
+                          {formatNumber(n.weightKg, 1)} kg · Achat: {formatDA(n.purchasePriceDA)} · Frigo:{" "}
+                          {formatDA(n.frigoCostDA)} · Vente: {formatDA(n.saleNetDA)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          dir="ltr"
+                          className={`font-black ${margin >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"
+                            }`}
+                        >
+                          {margin >= 0 ? "+" : ""}
+                          {formatDA(margin)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => saveNegoceList(negoceLots.filter((x) => x.id !== n.id))}
+                          className="no-print p-1 rounded text-muted-foreground hover:text-destructive cursor-pointer"
+                          title={isAr ? "حذف" : "Supprimer"}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </>
+      )}
     </main>
   );
 }
