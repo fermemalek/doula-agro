@@ -1,6 +1,9 @@
 import { useState } from "react";
-import { Plus, Trash2, Save, History, Pencil, X } from "lucide-react";
+import { Plus, Trash2, Save, History, Pencil, X, Sparkles } from "lucide-react";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
+import { useSuppliers } from "@/lib/suppliers-store";
+import { useProducts } from "@/lib/products-store";
+import { computePulverisationRecordTotal, resolveProductUnitPrice } from "@/lib/parcel-costs";
 import { WeatherCheck } from "./WeatherCheck";
 import { formatDateFR, formatDA } from "@/lib/format";
 
@@ -20,6 +23,8 @@ const DEFAULT_ELEMENTS = ["Bore", "Zinc", "Algues", "Oligo", "Calcium"];
 export function PulverisationModule({ parcelId, canEdit }: { parcelId: string; canEdit: boolean }) {
   const records = useModuleRecords<Record>(parcelId, "pulverisation");
   const { add, remove, update } = useModuleActions();
+  const suppliers = useSuppliers();
+  const catalogProducts = useProducts();
   const [date, setDate] = useState("");
   const [items, setItems] = useState<Item[]>(
     DEFAULT_ELEMENTS.map((name) => ({ name, qty: "", unit: "kg", price: "" })),
@@ -28,6 +33,23 @@ export function PulverisationModule({ parcelId, canEdit }: { parcelId: string; c
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const total = items.reduce((s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 0);
+
+  function applyStockPricesToRecord(r: Record) {
+    const filledItems = r.items.map((it) => {
+      const existing = parseFloat(it.price) || 0;
+      if (existing > 0 || !it.name.trim()) return it;
+      const pu = resolveProductUnitPrice(it.name, suppliers, catalogProducts);
+      return pu > 0 ? { ...it, price: String(pu) } : it;
+    });
+    const newTotal = filledItems.reduce(
+      (s, it) => s + (parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0),
+      0,
+    );
+    update(parcelId, "pulverisation", r.id, {
+      items: filledItems,
+      total: Number(newTotal.toFixed(2)),
+    });
+  }
 
   function updateItem(i: number, patch: Partial<Item>) {
     setItems((arr) => arr.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
@@ -169,6 +191,41 @@ export function PulverisationModule({ parcelId, canEdit }: { parcelId: string; c
         </div>
       )}
 
+      {records.length > 0 && (() => {
+        const byYear = new Map<string, number>();
+        let grand = 0;
+        let hasEstimated = false;
+        for (const r of records) {
+          const y = (r.date || "").slice(0, 4) || "—";
+          const computed = computePulverisationRecordTotal(r, suppliers, catalogProducts);
+          if (computed.estimatedFromStock) hasEstimated = true;
+          byYear.set(y, (byYear.get(y) || 0) + computed.total);
+          grand += computed.total;
+        }
+        const years = [...byYear.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+        return (
+          <div className="rounded-xl border bg-primary/5 p-3 space-y-1">
+            <div className="flex items-center justify-between text-sm font-semibold">
+              <span>Total global</span>
+              <span className="text-primary">{formatDA(grand, 2)}</span>
+            </div>
+            <ul className="space-y-0.5 text-xs">
+              {years.map(([y, t]) => (
+                <li key={y} className="flex justify-between text-muted-foreground">
+                  <span>Année {y}</span>
+                  <span className="font-semibold text-foreground">{formatDA(t, 2)}</span>
+                </li>
+              ))}
+            </ul>
+            {hasEstimated && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                Inclut des lignes valorisées automatiquement depuis le stock (Agrimax / Base Produits).
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
       <div className="rounded-xl border bg-card">
         <div className="flex items-center gap-2 border-b px-4 py-2 text-sm font-semibold text-foreground">
           <History className="h-4 w-4" /> Archive ({records.length})
@@ -177,49 +234,74 @@ export function PulverisationModule({ parcelId, canEdit }: { parcelId: string; c
           <p className="px-4 py-6 text-center text-xs text-muted-foreground">Aucun programme enregistré.</p>
         ) : (
           <ul className="divide-y">
-            {records.map((r) => (
-              <li key={r.id} className="px-4 py-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-foreground">{formatDateFR(r.date)}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">{formatDA(r.total, 2)}</span>
-                    {canEdit && (
-                      <>
+            {records.map((r) => {
+              const computed = computePulverisationRecordTotal(r, suppliers, catalogProducts);
+              return (
+                <li key={r.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="font-medium text-foreground">{formatDateFR(r.date)}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {computed.estimatedFromStock && (
+                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                          ≈ stock
+                        </span>
+                      )}
+                      <span className="font-bold text-foreground">{formatDA(computed.total, 2)}</span>
+                      {canEdit && computed.estimatedFromStock && (
                         <button
-                          onClick={() => startEdit(r)}
-                          className="text-muted-foreground hover:text-primary"
-                          title="Modifier"
+                          type="button"
+                          onClick={() => applyStockPricesToRecord(r)}
+                          className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-500/20 dark:text-amber-300 cursor-pointer"
+                          title="Enregistrer les prix unitaires du stock sur cette ligne"
                         >
-                          <Pencil className="h-3.5 w-3.5" />
+                          <Sparkles className="h-3 w-3" /> Appliquer prix stock
                         </button>
-                        <button
-                          onClick={() => remove(parcelId, "pulverisation", r.id)}
-                          className="text-muted-foreground hover:text-destructive"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </>
-                    )}
+                      )}
+                      {canEdit && (
+                        <>
+                          <button
+                            onClick={() => startEdit(r)}
+                            className="text-muted-foreground hover:text-primary"
+                            title="Modifier"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => remove(parcelId, "pulverisation", r.id)}
+                            className="text-muted-foreground hover:text-destructive"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  Météo : {r.weatherOk ? "Favorable" : "Défavorable (validé)"} · {r.weatherNote}
-                </div>
-                <ul className="mt-2 space-y-0.5 text-xs text-foreground">
-                  {r.items.filter((it) => it.name).map((it, i) => (
-                    <li key={i} className="flex justify-between">
-                      <span>
-                        {it.name} — {it.qty} {it.unit}
-                      </span>
-                      <span>
-                        {formatDA((parseFloat(it.qty) || 0) * (parseFloat(it.price) || 0), 2)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Météo : {r.weatherOk ? "Favorable" : "Défavorable (validé)"} · {r.weatherNote}
+                  </div>
+                  <ul className="mt-2 space-y-0.5 text-xs text-foreground">
+                    {r.items.filter((it) => it.name).map((it, i) => {
+                      const qty = parseFloat(it.qty) || 0;
+                      const savedPu = parseFloat(it.price) || 0;
+                      const stockPu = savedPu > 0 ? savedPu : resolveProductUnitPrice(it.name, suppliers, catalogProducts);
+                      const isEst = savedPu <= 0 && stockPu > 0;
+                      return (
+                        <li key={i} className="flex justify-between gap-2">
+                          <span>
+                            {it.name} — {it.qty} {it.unit}
+                          </span>
+                          <span className={isEst ? "text-amber-700 dark:text-amber-400 font-medium" : ""}>
+                            {isEst ? "≈ " : ""}
+                            {formatDA(qty * stockPu, 2)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

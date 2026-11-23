@@ -225,6 +225,36 @@ export function AmendementModule({ parcelId, canEdit }: { parcelId: string; canE
         </div>
       )}
 
+      {records.length > 0 && (() => {
+        const byYear = new Map<string, number>();
+        for (const r of records) {
+          const y = (r.date || "").slice(0, 4) || "—";
+          const tot = parseFloat(r.totalCost) || (parseFloat(r.qty) || 0) * (parseFloat(r.price) || 0);
+          byYear.set(y, (byYear.get(y) || 0) + tot);
+        }
+        const years = [...byYear.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+        const grand = records.reduce(
+          (s, r) => s + (parseFloat(r.totalCost) || (parseFloat(r.qty) || 0) * (parseFloat(r.price) || 0)),
+          0,
+        );
+        return (
+          <div className="rounded-xl border bg-primary/5 p-3 space-y-1">
+            <div className="flex items-center justify-between text-sm font-semibold">
+              <span>Total global</span>
+              <span className="text-primary">{formatDA(grand, 2)}</span>
+            </div>
+            <ul className="space-y-0.5 text-xs">
+              {years.map(([y, t]) => (
+                <li key={y} className="flex justify-between text-muted-foreground">
+                  <span>Année {y}</span>
+                  <span className="font-semibold text-foreground">{formatDA(t, 2)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
+
       <div className="rounded-xl border bg-card">
         <div className="flex items-center gap-2 border-b px-4 py-2 text-sm font-semibold">
           <History className="h-4 w-4" /> Archive des amendements ({records.length})

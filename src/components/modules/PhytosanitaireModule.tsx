@@ -1,7 +1,11 @@
 import { useState } from "react";
-import { Plus, Trash2, Save, History, Image as ImageIcon } from "lucide-react";
+import { Plus, Trash2, Save, History, Image as ImageIcon, Pencil, Check, X, Sparkles } from "lucide-react";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcelActions } from "@/lib/parcel-store";
+import { useSuppliers } from "@/lib/suppliers-store";
+import { useProducts } from "@/lib/products-store";
+import { computePhytosanitaireRecordTotal, resolveProductUnitPrice } from "@/lib/parcel-costs";
+import { parsePhytoProductQuantity } from "@/lib/stock-alerts";
 import { WeatherCheck } from "./WeatherCheck";
 import { PHYTO_DATABASE } from "@/data/phytosanitaires";
 import { formatDateFR, formatDA } from "@/lib/format";
@@ -42,16 +46,55 @@ export function PhytosanitaireModule({
   canEdit: boolean;
 }) {
   const records = useModuleRecords<Record>(parcelId, "phytosanitaire");
-  const { add, remove } = useModuleActions();
+  const { add, remove, update } = useModuleActions();
   const { setStatus } = useParcelActions();
+  const suppliers = useSuppliers();
+  const catalogProducts = useProducts();
   const [date, setDate] = useState("");
   const [products, setProducts] = useState<Product[]>([empty()]);
   const [validated, setValidated] = useState<{ ok: boolean; note: string } | null>(null);
+  const [editingTotalId, setEditingTotalId] = useState<string | null>(null);
+  const [editingTotalVal, setEditingTotalVal] = useState<string>("");
 
   const total = products.reduce(
     (s, p) => s + (parseFloat((p.price || "").replace(",", ".")) || 0),
     0,
   );
+
+  function applyStockPricesToRecord(r: Record) {
+    const filledProducts = r.products.map((p) => {
+      const existing = parseFloat((p.price || "").replace(",", ".")) || 0;
+      if (existing > 0 || !p.product?.trim()) return p;
+      const pu = resolveProductUnitPrice(p.product, suppliers, catalogProducts);
+      if (pu <= 0) return p;
+      const vol = parseFloat((p.volume || "").replace(",", ".")) || 1000;
+      const qtyObj = parsePhytoProductQuantity(String(p.dosage || ""), String(vol), 1);
+      const qty = qtyObj && qtyObj.needed > 0 ? qtyObj.needed : 1;
+      return { ...p, price: String(Number((qty * pu).toFixed(2))) };
+    });
+    const newTotal = filledProducts.reduce(
+      (s, p) => s + (parseFloat((p.price || "").replace(",", ".")) || 0),
+      0,
+    );
+    update(parcelId, "phytosanitaire", r.id, {
+      products: filledProducts,
+      total: Number(newTotal.toFixed(2)),
+    });
+  }
+
+  function saveInlineTotal(r: Record) {
+    const parsed = parseFloat(editingTotalVal.replace(/\s/g, "").replace(",", ".")) || 0;
+    const nextProducts =
+      r.products.length === 1
+        ? [{ ...r.products[0], price: String(parsed) }]
+        : r.products;
+    update(parcelId, "phytosanitaire", r.id, {
+      products: nextProducts,
+      total: Number(parsed.toFixed(2)),
+    });
+    setEditingTotalId(null);
+    setEditingTotalVal("");
+  }
 
   function up(i: number, patch: Partial<Product>) {
     setProducts((arr) => arr.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
@@ -186,12 +229,16 @@ export function PhytosanitaireModule({
 
       {records.length > 0 && (() => {
         const byYear = new Map<string, number>();
+        let grand = 0;
+        let hasEstimated = false;
         for (const r of records) {
           const y = (r.date || "").slice(0, 4) || "—";
-          byYear.set(y, (byYear.get(y) || 0) + (r.total || 0));
+          const computed = computePhytosanitaireRecordTotal(r, suppliers, catalogProducts);
+          if (computed.estimatedFromStock) hasEstimated = true;
+          byYear.set(y, (byYear.get(y) || 0) + computed.total);
+          grand += computed.total;
         }
         const years = [...byYear.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-        const grand = records.reduce((s, r) => s + (r.total || 0), 0);
         return (
           <div className="rounded-xl border bg-primary/5 p-3 space-y-1">
             <div className="flex items-center justify-between text-sm font-semibold">
@@ -206,6 +253,11 @@ export function PhytosanitaireModule({
                 </li>
               ))}
             </ul>
+            {hasEstimated && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                Inclut des lignes valorisées automatiquement depuis le stock (Agrimax / Base Produits).
+              </p>
+            )}
           </div>
         );
       })()}
@@ -218,38 +270,102 @@ export function PhytosanitaireModule({
           <p className="px-4 py-6 text-center text-xs text-muted-foreground">Aucun programme enregistré.</p>
         ) : (
           <ul className="divide-y">
-            {records.map((r) => (
-              <li key={r.id} className="px-4 py-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-medium text-foreground">{formatDateFR(r.date)}</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">{formatDA(r.total, 2)}</span>
-                    {canEdit && (
-                      <button onClick={() => remove(parcelId, "phytosanitaire", r.id)}
-                        className="text-muted-foreground hover:text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  Météo : {r.weatherOk ? "Favorable" : "Défavorable (validé)"} · {r.weatherNote}
-                </div>
-                <ul className="mt-2 space-y-1 text-xs text-foreground">
-                  {r.products.filter((p) => p.product).map((p, i) => (
-                    <li key={i} className="flex items-center gap-2">
-                      {p.photo && <img src={p.photo} alt="" className="h-8 w-8 rounded object-cover" />}
-                      <div className="flex-1">
-                        <div className="font-medium">{p.product} → {p.cible}</div>
-                        <div className="text-muted-foreground">
-                          Dosage {p.dosage} · Vol {p.volume} L · DAR {p.dar} j
+            {records.map((r) => {
+              const computed = computePhytosanitaireRecordTotal(r, suppliers, catalogProducts);
+              const isEditingThis = editingTotalId === r.id;
+              return (
+                <li key={r.id} className="px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                    <span className="font-medium text-foreground">{formatDateFR(r.date)}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isEditingThis ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={editingTotalVal}
+                            onChange={(e) => setEditingTotalVal(e.target.value)}
+                            placeholder="Montant DA"
+                            className="w-24 rounded border border-input bg-background px-2 py-0.5 text-xs font-semibold"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={() => saveInlineTotal(r)}
+                            className="rounded bg-primary p-1 text-primary-foreground cursor-pointer"
+                            title="Enregistrer le prix"
+                          >
+                            <Check className="h-3 w-3" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingTotalId(null)}
+                            className="rounded border p-1 text-muted-foreground cursor-pointer"
+                            title="Annuler"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
                         </div>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
+                      ) : (
+                        <>
+                          {computed.estimatedFromStock && (
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                              ≈ stock
+                            </span>
+                          )}
+                          <span className="font-bold text-foreground">{formatDA(computed.total, 2)}</span>
+                          {canEdit && computed.estimatedFromStock && (
+                            <button
+                              type="button"
+                              onClick={() => applyStockPricesToRecord(r)}
+                              className="inline-flex items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold text-amber-800 hover:bg-amber-500/20 dark:text-amber-300 cursor-pointer"
+                              title="Enregistrer les prix du stock sur cette ligne"
+                            >
+                              <Sparkles className="h-3 w-3" /> Appliquer prix stock
+                            </button>
+                          )}
+                          {canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingTotalId(r.id);
+                                setEditingTotalVal(String(computed.total || ""));
+                              }}
+                              className="text-muted-foreground hover:text-primary cursor-pointer"
+                              title="Modifier le prix"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </>
+                      )}
+                      {canEdit && (
+                        <button onClick={() => remove(parcelId, "phytosanitaire", r.id)}
+                          className="text-muted-foreground hover:text-destructive cursor-pointer">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Météo : {r.weatherOk ? "Favorable" : "Défavorable (validé)"} · {r.weatherNote}
+                  </div>
+                  <ul className="mt-2 space-y-1 text-xs text-foreground">
+                    {r.products.filter((p) => p.product).map((p, i) => (
+                      <li key={i} className="flex items-center gap-2">
+                        {p.photo && <img src={p.photo} alt="" className="h-8 w-8 rounded object-cover" />}
+                        <div className="flex-1">
+                          <div className="font-medium">{p.product} → {p.cible}</div>
+                          <div className="text-muted-foreground">
+                            Dosage {p.dosage} · Vol {p.volume} L · DAR {p.dar} j
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

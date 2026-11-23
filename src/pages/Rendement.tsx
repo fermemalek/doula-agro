@@ -20,6 +20,13 @@ import {
 import { toast } from "sonner";
 import { useAllModuleRecords, useModuleActions } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
+import { useSuppliers } from "@/lib/suppliers-store";
+import { useProducts } from "@/lib/products-store";
+import {
+  computeFertilisationRecordTotal,
+  computePhytosanitaireRecordTotal,
+  computePulverisationRecordTotal,
+} from "@/lib/parcel-costs";
 import { useTranslation } from "@/lib/i18n";
 import { formatDA, formatDateFR, formatNumber } from "@/lib/format";
 import { computeBordereauTotals } from "@/components/modules/BordereauPrintModal";
@@ -188,6 +195,8 @@ export default function RendementPage() {
   const isAr = lang === "ar";
   const parcels = useParcels();
   const { add } = useModuleActions();
+  const suppliers = useSuppliers();
+  const catalogProducts = useProducts();
 
   // Tous les enregistrements par module
   const allRecoltes = useAllModuleRecords<any>("recolte");
@@ -439,18 +448,24 @@ export default function RendementPage() {
       }
 
       // 2. Coûts d'intrants exécutés / enregistrés sur les parcelles du bloc pendant la campagne
-      const sumModuleCost = (list: any[]) =>
-        list
-          .filter((r) => getBlockForParcelId(r.parcelId) === def.id && isDateInCampaign(r.date, selectedCampaign, def.id))
-          .reduce((s, r) => s + parseNum(r.total ?? r.totalCost), 0);
+      const inBlockCampaign = (r: any) =>
+        getBlockForParcelId(r.parcelId) === def.id && isDateInCampaign(r.date, selectedCampaign, def.id);
 
-      const fertCostDA = sumModuleCost(allFert);
-      const pulvCostDA = sumModuleCost(allPulv);
-      const phytoCostDA = sumModuleCost(allPhyto);
+      const fertCostDA = allFert
+        .filter(inBlockCampaign)
+        .reduce((s, r) => s + computeFertilisationRecordTotal(r, suppliers, catalogProducts).total, 0);
+      const pulvCostDA = allPulv
+        .filter(inBlockCampaign)
+        .reduce((s, r) => s + computePulverisationRecordTotal(r, suppliers, catalogProducts).total, 0);
+      const phytoCostDA = allPhyto
+        .filter(inBlockCampaign)
+        .reduce((s, r) => s + computePhytosanitaireRecordTotal(r, suppliers, catalogProducts).total, 0);
       const tailleCostDA = allTaille
-        .filter((r) => getBlockForParcelId(r.parcelId) === def.id && isDateInCampaign(r.date, selectedCampaign, def.id))
+        .filter(inBlockCampaign)
         .reduce((s, r) => s + parseNum(r.mainOeuvre) + parseNum(r.equipements), 0);
-      const amendCostDA = sumModuleCost(allAmend);
+      const amendCostDA = allAmend
+        .filter(inBlockCampaign)
+        .reduce((s, r) => s + parseNum(r.total ?? r.totalCost), 0);
 
       const otherFeeKey = `${selectedCampaign}_${def.id}`;
       const manualOtherFeesDA = parseNum(otherFees[otherFeeKey]);
@@ -487,6 +502,8 @@ export default function RendementPage() {
         fertCostDA,
         pulvCostDA,
         phytoCostDA,
+        tailleCostDA,
+        amendCostDA,
         tailleAmendCostDA: tailleCostDA + amendCostDA,
         manualOtherFeesDA,
         totalBlockCostDA,
@@ -504,6 +521,8 @@ export default function RendementPage() {
     allPhyto,
     allTaille,
     allAmend,
+    suppliers,
+    catalogProducts,
     selectedCampaign,
     otherFees,
   ]);
@@ -859,9 +878,23 @@ export default function RendementPage() {
                   <div className="flex justify-between">
                     <span className="flex items-center gap-1">
                       <Scissors className="h-3 w-3 text-muted-foreground" />
-                      {isAr ? "التقليم والتسميد العضوي + الجني" : "Taille, Amendements & Charges récolte"}
+                      {isAr ? "التقليم" : "Taille"}
                     </span>
-                    <strong dir="ltr">{formatDA(b.tailleAmendCostDA + b.harvestChargesDA, 0)}</strong>
+                    <strong dir="ltr">{formatDA(b.tailleCostDA, 0)}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="flex items-center gap-1">
+                      <Sprout className="h-3 w-3 text-emerald-700" />
+                      {isAr ? "التسميد العضوي (Amendement)" : "Amendement"}
+                    </span>
+                    <strong dir="ltr">{formatDA(b.amendCostDA, 0)}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="flex items-center gap-1">
+                      <Package className="h-3 w-3 text-amber-700" />
+                      {isAr ? "مصاريف الجني والنقل والتغليف" : "Charges de récolte"}
+                    </span>
+                    <strong dir="ltr">{formatDA(b.harvestChargesDA, 0)}</strong>
                   </div>
 
                   {/* Saisie libre Autres frais campagne */}
