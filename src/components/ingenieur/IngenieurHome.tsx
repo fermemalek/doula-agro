@@ -131,14 +131,28 @@ export function IngenieurHome() {
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
-        <div className="rounded-2xl border border-blue-500/30 bg-blue-500/5 p-3.5 text-center shadow-xs">
+        <button
+          type="button"
+          onClick={() => navigate({ to: "/recommandations?status=pending" })}
+          className="rounded-2xl border border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/10 hover:border-blue-500/60 p-3.5 text-center shadow-xs transition active:scale-[0.98] cursor-pointer group"
+        >
           <p className="text-2xl font-black text-blue-700">{pendingCount}</p>
-          <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wide mt-0.5">{t("eng.pending", "En attente")}</p>
-        </div>
-        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 text-center shadow-xs">
+          <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wide mt-0.5 flex items-center justify-center gap-1">
+            <span>{t("eng.pending", "En attente")}</span>
+            <ArrowRight className="h-3 w-3 opacity-60 group-hover:translate-x-0.5 transition-transform rtl:rotate-180" />
+          </p>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate({ to: "/recommandations?status=accepted" })}
+          className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/60 p-3.5 text-center shadow-xs transition active:scale-[0.98] cursor-pointer group"
+        >
           <p className="text-2xl font-black text-emerald-700">{executedCount}</p>
-          <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wide mt-0.5">{t("eng.accepted", "Acceptés (Exécutés)")}</p>
-        </div>
+          <p className="text-[10px] uppercase text-muted-foreground font-bold tracking-wide mt-0.5 flex items-center justify-center gap-1">
+            <span>{t("eng.accepted", "Acceptés (Exécutés)")}</span>
+            <ArrowRight className="h-3 w-3 opacity-60 group-hover:translate-x-0.5 transition-transform rtl:rotate-180" />
+          </p>
+        </button>
       </div>
 
       <button

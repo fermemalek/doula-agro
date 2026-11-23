@@ -1,5 +1,5 @@
-import { useNavigate } from "@/lib/router-compat";
-import { useMemo, useState } from "react";
+import { useNavigate, useLocation } from "@/lib/router-compat";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Plus,
@@ -220,6 +220,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 function RecommandationsPageContent() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { userId } = useRole();
   const displayRole = useDisplayRole();
   const { data: recos = [] } = useRecommendations();
@@ -432,11 +433,34 @@ function RecommandationsPageContent() {
   };
 
   // Filtres de recherche demandés par l'utilisateur
+  const parseStatusFromSearch = (search: string): "all" | "pending" | "accepted" => {
+    const raw = new URLSearchParams(search).get("status");
+    if (raw === "pending") return "pending";
+    if (raw === "accepted") return "accepted";
+    return "all";
+  };
+
+  const [selectedStatus, setSelectedStatus] = useState<"all" | "pending" | "accepted">(() =>
+    parseStatusFromSearch(location.search)
+  );
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selectedSpecies, setSelectedSpecies] = useState<string>("all");
   const [selectedPrescription, setSelectedPrescription] = useState<PrescriptionType>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  useEffect(() => {
+    const next = parseStatusFromSearch(location.search);
+    setSelectedStatus(next);
+  }, [location.search]);
+
+  const handleStatusChange = (status: "all" | "pending" | "accepted") => {
+    setSelectedStatus(status);
+    navigate({
+      to: status === "all" ? "/recommandations" : `/recommandations?status=${status}`,
+      replace: true,
+    });
+  };
 
   const localIrr = useAllModuleRecords("irrigation");
   const localFert = useAllModuleRecords("fertilisation");
@@ -587,9 +611,27 @@ function RecommandationsPageContent() {
     });
   }, [list]);
 
-  // Filtrage combiné : Année, Mois, Espèce, Type de prescription, Recherche textuelle
+  // Compteurs par statut
+  const countsByStatus = useMemo(() => {
+    let pending = 0;
+    let accepted = 0;
+    list.forEach((r) => {
+      if (r.status === "acceptee" || r.status === "transferee") accepted++;
+      else pending++;
+    });
+    return { all: list.length, pending, accepted };
+  }, [list]);
+
+  // Filtrage combiné : Statut, Année, Mois, Espèce, Type de prescription, Recherche textuelle
   const filteredList = useMemo(() => {
     return list.filter((r) => {
+      // 0. Statut
+      if (selectedStatus === "pending") {
+        if (r.status === "acceptee" || r.status === "transferee") return false;
+      } else if (selectedStatus === "accepted") {
+        if (r.status !== "acceptee" && r.status !== "transferee") return false;
+      }
+
       // 1. Prescription
       const presType = getPrescriptionType(r);
       if (selectedPrescription !== "all" && presType !== selectedPrescription) {
@@ -627,9 +669,10 @@ function RecommandationsPageContent() {
 
       return true;
     });
-  }, [list, selectedPrescription, selectedYear, selectedMonth, selectedSpecies, searchQuery, parcels]);
+  }, [list, selectedStatus, selectedPrescription, selectedYear, selectedMonth, selectedSpecies, searchQuery, parcels]);
 
   const isFiltered =
+    selectedStatus !== "all" ||
     selectedYear !== "all" ||
     selectedMonth !== "all" ||
     selectedSpecies !== "all" ||
@@ -637,6 +680,7 @@ function RecommandationsPageContent() {
     searchQuery.trim().length > 0;
 
   const resetFilters = () => {
+    handleStatusChange("all");
     setSelectedYear("all");
     setSelectedMonth("all");
     setSelectedSpecies("all");
@@ -760,9 +804,62 @@ function RecommandationsPageContent() {
       </div>
 
       {/* ========================================================= */}
-      {/* BARRE DE FILTRES : ANNÉE, MOIS, ESPÈCE, TYPE PRESCRIPTION */}
+      {/* BARRE DE FILTRES : STATUT, ANNÉE, MOIS, ESPÈCE, TYPE      */}
       {/* ========================================================= */}
       <div className="mb-4 rounded-2xl border bg-card/60 backdrop-blur-xs p-3 shadow-xs space-y-3">
+        {/* Ligne 0 : Filtre rapide par Statut (Toutes / En attente / Acceptées) */}
+        <div className="flex flex-wrap items-center gap-1.5 pb-2 border-b border-border/50">
+          <span className="text-[10px] font-black uppercase text-muted-foreground mr-1 flex items-center gap-1">
+            <CheckCircle2 className="h-3 w-3 text-primary" />
+            <span>Statut :</span>
+          </span>
+
+          <button
+            type="button"
+            onClick={() => handleStatusChange("all")}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${
+              selectedStatus === "all"
+                ? "bg-foreground text-background shadow-xs font-black"
+                : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+          >
+            <span>Toutes</span>
+            <span className="rounded-full bg-background/20 px-1.5 py-0.2 text-[10px] font-black">
+              {countsByStatus.all}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleStatusChange("pending")}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 border ${
+              selectedStatus === "pending"
+                ? "bg-blue-600 text-white border-blue-600 shadow-xs font-black"
+                : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/20"
+            }`}
+          >
+            <span>En attente</span>
+            <span className="rounded-full bg-black/10 dark:bg-white/15 px-1.5 py-0.2 text-[10px] font-black">
+              {countsByStatus.pending}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleStatusChange("accepted")}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 border ${
+              selectedStatus === "accepted"
+                ? "bg-emerald-600 text-white border-emerald-600 shadow-xs font-black"
+                : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
+            }`}
+          >
+            <span>Acceptées</span>
+            <span className="rounded-full bg-black/10 dark:bg-white/15 px-1.5 py-0.2 text-[10px] font-black">
+              {countsByStatus.accepted}
+            </span>
+          </button>
+        </div>
+
         {/* Ligne 1 : Boutons/Pills de sélection rapide par Type de Prescription */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] font-black uppercase text-muted-foreground mr-1 flex items-center gap-1">
@@ -1101,119 +1198,129 @@ function RecommandationsPageContent() {
                     setDetail(r);
                   }
                 }}
-                className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3.5 shadow-xs transition active:scale-[0.99] hover:shadow-md ${config.cardTone} ${selectedRecoIds.has(r.id) ? "ring-2 ring-primary border-primary bg-primary/10" : ""
+                className={`flex flex-col gap-2.5 cursor-pointer rounded-2xl border p-3.5 shadow-xs transition active:scale-[0.99] hover:shadow-md ${config.cardTone} ${selectedRecoIds.has(r.id) ? "ring-2 ring-primary border-primary bg-primary/10" : ""
                   }`}
               >
-                {/* Case à cocher pour sélection multiple */}
-                {(displayRole === "ingenieur" || displayRole === "admin") && (
-                  <div
-                    onClick={(e) => toggleSelectReco(r.id, e)}
-                    className="pt-1.5 shrink-0 flex items-center justify-center cursor-pointer"
-                    title={selectedRecoIds.has(r.id) ? "Désélectionner" : "Cocher pour valider en groupe"}
-                  >
+                {/* HAUT DE CARTE : Case à cocher + Icône + Badge Statut + Badge Type + Badges Bacs & Stock */}
+                <div className="flex flex-wrap items-center gap-1.5 w-full">
+                  {(displayRole === "ingenieur" || displayRole === "admin") && (
                     <div
-                      className={`h-5 w-5 rounded-lg border-2 flex items-center justify-center transition-all ${selectedRecoIds.has(r.id)
-                          ? "bg-primary border-primary text-primary-foreground shadow-xs"
-                          : "border-muted-foreground/40 hover:border-primary bg-background"
-                        }`}
+                      onClick={(e) => toggleSelectReco(r.id, e)}
+                      className="shrink-0 flex items-center justify-center cursor-pointer mr-0.5"
+                      title={selectedRecoIds.has(r.id) ? "Désélectionner" : "Cocher pour valider en groupe"}
                     >
-                      {selectedRecoIds.has(r.id) && <CheckSquare className="h-3.5 w-3.5" />}
+                      <div
+                        className={`h-5 w-5 rounded-lg border-2 flex items-center justify-center transition-all ${selectedRecoIds.has(r.id)
+                            ? "bg-primary border-primary text-primary-foreground shadow-xs"
+                            : "border-muted-foreground/40 hover:border-primary bg-background"
+                          }`}
+                      >
+                        {selectedRecoIds.has(r.id) && <CheckSquare className="h-3.5 w-3.5" />}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Icône Prescription avec la couleur attribuée (Vert, Bleu, Orange) */}
-                <span className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${config.iconTone}`}>
-                  <Icon className="h-5 w-5" />
-                </span>
+                  {/* Icône Prescription compacte */}
+                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${config.iconTone}`}>
+                    <Icon className="h-4 w-4" />
+                  </span>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                    {/* Badge de Type de Prescription coloré */}
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${config.badgeTone}`}>
-                      <Icon className="h-2.5 w-2.5" />
-                      <span>{config.label}</span>
+                  {/* Badge Statut (EN ATTENTE / ACCEPTÉ) */}
+                  <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase ${statusInfo.tone}`}>
+                    {statusInfo.label}
+                  </span>
+
+                  {/* Badge de Type de Prescription coloré */}
+                  <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${config.badgeTone}`}>
+                    <Icon className="h-2.5 w-2.5" />
+                    <span>{config.label}</span>
+                  </span>
+
+                  {/* Badges des Bacs concernés pour les programmes de fertilisation */}
+                  {fertBacs.map((b) => (
+                    <span
+                      key={b.bac}
+                      title={`Bac ${b.bac} : ${b.products.join(", ")}`}
+                      className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${getBacBadgeTone(b.bac)}`}
+                    >
+                      Bac {b.bac}
                     </span>
+                  ))}
 
-                    {/* Badges des Bacs concernés pour les programmes de fertilisation */}
-                    {fertBacs.map((b) => (
-                      <span
-                        key={b.bac}
-                        title={`Bac ${b.bac} : ${b.products.join(", ")}`}
-                        className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${getBacBadgeTone(b.bac)}`}
-                      >
-                        Bac {b.bac}
-                      </span>
-                    ))}
+                  {stockReport && stockReport.stockStatus === "missing" && (
+                    <span
+                      title={`Produits manquants : ${stockReport.missingItems.map((i) => `${i.name} (-${Math.round(i.missing * 100) / 100} ${i.unit})`).join(", ")}`}
+                      className="shrink-0 rounded-full border border-rose-500/40 bg-rose-500/15 text-rose-600 dark:text-rose-400 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
+                    >
+                      <AlertTriangle className="h-2.5 w-2.5" /> Achat requis
+                    </span>
+                  )}
+                  {stockReport && stockReport.stockStatus === "low" && (
+                    <span
+                      title={`Stock au minimum après application : ${stockReport.lowStockItems.map((i) => `${i.name} (reste ${Math.max(0, Math.round((i.available - i.needed) * 100) / 100)} ${i.unit})`).join(", ")}`}
+                      className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
+                    >
+                      <AlertTriangle className="h-2.5 w-2.5" /> Dispo (Stock min.)
+                    </span>
+                  )}
+                  {stockReport && stockReport.stockStatus === "equivalent" && (
+                    <span
+                      title={`Équivalent même matière active en stock : ${stockReport.equivalentItems.map((i) => `${i.name} → ${i.equivalentInStock?.productName}`).join(", ")}`}
+                      className="shrink-0 rounded-full border border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
+                    >
+                      🔄 Équivalent en stock
+                    </span>
+                  )}
+                  {stockReport && stockReport.stockStatus === "available" && (
+                    <span
+                      title="Tous les produits sont disponibles en stock"
+                      className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
+                    >
+                      <PackageCheck className="h-2.5 w-2.5" /> Stock dispo
+                    </span>
+                  )}
+                </div>
 
-                    {stockReport && stockReport.stockStatus === "missing" && (
-                      <span
-                        title={`Produits manquants : ${stockReport.missingItems.map((i) => `${i.name} (-${Math.round(i.missing * 100) / 100} ${i.unit})`).join(", ")}`}
-                        className="shrink-0 rounded-full border border-rose-500/40 bg-rose-500/15 text-rose-600 dark:text-rose-400 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
-                      >
-                        <AlertTriangle className="h-2.5 w-2.5" /> Achat requis
-                      </span>
-                    )}
-                    {stockReport && stockReport.stockStatus === "low" && (
-                      <span
-                        title={`Stock au minimum après application : ${stockReport.lowStockItems.map((i) => `${i.name} (reste ${Math.max(0, Math.round((i.available - i.needed) * 100) / 100)} ${i.unit})`).join(", ")}`}
-                        className="shrink-0 rounded-full border border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
-                      >
-                        <AlertTriangle className="h-2.5 w-2.5" /> Dispo (Stock min.)
-                      </span>
-                    )}
-                    {stockReport && stockReport.stockStatus === "equivalent" && (
-                      <span
-                        title={`Équivalent même matière active en stock : ${stockReport.equivalentItems.map((i) => `${i.name} → ${i.equivalentInStock?.productName}`).join(", ")}`}
-                        className="shrink-0 rounded-full border border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
-                      >
-                        🔄 Équivalent en stock
-                      </span>
-                    )}
-                    {stockReport && stockReport.stockStatus === "available" && (
-                      <span
-                        title="Tous les produits sont disponibles en stock"
-                        className="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 text-[9px] font-black flex items-center gap-1"
-                      >
-                        <PackageCheck className="h-2.5 w-2.5" /> Stock dispo
-                      </span>
-                    )}
-                  </div>
+                {/* MILIEU DE CARTE (pleine largeur w-full) : Titre, parcelles, dates, produits & alerte stock */}
+                <div className="w-full min-w-0 space-y-1">
+                  <p className="font-bold text-foreground leading-snug text-sm break-words">{r.title}</p>
 
-                  <p className="font-bold text-foreground leading-snug text-sm">{r.title}</p>
-
-                  <p className="truncate text-xs text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground break-words">
                     <span className="font-semibold text-foreground/80">{config.label}</span>
                     {" · "}
                     {targetParcels.length} parcelle{targetParcels.length > 1 ? "s" : ""}
                     {displayRole !== "ingenieur" && ` · par ${author}`}
                   </p>
 
-                  <p className="mt-1 text-[10px] text-muted-foreground flex items-center gap-1">
-                    <Calendar className="h-3 w-3 text-muted-foreground/70" />
-                    <span>Date : <strong className="text-foreground/90">{rDate}</strong></span>
+                  <p className="text-[11px] text-muted-foreground flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                    <span className="inline-flex items-center gap-1">
+                      <Calendar className="h-3 w-3 text-muted-foreground/70 shrink-0" />
+                      <span>Date : <strong className="text-foreground/90">{rDate}</strong></span>
+                    </span>
                     {r.created_at && (
-                      <span className="opacity-70 ml-1">
+                      <span className="opacity-70 text-[10px]">
                         (Saisie : {new Date(r.created_at).toLocaleString("fr-FR")})
                       </span>
                     )}
                   </p>
+
                   {fertBacs.length > 0 && (
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-foreground/80">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] text-foreground/80">
                       {fertBacs.map((b) => (
-                        <span key={b.bac} className="inline-flex items-center gap-1">
+                        <span key={b.bac} className="inline-flex flex-wrap items-center gap-1">
                           <strong className="font-black">Bac {b.bac}</strong>
                           <span className="text-muted-foreground">({b.products.join(", ")})</span>
                         </span>
                       ))}
                     </div>
                   )}
+
                   {stockReport && stockReport.equivalentItems.length > 0 && (
-                    <div className="mt-1 space-y-1">
+                    <div className="space-y-1 pt-0.5">
                       {stockReport.equivalentItems.map((eqItem) => {
                         const eq = eqItem.equivalentInStock!;
                         return (
-                          <div key={eqItem.name} className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300 leading-snug">
+                          <div key={eqItem.name} className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300 leading-snug">
                             <span>
                               🔄 Équivalent en stock : <strong>{eq.productName}</strong> ({eq.available} {eq.unit} · {eq.activeIngredient} — vérifier concentration)
                             </span>
@@ -1246,7 +1353,7 @@ function RecommandationsPageContent() {
                                   toast.error("Erreur lors de la substitution du produit.");
                                 }
                               }}
-                              className="rounded-md border border-sky-500/40 bg-sky-500/15 hover:bg-sky-500/25 px-1.5 py-0.5 text-[9.5px] font-black text-sky-800 dark:text-sky-200 cursor-pointer"
+                              className="rounded-md border border-sky-500/40 bg-sky-500/15 hover:bg-sky-500/25 px-1.5 py-0.5 text-[10px] font-black text-sky-800 dark:text-sky-200 cursor-pointer"
                             >
                               Substituer
                             </button>
@@ -1255,16 +1362,18 @@ function RecommandationsPageContent() {
                       })}
                     </div>
                   )}
+
                   {stockReport && stockReport.stockStatus === "missing" && stockReport.missingItems.length > 0 && (
-                    <p className="mt-1 text-[10px] font-semibold text-rose-600 dark:text-rose-400 leading-snug">
+                    <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 leading-snug break-words">
                       Manque :{" "}
                       {stockReport.missingItems
                         .map((i) => `${i.name.split("/")[0].trim()} (-${Math.round(i.missing * 100) / 100} ${i.unit})`)
                         .join(" · ")}
                     </p>
                   )}
+
                   {stockReport && stockReport.stockStatus === "low" && stockReport.lowStockItems.length > 0 && (
-                    <p className="mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-300 leading-snug">
+                    <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 leading-snug break-words">
                       Stock min. :{" "}
                       {stockReport.lowStockItems
                         .map((i) => `${i.name.split("/")[0].trim()} (reste ${Math.max(0, Math.round((i.available - i.needed) * 100) / 100)} ${i.unit})`)
@@ -1273,69 +1382,65 @@ function RecommandationsPageContent() {
                   )}
                 </div>
 
-                {/* Colonne latérale droite : Statut et Actions */}
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase ${statusInfo.tone}`}>
-                    {statusInfo.label}
-                  </span>
+                {/* BAS DE CARTE : Barre d'actions en flex-wrap */}
+                {(displayRole === "ingenieur" || displayRole === "admin") && (
+                  <div className="flex flex-wrap items-center justify-between sm:justify-end gap-1.5 w-full pt-2 border-t border-border/50">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {isPending && (
+                        <>
+                          {/* 1. Bouton vert Valider & Exécuter : Actif UNIQUEMENT sur ordonnance passée (date < Aujourd'hui) */}
+                          {isPast ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openScheduleConfirm(
+                                  [r],
+                                  "execute",
+                                  `Valider & Exécuter : ${r.title}`,
+                                  "Confirmez l'heure de commencement et les temps d'irrigation avant validation."
+                                );
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1.5 text-[11px] font-bold shadow-xs active:scale-95 transition cursor-pointer"
+                              title="Valider la recommandation et solder l'exécution historique (date passée)"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              <span>Valider & Exécuter</span>
+                            </button>
+                          ) : (
+                            /* Ordonnance future (date >= Aujourd'hui) : Désactivé avec cadenas pour empêcher l'exécution prématurée */
+                            <button
+                              type="button"
+                              disabled
+                              className="inline-flex items-center gap-1 rounded-lg bg-muted text-muted-foreground/50 border border-border/40 px-2.5 py-1.5 text-[11px] font-semibold cursor-not-allowed opacity-50 select-none"
+                              title="Action désactivée : Traitement futur (date >= Aujourd'hui). Seule la planification est permise avant l'intervention sur le terrain."
+                            >
+                              <Lock className="h-3.5 w-3.5" />
+                              <span>Valider & Exécuter</span>
+                            </button>
+                          )}
 
-                  <div className="flex items-center gap-1">
-                    {isPending && (displayRole === "ingenieur" || displayRole === "admin") && (
-                      <div className="flex items-center gap-1">
-                        {/* 1. Bouton vert Valider & Exécuter : Actif UNIQUEMENT sur ordonnance passée (date < Aujourd'hui) */}
-                        {isPast ? (
+                          {/* 2. Bouton bleu Planifier : Toujours actif (passée pour calendrier, future pour planifier) */}
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               openScheduleConfirm(
                                 [r],
-                                "execute",
-                                `Valider & Exécuter : ${r.title}`,
-                                "Confirmez l'heure de commencement et les temps d'irrigation avant validation."
+                                "plan",
+                                `Planifier : ${r.title}`,
+                                "Confirmez l'heure de commencement et les temps d'irrigation avant planification."
                               );
                             }}
-                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition cursor-pointer"
-                            title="Valider la recommandation et solder l'exécution historique (date passée)"
+                            className="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1.5 text-[11px] font-bold shadow-xs active:scale-95 transition cursor-pointer"
+                            title="Planifier sans marquer comme exécuté"
                           >
-                            <CheckCircle2 className="h-3 w-3" />
-                            <span>Valider & Exécuter</span>
+                            <Calendar className="h-3.5 w-3.5" />
+                            <span>Planifier</span>
                           </button>
-                        ) : (
-                          /* Ordonnance future (date >= Aujourd'hui) : Désactivé avec cadenas pour empêcher l'exécution prématurée */
-                          <button
-                            type="button"
-                            disabled
-                            className="inline-flex items-center gap-1 rounded-lg bg-muted text-muted-foreground/50 border border-border/40 px-2 py-1 text-[10px] font-semibold cursor-not-allowed opacity-50 select-none"
-                            title="Action désactivée : Traitement futur (date >= Aujourd'hui). Seule la planification est permise avant l'intervention sur le terrain."
-                          >
-                            <Lock className="h-3 w-3" />
-                            <span>Valider & Exécuter</span>
-                          </button>
-                        )}
+                        </>
+                      )}
 
-                        {/* 2. Bouton bleu Planifier : Toujours actif (passée pour calendrier, future pour planifier) */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openScheduleConfirm(
-                              [r],
-                              "plan",
-                              `Planifier : ${r.title}`,
-                              "Confirmez l'heure de commencement et les temps d'irrigation avant planification."
-                            );
-                          }}
-                          className="inline-flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition cursor-pointer"
-                          title="Planifier sans marquer comme exécuté"
-                        >
-                          <Calendar className="h-3 w-3" />
-                          <span>Planifier</span>
-                        </button>
-                      </div>
-                    )}
-
-                    {(displayRole === "ingenieur" || displayRole === "admin") && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -1344,15 +1449,13 @@ function RecommandationsPageContent() {
                           setIsDuplicate(true);
                           setFormOpen(true);
                         }}
-                        className="inline-flex items-center gap-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2 py-1 text-[10px] font-bold shadow-xs active:scale-95 transition"
+                        className="inline-flex items-center gap-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2.5 py-1.5 text-[11px] font-bold shadow-xs active:scale-95 transition"
                         title="Dupliquer cette recommandation pour une nouvelle date"
                       >
-                        <Copy className="h-3 w-3" />
+                        <Copy className="h-3.5 w-3.5" />
                         <span>Dupliquer</span>
                       </button>
-                    )}
 
-                    {(displayRole === "ingenieur" || displayRole === "admin") && (
                       <button
                         type="button"
                         onClick={async (e) => {
@@ -1365,14 +1468,15 @@ function RecommandationsPageContent() {
                             toast.error("Erreur lors de la suppression");
                           }
                         }}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive active:scale-90 transition"
+                        className="inline-flex items-center gap-1 rounded-lg border border-destructive/25 bg-destructive/5 px-2.5 py-1.5 text-[11px] font-bold text-destructive hover:bg-destructive/15 active:scale-95 transition"
                         title="Supprimer cette recommandation"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
+                        <span className="sm:hidden">Supprimer</span>
                       </button>
-                    )}
+                    </div>
                   </div>
-                </div>
+                )}
               </li>
             );
           })}

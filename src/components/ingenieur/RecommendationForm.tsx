@@ -1004,17 +1004,17 @@ export function RecommendationForm({
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
-          className="max-h-[90vh] overflow-y-auto sm:max-w-2xl bg-card text-card-foreground"
+          className="w-[95vw] max-w-2xl mx-auto left-1/2 -translate-x-1/2 max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 sm:p-6 rounded-2xl bg-card text-card-foreground"
         >
-          <DialogHeader className="border-b pb-2">
-            <DialogTitle className="text-base font-black uppercase tracking-wide flex items-center justify-between">
-              <div className="flex items-center gap-2">
+          <DialogHeader className="border-b pb-2 pr-6">
+            <DialogTitle className="text-sm sm:text-base font-black uppercase tracking-wide flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 {duplicateMode ? (
-                  <Copy className="h-5 w-5 text-amber-500" />
+                  <Copy className="h-5 w-5 text-amber-500 shrink-0" />
                 ) : (
-                  <Plus className="h-5 w-5 text-primary" />
+                  <Plus className="h-5 w-5 text-primary shrink-0" />
                 )}
-                <span>
+                <span className="break-words">
                   {duplicateMode
                     ? t("reco.form.duplicate")
                     : recoToEdit
@@ -1023,7 +1023,7 @@ export function RecommendationForm({
                 </span>
               </div>
               {duplicateMode && (
-                <span className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-bold px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1">
+                <span className="text-[10px] bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 font-bold px-2.5 py-0.5 rounded-full uppercase flex items-center gap-1 shrink-0">
                   <Copy className="h-3 w-3" />
                   <span>{isAr ? "وضع النسخ والتكرار" : "Mode Duplication"}</span>
                 </span>
@@ -1031,11 +1031,11 @@ export function RecommendationForm({
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 text-xs">
+          <div className="space-y-4 text-xs min-w-0">
             {duplicateMode && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2.5 flex items-start gap-2.5 text-amber-900 dark:text-amber-200">
                 <Copy className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
-                <div>
+                <div className="min-w-0">
                   <p className="font-bold text-xs">
                     {isAr ? "وضع النسخ مفعل (Duplication)" : "Mode Duplication actif"}
                   </p>
@@ -1046,7 +1046,7 @@ export function RecommendationForm({
               </div>
             )}
             {/* 1. Kinds Selectors */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <p className="mb-1.5 font-bold uppercase text-muted-foreground">{t("reco.form.prescriptionType")}</p>
                 <div className="grid grid-cols-3 gap-1.5">
@@ -1201,8 +1201,8 @@ export function RecommendationForm({
                 {selectedPrescriptions.map((presc) => {
                   if (presc === "fert_irrigation") {
                     return (
-                      <div key={presc} className="border rounded-2xl p-4 bg-muted/30 space-y-3">
-                        <div className="flex justify-between items-center border-b pb-1">
+                      <div key={presc} className="border rounded-2xl p-3 sm:p-4 bg-muted/30 space-y-3 min-w-0">
+                        <div className="flex flex-wrap justify-between items-center gap-2 border-b pb-1.5">
                           <h4 className="font-black text-xs text-primary uppercase flex items-center gap-1.5">
                             <Droplet className="h-4 w-4 text-sky-600" />
                             <span>{t("reco.form.fertilizerIrrigation")}</span>
@@ -1328,7 +1328,7 @@ export function RecommendationForm({
 
 
                           {/* Temps d'irrigation detail fields */}
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 border-t pt-2 mt-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 border-t pt-2 mt-2">
                             <label className="block">
                               <span className="font-bold text-muted-foreground">{t("reco.form.irrigationTime")}</span>
                               <select
@@ -1398,8 +1398,8 @@ export function RecommendationForm({
                           </div>
 
                           {/* Bac Items Table */}
-                          <div className="rounded-xl border bg-card p-3 space-y-2">
-                            <div className="flex justify-between items-center border-b pb-1">
+                          <div className="rounded-xl border bg-card p-3 space-y-2 min-w-0">
+                            <div className="flex flex-wrap justify-between items-center gap-1.5 border-b pb-1">
                               <span className="font-extrabold uppercase text-primary text-[10px]">{t("reco.form.bacAuthorized").replace("{bac}", fertBac)}</span>
                               <button
                                 type="button"
@@ -1415,12 +1415,12 @@ export function RecommendationForm({
                             ) : (
                               <div className="space-y-2">
                                 {currentBacEntry.items.map((it: any, idx: number) => (
-                                  <div key={idx} className="grid grid-cols-12 gap-2 items-center border-b pb-2">
-                                    <div className="col-span-6 space-y-0.5">
+                                  <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center border-b pb-2">
+                                    <div className="sm:col-span-6 space-y-0.5 min-w-0">
                                       <select
                                         value={it.name}
                                         onChange={(e) => handleFertProductChange(idx, e.target.value)}
-                                        className="w-full rounded border bg-background px-2 py-1 text-xs"
+                                        className="w-full min-w-0 max-w-full rounded border bg-background px-2 py-1.5 sm:py-1 text-xs"
                                       >
                                         {getProductsForBac(fertBac).map(p => (
                                           <option key={p.name} value={p.name}>{p.name}</option>
@@ -1435,25 +1435,27 @@ export function RecommendationForm({
                                       )}
                                     </div>
 
-                                    {/* Dose / Ha */}
-                                    <input
-                                      type="text"
-                                      inputMode="decimal"
-                                      placeholder={t("reco.form.doseHa")}
-                                      value={it.qty}
-                                      onChange={(e) => updateFertItem(idx, { qty: e.target.value })}
-                                      className="col-span-3 rounded border bg-background px-2 py-1 text-right text-xs"
-                                    />
+                                    <div className="grid grid-cols-12 gap-2 items-center sm:contents">
+                                      {/* Dose / Ha */}
+                                      <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        placeholder={t("reco.form.doseHa")}
+                                        value={it.qty}
+                                        onChange={(e) => updateFertItem(idx, { qty: e.target.value })}
+                                        className="col-span-6 sm:col-span-3 w-full min-w-0 rounded border bg-background px-2 py-1.5 sm:py-1 text-right text-xs"
+                                      />
 
-                                    <span className="col-span-2 text-center font-bold text-muted-foreground">{it.unit}</span>
+                                      <span className="col-span-4 sm:col-span-2 text-center font-bold text-muted-foreground text-xs">{it.unit}</span>
 
-                                    <button
-                                      type="button"
-                                      onClick={() => removeFertRow(idx)}
-                                      className="col-span-1 text-muted-foreground hover:text-destructive flex justify-center"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => removeFertRow(idx)}
+                                        className="col-span-2 sm:col-span-1 text-muted-foreground hover:text-destructive flex justify-center py-1"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
@@ -1466,8 +1468,8 @@ export function RecommendationForm({
 
                   if (presc === "fert_pulverisation") {
                     return (
-                      <div key={presc} className="border rounded-2xl p-4 bg-muted/30 space-y-3">
-                        <div className="flex justify-between items-center border-b pb-1">
+                      <div key={presc} className="border rounded-2xl p-3 sm:p-4 bg-muted/30 space-y-3 min-w-0">
+                        <div className="flex flex-wrap justify-between items-center gap-2 border-b pb-1.5">
                           <h4 className="font-black text-xs text-primary uppercase flex items-center gap-1.5">
                             <SprayCan className="h-4 w-4 text-emerald-600" />
                             <span>{t("reco.form.fertilizerFoliar")}</span>
@@ -1576,8 +1578,8 @@ export function RecommendationForm({
                             </div>
                           </div>
 
-                          <div className="space-y-2">
-                            <div className="flex justify-between items-center border-b pb-1">
+                          <div className="space-y-2 min-w-0">
+                            <div className="flex flex-wrap justify-between items-center gap-1.5 border-b pb-1">
                               <span className="font-extrabold uppercase text-primary text-[10px]">{t("reco.form.elementsPulv")}</span>
                               <button
                                 type="button"
@@ -1593,7 +1595,7 @@ export function RecommendationForm({
                                 {t("reco.form.newFoliar")}
                               </button>
                             </div>
-                            <div className="grid grid-cols-12 gap-2 text-[10px] font-bold uppercase text-muted-foreground px-1 border-b">
+                            <div className="hidden sm:grid sm:grid-cols-12 gap-2 text-[10px] font-bold uppercase text-muted-foreground px-1 border-b">
                               <span className="col-span-5">{t("reco.form.element")}</span>
                               <span className="col-span-3 text-right">{t("reco.form.dosage")}</span>
                               <span className="col-span-2 text-center">{t("reco.form.unit")}</span>
@@ -1601,7 +1603,7 @@ export function RecommendationForm({
                             </div>
 
                             {pulvItems.map((it, idx) => (
-                              <div key={idx} className="grid grid-cols-12 gap-2">
+                              <div key={idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center border-b sm:border-b-0 pb-2 sm:pb-0">
                                 <select
                                   value={it.name}
                                   onChange={(e) => {
@@ -1613,7 +1615,7 @@ export function RecommendationForm({
                                       price: prod ? prod.price.toString() : "0"
                                     });
                                   }}
-                                  className="col-span-5 rounded border bg-background px-2 py-1 text-xs"
+                                  className="sm:col-span-5 w-full min-w-0 max-w-full rounded border bg-background px-2 py-1.5 sm:py-1 text-xs"
                                 >
                                   <option value="">{t("reco.form.choose")}</option>
                                   {foliarProducts.map((p) => {
@@ -1632,27 +1634,29 @@ export function RecommendationForm({
                                     );
                                   })}
                                 </select>
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={it.qty}
-                                  onChange={(e) => updatePulvItem(idx, { qty: e.target.value })}
-                                  placeholder={t("reco.form.qty")}
-                                  className="col-span-3 rounded border bg-background px-2 py-1 text-right text-xs"
-                                />
-                                <input
-                                  value={it.unit}
-                                  disabled
-                                  placeholder={t("reco.form.unit")}
-                                  className="col-span-2 rounded border bg-muted/40 px-2 py-1 text-center text-xs text-muted-foreground"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => removePulvRow(idx)}
-                                  className="col-span-2 text-muted-foreground hover:text-destructive flex justify-center items-center"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
+                                <div className="grid grid-cols-12 gap-2 items-center sm:contents">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={it.qty}
+                                    onChange={(e) => updatePulvItem(idx, { qty: e.target.value })}
+                                    placeholder={t("reco.form.qty")}
+                                    className="col-span-6 sm:col-span-3 w-full min-w-0 rounded border bg-background px-2 py-1.5 sm:py-1 text-right text-xs"
+                                  />
+                                  <input
+                                    value={it.unit}
+                                    disabled
+                                    placeholder={t("reco.form.unit")}
+                                    className="col-span-4 sm:col-span-2 w-full min-w-0 rounded border bg-muted/40 px-2 py-1.5 sm:py-1 text-center text-xs text-muted-foreground"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => removePulvRow(idx)}
+                                    className="col-span-2 sm:col-span-2 text-muted-foreground hover:text-destructive flex justify-center items-center py-1"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </button>
+                                </div>
                               </div>
                             ))}
 
@@ -1671,13 +1675,13 @@ export function RecommendationForm({
 
                   if (presc === "phytosanitaire") {
                     return (
-                      <div key={presc} className="border rounded-2xl p-4 bg-muted/30 space-y-3">
+                      <div key={presc} className="border rounded-2xl p-3 sm:p-4 bg-muted/30 space-y-3 min-w-0">
                         <div className="flex flex-wrap justify-between items-center gap-2 border-b pb-1.5">
                           <h4 className="font-black text-xs text-primary uppercase flex items-center gap-1.5">
                             <FlaskConical className="h-4 w-4 text-violet-600" />
                             <span>{t("reco.form.phytosanitaire")}</span>
                           </h4>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => setPhytoAdvisorOpen(true)}
@@ -1800,9 +1804,9 @@ export function RecommendationForm({
                           </div>
 
                           <div className="space-y-3">
-                            <div className="flex justify-between items-center border-b pb-1">
+                            <div className="flex flex-wrap justify-between items-center gap-1.5 border-b pb-1">
                               <span className="font-extrabold uppercase text-primary text-[10px]">{t("reco.form.phytoActives")}</span>
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 {phyProducts.length === 1 && (
                                   <button
                                     type="button"
@@ -1834,7 +1838,7 @@ export function RecommendationForm({
                             </div>
 
                             {phyProducts.length >= 2 && (
-                              <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-2.5 flex items-center justify-between text-indigo-900 dark:text-indigo-200">
+                              <div className="rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-2.5 flex flex-wrap items-center justify-between gap-2 text-indigo-900 dark:text-indigo-200">
                                 <div className="flex items-center gap-2">
                                   <span className="text-base">🧪</span>
                                   <div>
@@ -2284,7 +2288,7 @@ export function RecommendationForm({
         <DialogContent
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
-          className="max-w-md bg-card text-card-foreground text-xs"
+          className="w-[95vw] max-w-md mx-auto left-1/2 -translate-x-1/2 max-h-[90dvh] overflow-y-auto overflow-x-hidden p-4 rounded-2xl bg-card text-card-foreground text-xs"
         >
           <DialogHeader>
             <DialogTitle className="text-sm font-black uppercase tracking-wide">
@@ -2301,7 +2305,7 @@ export function RecommendationForm({
                 className="mt-1"
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div>
                 <Label className="font-bold text-muted-foreground uppercase text-[10px]">{t("reco.form.unit")}</Label>
                 <select
