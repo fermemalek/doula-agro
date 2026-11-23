@@ -1,5 +1,4 @@
-import { useMemo, useState } from "react";
-import { formatDateFR, formatDA, formatNumber } from "@/lib/format";
+import { useEffect, useMemo, useState } from "react";
 import {
   Save,
   Trash2,
@@ -12,56 +11,115 @@ import {
   X,
   TrendingUp,
   Package,
-  AlertCircle,
   Pencil,
+  Printer,
+  Shuffle,
+  ArrowDownToLine,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useModuleRecords, useModuleActions } from "@/lib/modules-store";
+import { useParcels } from "@/lib/parcel-store";
 import { useTranslation } from "@/lib/i18n";
 import { type Parcel } from "@/data/parcels";
+import { formatDateFR, formatDA, formatNumber } from "@/lib/format";
+import {
+  BordereauPrintModal,
+  computeBordereauTotals,
+  type BordereauPrintData,
+  type BordereauPrintLine,
+} from "./BordereauPrintModal";
+import {
+  BordereauEditorCard,
+  NATURE_SUGGESTIONS,
+  createEmptyBordereau,
+  createEmptySaleLine,
+  type MandataireBordereau,
+} from "./BordereauEditorCard";
 
 export type FruitDestination = "mandataire" | "frigo" | "direct" | "mixte";
 export type PaymentStatus = "paye" | "en_attente" | "partiel";
+export type HarvestUnit = "Kg" | "Quintal" | "Caisse/Colis";
+
+export interface HarvestLotLine {
+  id: string;
+  nature: string;
+  colis: string;
+  poidsNetKg: string;
+}
+
+export interface FrigoBlock {
+  id: string;
+  frigoName: string;
+  chambreNo: string;
+  entryDate: string;
+  tarifType: "per_kg_month" | "fixed";
+  tarifValue: string;
+  lots: HarvestLotLine[];
+}
+
+export interface DirectSaleBlock {
+  id: string;
+  clientName: string;
+  paymentStatus: "paye" | "credit";
+  lines: BordereauPrintLine[];
+}
 
 export interface FrigoExitEntry {
   id: string;
   date: string;
   mode: "mandataire" | "direct";
   buyerName: string;
-  qty: number;
+  qty: number; // kg sortis (ou unité historique)
+  colis?: number;
   unitPrice: number;
   commissionType?: "percent" | "fixed";
   commissionValue?: number;
   commissionAmount: number;
+  droitsMarcheAmount?: number;
   grossAmount: number;
   netAmount: number;
   paymentStatus: PaymentStatus;
   paidAmount?: number;
+  // Nouveau format complet
+  bordereau?: MandataireBordereau;
+  directLines?: BordereauPrintLine[];
 }
 
 export interface FreshFruitHarvestRecord {
   id: string;
   createdAt: number;
   recordMode?: "fruits_frais";
+  schemaVersion?: 2;
   date: string;
-  unit: "Kg" | "Caisses" | string;
+  selectedParcelIds?: string[];
+  unit: HarvestUnit | "Caisses" | string;
   avgCrateWeightKg?: string;
   qty: string;
   totalKg?: number;
+  totalColis?: number;
   price: string;
-  // Tri & Calibres
+  // Nouveau workflow Étape 1 (Lots dynamiques)
+  harvestLots?: HarvestLotLine[];
+  rebutKg?: string;
+  rebutPercent?: number;
+  // Rétrocompatibilité ancien Tri & Calibres
   choix1Qty?: string;
   choix1Price?: string;
   choix2Qty?: string;
   choix2Price?: string;
   choix3Qty?: string;
   choix3Price?: string;
-  choix4Qty?: string; // Industrie / Jus (rétrocompatible avec ancien Choix 4)
+  choix4Qty?: string;
   choix4Price?: string;
   rebutQty?: string;
-  rebutPercent?: number;
-  // Destination
+  // Destination Étape 2
   destination?: FruitDestination;
+  bordereaux?: MandataireBordereau[];
+  frigoBlocks?: FrigoBlock[];
+  directBlocks?: DirectSaleBlock[];
+  // Rétrocompatibilité anciens champs destination
   mandataireName?: string;
   mandataireQty?: string;
   mandatairePrice?: string;
@@ -70,7 +128,6 @@ export interface FreshFruitHarvestRecord {
   commissionAmount?: number;
   paymentStatus?: PaymentStatus;
   paidAmount?: string;
-  // Chambre froide (Frigo)
   frigoName?: string;
   frigoEntryDate?: string;
   frigoQty?: string;
@@ -78,21 +135,29 @@ export interface FreshFruitHarvestRecord {
   frigoRateValue?: string;
   frigoCost?: number;
   frigoExits?: FrigoExitEntry[];
-  // Vente directe ferme
   directQty?: string;
   directPrice?: string;
-  // Charges opérationnelles
+  // Charges opérationnelles ferme (DA)
   mainOeuvre: string;
   emballages?: string;
   transport: string;
   autres: string;
-  // Totaux normalisés (pour Archive & Statistiques / Coûts par Espèce)
+  // Totaux normalisés
   totalVente?: number;
+  totalDeductionsMandataire?: number;
+  netBordereauVentes?: number;
+  chargesFerme?: number;
   totalCharges?: number;
-  total?: number; // total_cost Supabase
+  total?: number;
   net?: number;
   notes: string;
   photo?: string;
+}
+
+function parseNum(v: string | number | undefined): number {
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  const n = parseFloat(String(v ?? "").replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
 }
 
 function parseTreeCount(parcel?: Parcel): number {
@@ -101,6 +166,212 @@ function parseTreeCount(parcel?: Parcel): number {
   const cleaned = raw.replace(/\s+/g, "").replace(",", ".");
   const n = parseFloat(cleaned);
   return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function createEmptyHarvestLot(nature = ""): HarvestLotLine {
+  return {
+    id: `lot_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    nature,
+    colis: "",
+    poidsNetKg: "",
+  };
+}
+
+function createEmptyFrigoBlock(date: string, lots?: HarvestLotLine[]): FrigoBlock {
+  return {
+    id: `fg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    frigoName: "",
+    chambreNo: "",
+    entryDate: date || new Date().toISOString().slice(0, 10),
+    tarifType: "per_kg_month",
+    tarifValue: "",
+    lots: lots && lots.length > 0 ? lots.map((l) => ({ ...l, id: createEmptyHarvestLot().id })) : [createEmptyHarvestLot()],
+  };
+}
+
+function createEmptyDirectBlock(lines?: BordereauPrintLine[]): DirectSaleBlock {
+  return {
+    id: `ds_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    clientName: "",
+    paymentStatus: "paye",
+    lines: lines && lines.length > 0 ? lines.map((l) => ({ ...l, id: createEmptySaleLine().id })) : [createEmptySaleLine()],
+  };
+}
+
+function lotsToSaleLines(lots: HarvestLotLine[]): BordereauPrintLine[] {
+  const valid = lots.filter((l) => l.nature.trim() || parseNum(l.colis) > 0 || parseNum(l.poidsNetKg) > 0);
+  if (valid.length === 0) return [createEmptySaleLine()];
+  return valid.map((l) => ({
+    id: createEmptySaleLine().id,
+    nature: l.nature,
+    colis: l.colis,
+    poidsNetKg: l.poidsNetKg,
+    prixUnitaire: "",
+  }));
+}
+
+function getRecordFrigoStoredKg(r: FreshFruitHarvestRecord): number {
+  if (Array.isArray(r.frigoBlocks) && r.frigoBlocks.length > 0) {
+    return r.frigoBlocks.reduce(
+      (sum, fb) => sum + fb.lots.reduce((ls, l) => ls + parseNum(l.poidsNetKg), 0),
+      0,
+    );
+  }
+  const initFrigo = parseNum(r.frigoQty);
+  if (initFrigo <= 0) return 0;
+  const crateWeight = r.unit === "Caisses" ? Math.max(0.1, parseNum(r.avgCrateWeightKg) || 15) : 1;
+  return initFrigo * crateWeight;
+}
+
+function getRecordFrigoStoredColis(r: FreshFruitHarvestRecord): number {
+  if (Array.isArray(r.frigoBlocks) && r.frigoBlocks.length > 0) {
+    return r.frigoBlocks.reduce(
+      (sum, fb) => sum + fb.lots.reduce((ls, l) => ls + parseNum(l.colis), 0),
+      0,
+    );
+  }
+  return r.unit === "Caisses" ? parseNum(r.frigoQty) : 0;
+}
+
+function getRecordFinancialSummary(r: FreshFruitHarvestRecord) {
+  const exits = r.frigoExits || [];
+  const exitedKg = exits.reduce((s, e) => s + (e.qty || 0), 0);
+  const exitedColis = exits.reduce((s, e) => s + (e.colis || 0), 0);
+  const storedKg = getRecordFrigoStoredKg(r);
+  const storedColis = getRecordFrigoStoredColis(r);
+  const remainingFrigoKg = Math.max(0, storedKg - exitedKg);
+  const remainingFrigoColis = Math.max(0, storedColis - exitedColis);
+
+  // V2 schema
+  if (r.schemaVersion === 2 || Array.isArray(r.bordereaux) || Array.isArray(r.directBlocks)) {
+    const bds = r.bordereaux || [];
+    const dbs = r.directBlocks || [];
+    const fbs = r.frigoBlocks || [];
+
+    let grossSales = 0;
+    let deductionsMandataire = 0;
+    let avances = 0;
+
+    for (const bd of bds) {
+      const t = computeBordereauTotals(bd);
+      grossSales += t.totalVenteBrute;
+      deductionsMandataire += t.comDA + t.droitsMarche;
+      avances += t.avanceProducteur;
+    }
+
+    for (const db of dbs) {
+      for (const l of db.lines) {
+        grossSales += parseNum(l.poidsNetKg) * parseNum(l.prixUnitaire);
+      }
+    }
+
+    // Ajouter les sorties de frigo
+    for (const ex of exits) {
+      if (ex.bordereau) {
+        const t = computeBordereauTotals(ex.bordereau);
+        grossSales += t.totalVenteBrute;
+        deductionsMandataire += t.comDA + t.droitsMarche;
+        avances += t.avanceProducteur;
+      } else {
+        grossSales += ex.grossAmount || 0;
+        deductionsMandataire += (ex.commissionAmount || 0) + (ex.droitsMarcheAmount || 0);
+      }
+    }
+
+    // Coût stockage frigo estimé
+    let frigoStorageCost = 0;
+    for (const fb of fbs) {
+      const val = parseNum(fb.tarifValue);
+      if (val <= 0) continue;
+      if (fb.tarifType === "fixed") {
+        frigoStorageCost += val;
+      } else {
+        const fbKg = fb.lots.reduce((s, l) => s + parseNum(l.poidsNetKg), 0);
+        frigoStorageCost += fbKg * val;
+      }
+    }
+
+    const chargesFerme =
+      parseNum(r.mainOeuvre) +
+      parseNum(r.transport) +
+      parseNum(r.emballages) +
+      parseNum(r.autres) +
+      frigoStorageCost;
+
+    const netVentes = grossSales - deductionsMandataire;
+    const netAPayerBordereaux = netVentes - avances;
+    const beneficeNetFerme = netVentes - chargesFerme;
+
+    const totalKg =
+      typeof r.totalKg === "number"
+        ? r.totalKg
+        : (r.harvestLots || []).reduce((s, l) => s + parseNum(l.poidsNetKg), 0);
+    const totalColis =
+      typeof r.totalColis === "number"
+        ? r.totalColis
+        : (r.harvestLots || []).reduce((s, l) => s + parseNum(l.colis), 0);
+
+    return {
+      totalKg,
+      totalColis,
+      grossSales,
+      deductionsMandataire,
+      netVentes,
+      netAPayerBordereaux,
+      chargesFerme,
+      beneficeNetFerme,
+      storedKg,
+      remainingFrigoKg,
+      remainingFrigoColis,
+    };
+  }
+
+  // Legacy V1 fallback
+  const rQty = parseNum(r.qty);
+  const rUnitWeight = r.unit === "Caisses" ? Math.max(0.1, parseNum(r.avgCrateWeightKg) || 15) : 1;
+  const totalKg = typeof r.totalKg === "number" ? r.totalKg : rQty * rUnitWeight;
+  const totalColis = r.unit === "Caisses" ? rQty : 0;
+  const exitsGross = exits.reduce((s, e) => s + (e.grossAmount || 0), 0);
+  const exitsComm = exits.reduce((s, e) => s + (e.commissionAmount || 0), 0);
+
+  const baseVente =
+    typeof r.totalVente === "number"
+      ? r.totalVente
+      : parseNum(r.choix1Qty) * parseNum(r.choix1Price) +
+          parseNum(r.choix2Qty) * parseNum(r.choix2Price) +
+          parseNum(r.choix3Qty) * parseNum(r.choix3Price) +
+          parseNum(r.choix4Qty) * parseNum(r.choix4Price) ||
+        rQty * parseNum(r.price);
+
+  const baseCharges =
+    typeof r.totalCharges === "number"
+      ? r.totalCharges
+      : parseNum(r.mainOeuvre) +
+        parseNum(r.emballages) +
+        parseNum(r.transport) +
+        parseNum(r.autres) +
+        (r.frigoCost || 0) +
+        (r.commissionAmount || 0);
+
+  const grossSales = baseVente + exitsGross;
+  const deductionsMandataire = (r.commissionAmount || 0) + exitsComm;
+  const chargesFerme = Math.max(0, baseCharges - (r.commissionAmount || 0));
+  const netVentes = grossSales - deductionsMandataire;
+  const beneficeNetFerme = netVentes - chargesFerme;
+
+  return {
+    totalKg,
+    totalColis,
+    grossSales,
+    deductionsMandataire,
+    netVentes,
+    netAPayerBordereaux: netVentes,
+    chargesFerme,
+    beneficeNetFerme,
+    storedKg,
+    remainingFrigoKg,
+    remainingFrigoColis,
+  };
 }
 
 export function RecolteFruitsFrais({
@@ -124,457 +395,573 @@ export function RecolteFruitsFrais({
 }) {
   const { lang } = useTranslation();
   const isAr = lang === "ar";
+  const allParcels = useParcels();
   const records = useModuleRecords<FreshFruitHarvestRecord>(parcelId, "recolte");
   const { add, update, remove } = useModuleActions();
   const [editingHarvestId, setEditingHarvestId] = useState<string | null>(null);
 
-  const currentCalendarYear = new Date().getFullYear();
-  const [selectedYear, setSelectedYear] = useState<string>(String(currentCalendarYear));
+  const freshParcels = useMemo(() => {
+    return allParcels.filter((p) => {
+      const idLow = p.id.toLowerCase();
+      const typeLow = (p.type || "").toLowerCase();
+      return typeLow !== "olivier" && !["p1", "p2", "p3", "p4"].includes(idLow);
+    });
+  }, [allParcels]);
 
-  const availableYears = useMemo(() => {
-    const s = new Set<string>([String(currentCalendarYear)]);
+  // Liste des mandataires déjà saisis pour l'autocomplétion
+  const knownMandataires = useMemo(() => {
+    const set = new Set<string>();
     for (const r of records) {
-      const y = String(r.date || "").slice(0, 4);
-      if (/^\d{4}$/.test(y)) s.add(y);
+      if (r.mandataireName?.trim()) set.add(r.mandataireName.trim());
+      for (const b of r.bordereaux || []) {
+        if (b.mandataireName?.trim()) set.add(b.mandataireName.trim());
+      }
+      for (const ex of r.frigoExits || []) {
+        if (ex.mode === "mandataire" && ex.buyerName?.trim()) set.add(ex.buyerName.trim());
+        if (ex.bordereau?.mandataireName?.trim()) set.add(ex.bordereau.mandataireName.trim());
+      }
     }
-    return Array.from(s).sort((a, b) => b.localeCompare(a));
-  }, [records, currentCalendarYear]);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [records]);
+
+  const currentYear = String(new Date().getFullYear());
+  const availableYears = useMemo(() => {
+    const yrs = new Set<string>([currentYear]);
+    for (const r of records) {
+      const y = (r.date || "").slice(0, 4);
+      if (/^\d{4}$/.test(y)) yrs.add(y);
+    }
+    return Array.from(yrs).sort((a, b) => b.localeCompare(a));
+  }, [records, currentYear]);
+
+  const [selectedYear, setSelectedYear] = useState<string>(currentYear);
 
   const filteredRecords = useMemo(() => {
     if (selectedYear === "all") return records;
-    return records.filter((r) => String(r.date || "").slice(0, 4) === selectedYear);
+    return records.filter((r) => (r.date || "").startsWith(selectedYear));
   }, [records, selectedYear]);
 
   const treeCount = useMemo(() => parseTreeCount(parcel), [parcel]);
 
-  const [f, setF] = useState({
-    date: prefillDate || new Date().toISOString().slice(0, 10),
-    unit: "Kg" as "Kg" | "Caisses",
-    avgCrateWeightKg: "15",
-    choix1Qty: "",
-    choix1Price: "",
-    choix2Qty: "",
-    choix2Price: "",
-    choix3Qty: "",
-    choix3Price: "",
-    choix4Qty: "",
-    choix4Price: "",
-    rebutQty: "",
-    destination: "mandataire" as FruitDestination,
-    // Mandataire
-    mandataireName: "",
-    mandataireQty: "",
-    mandatairePrice: "",
-    commissionType: "percent" as "percent" | "fixed",
-    commissionValue: "8",
-    paymentStatus: "paye" as PaymentStatus,
-    paidAmount: "",
-    // Chambre froide
-    frigoName: "",
-    frigoEntryDate: new Date().toISOString().slice(0, 10),
-    frigoQty: "",
-    frigoRateType: "per_crate" as "per_crate" | "fixed",
-    frigoRateValue: "",
-    // Vente directe
-    directQty: "",
-    directPrice: "",
-    // Charges
-    mainOeuvre: "",
-    emballages: "",
-    transport: "",
-    autres: "",
-    notes: prefillNotes || "",
-    photo: undefined as string | undefined,
-  });
+  // ========== ÉTATS DU FORMULAIRE EN 2 ÉTAPES ==========
+  const todayIso = new Date().toISOString().slice(0, 10);
 
-  // Synchroniser si l'utilisateur clique "Utiliser cette date" depuis l'historique variétal
-  const [lastPrefillDate, setLastPrefillDate] = useState(prefillDate);
-  if (prefillDate && prefillDate !== lastPrefillDate) {
-    setLastPrefillDate(prefillDate);
-    setF((prev) => ({
-      ...prev,
-      date: prefillDate,
-      frigoEntryDate: prefillDate,
-      notes: prefillNotes || prev.notes,
-    }));
-  }
+  // ÉTAPE 1 — Cueillette & Lots
+  const [date, setDate] = useState(prefillDate || todayIso);
+  const [selectedParcelIds, setSelectedParcelIds] = useState<string[]>([parcelId]);
+  const [unit, setUnit] = useState<HarvestUnit>("Kg");
+  const [harvestLots, setHarvestLots] = useState<HarvestLotLine[]>([createEmptyHarvestLot("ت/22")]);
+  const [rebutKg, setRebutKg] = useState("");
+  const [photo, setPhoto] = useState<string | undefined>(undefined);
+  const [notes, setNotes] = useState(prefillNotes || "");
 
-  // Modale de sortie / vente depuis la chambre froide
+  // ÉTAPE 2 — Destination (4 modes)
+  const [destination, setDestination] = useState<FruitDestination>("mandataire");
+  const [bordereaux, setBordereaux] = useState<MandataireBordereau[]>([createEmptyBordereau(todayIso)]);
+  const [frigoBlocks, setFrigoBlocks] = useState<FrigoBlock[]>([createEmptyFrigoBlock(todayIso)]);
+  const [directBlocks, setDirectBlocks] = useState<DirectSaleBlock[]>([createEmptyDirectBlock()]);
+
+  // Charges opérationnelles ferme (DA)
+  const [mainOeuvre, setMainOeuvre] = useState("");
+  const [transport, setTransport] = useState("");
+  const [emballages, setEmballages] = useState("");
+  const [autres, setAutres] = useState("");
+
+  // Impression PDF A4
+  const [printData, setPrintData] = useState<BordereauPrintData | null>(null);
+
+  // Modale de sortie Chambre Froide (Mandataire avec Bordereau complet OU Vente directe)
   const [exitRecord, setExitRecord] = useState<FreshFruitHarvestRecord | null>(null);
-  const [exitForm, setExitForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
-    mode: "mandataire" as "mandataire" | "direct",
-    buyerName: "",
-    qty: "",
-    unitPrice: "",
-    commissionType: "percent" as "percent" | "fixed",
-    commissionValue: "8",
-    paymentStatus: "paye" as PaymentStatus,
-    paidAmount: "",
-  });
+  const [exitMode, setExitMode] = useState<"mandataire" | "direct">("mandataire");
+  const [exitBordereau, setExitBordereau] = useState<MandataireBordereau>(() => createEmptyBordereau(todayIso));
+  const [exitDirectBlock, setExitDirectBlock] = useState<DirectSaleBlock>(() => createEmptyDirectBlock());
+  const [exitDirectDate, setExitDirectDate] = useState(todayIso);
 
-  // Calculs temps réel du formulaire
-  const c1Q = parseFloat(f.choix1Qty) || 0;
-  const c1P = parseFloat(f.choix1Price) || 0;
-  const c2Q = parseFloat(f.choix2Qty) || 0;
-  const c2P = parseFloat(f.choix2Price) || 0;
-  const c3Q = parseFloat(f.choix3Qty) || 0;
-  const c3P = parseFloat(f.choix3Price) || 0;
-  const c4Q = parseFloat(f.choix4Qty) || 0;
-  const c4P = parseFloat(f.choix4Price) || 0;
-  const rebutQ = parseFloat(f.rebutQty) || 0;
-
-  const marketableQty = c1Q + c2Q + c3Q + c4Q;
-  const totalQty = marketableQty + rebutQ;
-  const rebutPercent = totalQty > 0 ? (rebutQ / totalQty) * 100 : 0;
-
-  const crateWeight = f.unit === "Caisses" ? Math.max(0.1, parseFloat(f.avgCrateWeightKg) || 15) : 1;
-  const totalKg = totalQty * crateWeight;
-  const yieldKgPerTree = treeCount > 0 ? totalKg / treeCount : 0;
-
-  // Ventes brutes selon le mode de destination
-  const triGrossSale = c1Q * c1P + c2Q * c2P + c3Q * c3P + c4Q * c4P;
-
-  const mandataireGross = useMemo(() => {
-    if (f.destination === "mandataire") {
-      if (triGrossSale > 0) return triGrossSale;
-      const mq = parseFloat(f.mandataireQty) || marketableQty;
-      const mp = parseFloat(f.mandatairePrice) || 0;
-      return mq * mp;
+  // Synchronisation prefillDate / prefillNotes
+  useEffect(() => {
+    if (prefillDate && !editingHarvestId) {
+      setDate(prefillDate);
+      setBordereaux((prev) => prev.map((b, i) => (i === 0 ? { ...b, dateFolio: prefillDate } : b)));
+      setFrigoBlocks((prev) => prev.map((fb, i) => (i === 0 ? { ...fb, entryDate: prefillDate } : fb)));
     }
-    if (f.destination === "mixte") {
-      return (parseFloat(f.mandataireQty) || 0) * (parseFloat(f.mandatairePrice) || 0);
+    if (prefillNotes && !editingHarvestId) {
+      setNotes(prefillNotes);
     }
-    return 0;
-  }, [f.destination, f.mandataireQty, f.mandatairePrice, marketableQty, triGrossSale]);
+  }, [prefillDate, prefillNotes, editingHarvestId]);
 
-  const directGross = useMemo(() => {
-    if (f.destination === "direct") {
-      if (triGrossSale > 0) return triGrossSale;
-      const dq = parseFloat(f.directQty) || marketableQty;
-      const dp = parseFloat(f.directPrice) || 0;
-      return dq * dp;
+  // Libellé "Le Compte de" pour le bordereau imprimable
+  const buildAccountLabel = (parcelIds?: string[]) => {
+    const ids = parcelIds && parcelIds.length > 0 ? parcelIds : [parcelId];
+    const names = ids
+      .map((id) => allParcels.find((p) => p.id === id)?.name || id)
+      .join(", ");
+    const species = parcel?.type ? `${parcel.type} — ` : "";
+    return `Ferme Doula / Mouaas (${species}${names})`;
+  };
+
+  // ========== CALCULS ÉTAPE 1 ==========
+  const step1Totals = useMemo(() => {
+    let totalColis = 0;
+    let totalPoidsNetKg = 0;
+    for (const l of harvestLots) {
+      totalColis += parseNum(l.colis);
+      totalPoidsNetKg += parseNum(l.poidsNetKg);
     }
-    if (f.destination === "mixte") {
-      return (parseFloat(f.directQty) || 0) * (parseFloat(f.directPrice) || 0);
+    const rebut = parseNum(rebutKg);
+    const totalBrutAvecRebut = totalPoidsNetKg + rebut;
+    const rebutPercent = totalBrutAvecRebut > 0 ? (rebut / totalBrutAvecRebut) * 100 : 0;
+    return { totalColis, totalPoidsNetKg, rebut, rebutPercent };
+  }, [harvestLots, rebutKg]);
+
+  // ========== CALCULS ÉTAPE 2 & RÉCAPITULATIF FINANCIER ==========
+  const activeBordereaux = destination === "mandataire" ? bordereaux.slice(0, 1) : destination === "mixte" ? bordereaux : [];
+  const activeFrigoBlocks = destination === "frigo" ? frigoBlocks.slice(0, 1) : destination === "mixte" ? frigoBlocks : [];
+  const activeDirectBlocks = destination === "direct" ? directBlocks.slice(0, 1) : destination === "mixte" ? directBlocks : [];
+
+  const formFinancials = useMemo(() => {
+    let assignedKg = 0;
+    let totalVenteBrute = 0;
+    let deductionsMandataire = 0;
+    let totalAvances = 0;
+    let frigoStoredKg = 0;
+    let frigoStorageCost = 0;
+
+    for (const bd of activeBordereaux) {
+      const t = computeBordereauTotals(bd);
+      assignedKg += t.totalPoidsNet;
+      totalVenteBrute += t.totalVenteBrute;
+      deductionsMandataire += t.comDA + t.droitsMarche;
+      totalAvances += t.avanceProducteur;
     }
-    return 0;
-  }, [f.destination, f.directQty, f.directPrice, marketableQty, triGrossSale]);
 
-  const frigoStoredQty = useMemo(() => {
-    if (f.destination === "frigo") return parseFloat(f.frigoQty) || marketableQty;
-    if (f.destination === "mixte") return parseFloat(f.frigoQty) || 0;
-    return 0;
-  }, [f.destination, f.frigoQty, marketableQty]);
-
-  const commissionVal = parseFloat(f.commissionValue) || 0;
-  const commissionAmount =
-    mandataireGross > 0
-      ? f.commissionType === "percent"
-        ? (mandataireGross * commissionVal) / 100
-        : commissionVal
-      : 0;
-
-  const frigoRateVal = parseFloat(f.frigoRateValue) || 0;
-  const frigoCost =
-    frigoStoredQty > 0
-      ? f.frigoRateType === "per_crate"
-        ? frigoStoredQty * frigoRateVal
-        : frigoRateVal
-      : 0;
-
-  const totalVenteBrut = mandataireGross + directGross;
-  const totalCharges =
-    (parseFloat(f.mainOeuvre) || 0) +
-    (parseFloat(f.emballages) || 0) +
-    (parseFloat(f.transport) || 0) +
-    (parseFloat(f.autres) || 0) +
-    frigoCost +
-    commissionAmount;
-  const netResult = totalVenteBrut - totalCharges;
-
-  const mandataireResteDu =
-    f.paymentStatus === "en_attente"
-      ? Math.max(0, mandataireGross - commissionAmount)
-      : f.paymentStatus === "partiel"
-        ? Math.max(0, mandataireGross - commissionAmount - (parseFloat(f.paidAmount) || 0))
-        : 0;
-
-  // KPI cumulés de la campagne sur la parcelle (filtrés par année sélectionnée)
-  const campaignKpis = useMemo(() => {
-    let sumKg = 0;
-    let sumFrigoStockKg = 0;
-    let sumFrigoStockUnits = 0;
-    let sumVentes = 0;
-    let sumCharges = 0;
-
-    for (const r of filteredRecords) {
-      const rUnitWeight = r.unit === "Caisses" ? Math.max(0.1, parseFloat(r.avgCrateWeightKg || "15") || 15) : 1;
-      const rQty = parseFloat(r.qty || "0") || 0;
-      const rKg = typeof r.totalKg === "number" ? r.totalKg : rQty * rUnitWeight;
-      sumKg += rKg;
-
-      const initFrigo = parseFloat(r.frigoQty || "0") || 0;
-      const exited = (r.frigoExits || []).reduce((s, ex) => s + (ex.qty || 0), 0);
-      const remFrigo = Math.max(0, initFrigo - exited);
-      sumFrigoStockUnits += remFrigo;
-      sumFrigoStockKg += remFrigo * rUnitWeight;
-
-      const exitsGross = (r.frigoExits || []).reduce((s, ex) => s + (ex.grossAmount || 0), 0);
-      const exitsComm = (r.frigoExits || []).reduce((s, ex) => s + (ex.commissionAmount || 0), 0);
-
-      const hasNew = typeof r.totalVente === "number";
-      const baseVente = hasNew
-        ? r.totalVente!
-        : (parseFloat(r.choix1Qty || "0") * parseFloat(r.choix1Price || "0") +
-            parseFloat(r.choix2Qty || "0") * parseFloat(r.choix2Price || "0") +
-            parseFloat(r.choix3Qty || "0") * parseFloat(r.choix3Price || "0") +
-            parseFloat(r.choix4Qty || "0") * parseFloat(r.choix4Price || "0")) ||
-          rQty * (parseFloat(r.price || "0") || 0);
-
-      const baseCharges =
-        typeof r.totalCharges === "number"
-          ? r.totalCharges
-          : (parseFloat(r.mainOeuvre || "0") || 0) +
-            (parseFloat(r.emballages || "0") || 0) +
-            (parseFloat(r.transport || "0") || 0) +
-            (parseFloat(r.autres || "0") || 0) +
-            (r.frigoCost || 0) +
-            (r.commissionAmount || 0);
-
-      sumVentes += baseVente + exitsGross;
-      sumCharges += baseCharges + exitsComm;
+    for (const fb of activeFrigoBlocks) {
+      const kg = fb.lots.reduce((s, l) => s + parseNum(l.poidsNetKg), 0);
+      assignedKg += kg;
+      frigoStoredKg += kg;
+      const val = parseNum(fb.tarifValue);
+      if (val > 0) {
+        frigoStorageCost += fb.tarifType === "fixed" ? val : kg * val;
+      }
     }
+
+    for (const db of activeDirectBlocks) {
+      for (const l of db.lines) {
+        const kg = parseNum(l.poidsNetKg);
+        assignedKg += kg;
+        totalVenteBrute += kg * parseNum(l.prixUnitaire);
+      }
+    }
+
+    const netVentes = totalVenteBrute - deductionsMandataire;
+    const netAPayerBordereaux = netVentes - totalAvances;
+    const chargesFerme =
+      parseNum(mainOeuvre) +
+      parseNum(transport) +
+      parseNum(emballages) +
+      parseNum(autres) +
+      frigoStorageCost;
+    const beneficeNetFerme = netVentes - chargesFerme;
+    const remainingToAssignKg = step1Totals.totalPoidsNetKg - assignedKg;
 
     return {
+      assignedKg,
+      remainingToAssignKg,
+      totalVenteBrute,
+      deductionsMandataire,
+      totalAvances,
+      netVentes,
+      netAPayerBordereaux,
+      frigoStoredKg,
+      frigoStorageCost,
+      chargesFerme,
+      beneficeNetFerme,
+    };
+  }, [
+    activeBordereaux,
+    activeFrigoBlocks,
+    activeDirectBlocks,
+    mainOeuvre,
+    transport,
+    emballages,
+    autres,
+    step1Totals.totalPoidsNetKg,
+  ]);
+
+  // ========== KPI CUMULÉS DE L'ANNÉE SÉLECTIONNÉE ==========
+  const campaignKpis = useMemo(() => {
+    let sumKg = 0;
+    let sumColis = 0;
+    let sumGrossSales = 0;
+    let sumNetVentes = 0;
+    let sumChargesFerme = 0;
+    let sumBeneficeNet = 0;
+    let sumFrigoRemKg = 0;
+    let sumFrigoRemColis = 0;
+
+    for (const r of filteredRecords) {
+      const s = getRecordFinancialSummary(r);
+      sumKg += s.totalKg;
+      sumColis += s.totalColis;
+      sumGrossSales += s.grossSales;
+      sumNetVentes += s.netVentes;
+      sumChargesFerme += s.chargesFerme;
+      sumBeneficeNet += s.beneficeNetFerme;
+      sumFrigoRemKg += s.remainingFrigoKg;
+      sumFrigoRemColis += s.remainingFrigoColis;
+    }
+
+    const yieldPerTree = treeCount > 0 ? sumKg / treeCount : 0;
+    return {
       sumKg,
-      yieldPerTree: treeCount > 0 ? sumKg / treeCount : 0,
-      sumFrigoStockKg,
-      sumFrigoStockUnits,
-      sumVentes,
-      sumCharges,
-      sumNet: sumVentes - sumCharges,
+      sumColis,
+      sumGrossSales,
+      sumNetVentes,
+      sumChargesFerme,
+      sumBeneficeNet,
+      sumFrigoRemKg,
+      sumFrigoRemColis,
+      yieldPerTree,
     };
   }, [filteredRecords, treeCount]);
 
-  function onPhoto(file?: File) {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setF((p) => ({ ...p, photo: reader.result as string }));
-    reader.readAsDataURL(file);
+  // ========== HELPERS FORMULAIRE ==========
+  function resetForm() {
+    setEditingHarvestId(null);
+    setDate(prefillDate || todayIso);
+    setSelectedParcelIds([parcelId]);
+    setUnit("Kg");
+    setHarvestLots([createEmptyHarvestLot("ت/22")]);
+    setRebutKg("");
+    setPhoto(undefined);
+    setNotes(prefillNotes || "");
+    setDestination("mandataire");
+    setBordereaux([createEmptyBordereau(prefillDate || todayIso)]);
+    setFrigoBlocks([createEmptyFrigoBlock(prefillDate || todayIso)]);
+    setDirectBlocks([createEmptyDirectBlock()]);
+    setMainOeuvre("");
+    setTransport("");
+    setEmballages("");
+    setAutres("");
   }
 
-  function save() {
-    if (!f.date || totalQty <= 0) {
-      toast.error(isAr ? "يرجى تحديد التاريخ والكمية المحصودة" : "Veuillez renseigner la date et les quantités récoltées.");
+  function switchDestination(nextDest: FruitDestination) {
+    setDestination(nextDest);
+    // Pré-remplir intelligemment si le bloc cible est encore vide
+    if (nextDest === "mandataire") {
+      if (bordereaux.length === 0) {
+        setBordereaux([createEmptyBordereau(date, lotsToSaleLines(harvestLots))]);
+      } else if (
+        bordereaux[0].lines.length === 1 &&
+        !bordereaux[0].lines[0].poidsNetKg &&
+        step1Totals.totalPoidsNetKg > 0
+      ) {
+        setBordereaux((prev) =>
+          prev.map((b, i) => (i === 0 ? { ...b, dateFolio: date, lines: lotsToSaleLines(harvestLots) } : b)),
+        );
+      }
+    } else if (nextDest === "frigo") {
+      if (frigoBlocks.length === 0) {
+        setFrigoBlocks([createEmptyFrigoBlock(date, harvestLots)]);
+      } else if (
+        frigoBlocks[0].lots.length === 1 &&
+        !frigoBlocks[0].lots[0].poidsNetKg &&
+        step1Totals.totalPoidsNetKg > 0
+      ) {
+        setFrigoBlocks((prev) =>
+          prev.map((fb, i) =>
+            i === 0
+              ? { ...fb, entryDate: date, lots: harvestLots.map((l) => ({ ...l, id: createEmptyHarvestLot().id })) }
+              : fb,
+          ),
+        );
+      }
+    } else if (nextDest === "direct") {
+      if (directBlocks.length === 0) {
+        setDirectBlocks([createEmptyDirectBlock(lotsToSaleLines(harvestLots))]);
+      } else if (
+        directBlocks[0].lines.length === 1 &&
+        !directBlocks[0].lines[0].poidsNetKg &&
+        step1Totals.totalPoidsNetKg > 0
+      ) {
+        setDirectBlocks((prev) =>
+          prev.map((db, i) => (i === 0 ? { ...db, lines: lotsToSaleLines(harvestLots) } : db)),
+        );
+      }
+    }
+  }
+
+  function onPhoto(file?: File) {
+    if (!file) return;
+    const r = new FileReader();
+    r.onload = () => setPhoto(String(r.result));
+    r.readAsDataURL(file);
+  }
+
+  function handleSaveHarvest() {
+    if (!date) return;
+    if (step1Totals.totalPoidsNetKg <= 0 && step1Totals.totalColis <= 0) {
+      toast.error(isAr ? "يرجى إدخال كمية محصودة واحدة على الأقل" : "Veuillez saisir au moins un lot récolté.");
       return;
     }
 
-    const weightedPrice = marketableQty > 0 ? totalVenteBrut / marketableQty : 0;
+    const firstBd = activeBordereaux[0];
+    const firstFg = activeFrigoBlocks[0];
+
     const payload: Omit<FreshFruitHarvestRecord, "id" | "createdAt"> = {
       recordMode: "fruits_frais",
-      date: f.date,
-      unit: f.unit,
-      avgCrateWeightKg: f.unit === "Caisses" ? f.avgCrateWeightKg : undefined,
-      qty: totalQty.toString(),
-      totalKg,
-      price: weightedPrice.toFixed(2),
-      choix1Qty: f.choix1Qty,
-      choix1Price: f.choix1Price,
-      choix2Qty: f.choix2Qty,
-      choix2Price: f.choix2Price,
-      choix3Qty: f.choix3Qty,
-      choix3Price: f.choix3Price,
-      choix4Qty: f.choix4Qty,
-      choix4Price: f.choix4Price,
-      rebutQty: f.rebutQty,
-      rebutPercent: Math.round(rebutPercent * 10) / 10,
-      destination: f.destination,
-      mandataireName: f.mandataireName.trim() || undefined,
-      mandataireQty: f.destination === "mandataire" ? String(parseFloat(f.mandataireQty) || marketableQty) : f.mandataireQty,
-      mandatairePrice: f.mandatairePrice,
-      commissionType: f.commissionType,
-      commissionValue: f.commissionValue,
-      commissionAmount,
-      paymentStatus: f.paymentStatus,
-      paidAmount: f.paidAmount,
-      frigoName: f.frigoName.trim() || undefined,
-      frigoEntryDate: frigoStoredQty > 0 ? f.frigoEntryDate || f.date : undefined,
-      frigoQty: frigoStoredQty > 0 ? String(frigoStoredQty) : "",
-      frigoRateType: f.frigoRateType,
-      frigoRateValue: f.frigoRateValue,
-      frigoCost,
-      frigoExits: [],
-      directQty: f.destination === "direct" ? String(parseFloat(f.directQty) || marketableQty) : f.directQty,
-      directPrice: f.directPrice,
-      mainOeuvre: f.mainOeuvre,
-      emballages: f.emballages,
-      transport: f.transport,
-      autres: f.autres,
-      totalVente: totalVenteBrut,
-      totalCharges,
-      total: totalCharges,
-      net: netResult,
-      notes: f.notes,
-      photo: f.photo,
+      schemaVersion: 2,
+      date,
+      selectedParcelIds: selectedParcelIds.length > 0 ? selectedParcelIds : [parcelId],
+      unit,
+      qty: String(step1Totals.totalPoidsNetKg),
+      totalKg: Number(step1Totals.totalPoidsNetKg.toFixed(2)),
+      totalColis: Math.round(step1Totals.totalColis),
+      price: "",
+      harvestLots: harvestLots.filter((l) => l.nature.trim() || parseNum(l.colis) > 0 || parseNum(l.poidsNetKg) > 0),
+      rebutKg,
+      rebutPercent: Number(step1Totals.rebutPercent.toFixed(1)),
+      destination,
+      bordereaux: activeBordereaux,
+      frigoBlocks: activeFrigoBlocks,
+      directBlocks: activeDirectBlocks,
+      // Champs résumés rétrocompatibles
+      mandataireName: firstBd?.mandataireName || "",
+      paymentStatus: firstBd?.paymentStatus || (activeDirectBlocks[0]?.paymentStatus === "credit" ? "en_attente" : "paye"),
+      frigoName: firstFg ? [firstFg.frigoName, firstFg.chambreNo].filter(Boolean).join(" - ") : "",
+      frigoEntryDate: firstFg?.entryDate || date,
+      frigoQty: formFinancials.frigoStoredKg > 0 ? String(formFinancials.frigoStoredKg) : "",
+      frigoCost: Number(formFinancials.frigoStorageCost.toFixed(2)),
+      commissionAmount: Number(formFinancials.deductionsMandataire.toFixed(2)),
+      mainOeuvre,
+      transport,
+      emballages,
+      autres,
+      totalVente: Number(formFinancials.totalVenteBrute.toFixed(2)),
+      totalDeductionsMandataire: Number(formFinancials.deductionsMandataire.toFixed(2)),
+      netBordereauVentes: Number(formFinancials.netAPayerBordereaux.toFixed(2)),
+      chargesFerme: Number(formFinancials.chargesFerme.toFixed(2)),
+      totalCharges: Number((formFinancials.chargesFerme + formFinancials.deductionsMandataire).toFixed(2)),
+      total: Number((formFinancials.chargesFerme + formFinancials.deductionsMandataire).toFixed(2)),
+      net: Number(formFinancials.beneficeNetFerme.toFixed(2)),
+      notes,
+      photo,
     };
 
     if (editingHarvestId) {
-      const existingRec = records.find((r) => r.id === editingHarvestId);
-      update(parcelId, "recolte", editingHarvestId, {
-        ...payload,
-        frigoExits: existingRec?.frigoExits || [],
-      });
-      toast.success(isAr ? "تم تحديث الجني بنجاح" : "Récolte mise à jour !");
-      setEditingHarvestId(null);
+      update(parcelId, "recolte", editingHarvestId, payload);
+      toast.success(isAr ? "تم تحديث الجني والكشف بنجاح!" : "Récolte et bordereau mis à jour !");
     } else {
-      add(parcelId, "recolte", payload);
-      toast.success(isAr ? "تم تسجيل الجني بنجاح" : "Récolte enregistrée !");
+      add(parcelId, "recolte", {
+        ...payload,
+        frigoExits: [],
+      });
+      toast.success(isAr ? "تم تسجيل الجني بنجاح!" : "Récolte enregistrée avec succès !");
     }
+
+    const savedYear = date.slice(0, 4);
+    if (/^\d{4}$/.test(savedYear)) setSelectedYear(savedYear);
+    resetForm();
     onCloseForm?.();
-    setF((prev) => ({
-      ...prev,
-      choix1Qty: "",
-      choix1Price: "",
-      choix2Qty: "",
-      choix2Price: "",
-      choix3Qty: "",
-      choix3Price: "",
-      choix4Qty: "",
-      choix4Price: "",
-      rebutQty: "",
-      mandataireQty: "",
-      mandatairePrice: "",
-      frigoQty: "",
-      directQty: "",
-      directPrice: "",
-      mainOeuvre: "",
-      emballages: "",
-      transport: "",
-      autres: "",
-      notes: "",
-      photo: undefined,
-    }));
-  }
-
-  function saveFrigoExit() {
-    if (!exitRecord) return;
-    const qtyNum = parseFloat(exitForm.qty) || 0;
-    const unitP = parseFloat(exitForm.unitPrice) || 0;
-    if (qtyNum <= 0 || unitP <= 0) {
-      toast.error(isAr ? "أدخل الكمية وسعر البيع" : "Indiquez la quantité et le prix unitaire.");
-      return;
-    }
-
-    const initFrigo = parseFloat(exitRecord.frigoQty || "0") || 0;
-    const alreadyExited = (exitRecord.frigoExits || []).reduce((s, e) => s + e.qty, 0);
-    const remaining = Math.max(0, initFrigo - alreadyExited);
-    if (qtyNum > remaining + 0.001) {
-      toast.error(
-        isAr
-          ? `الكمية تتجاوز المخزون المتبقي في التبريد (${remaining})`
-          : `La quantité dépasse le stock restant en chambre froide (${remaining}).`
-      );
-      return;
-    }
-
-    const gross = qtyNum * unitP;
-    const commVal = parseFloat(exitForm.commissionValue) || 0;
-    const commAmt =
-      exitForm.mode === "mandataire"
-        ? exitForm.commissionType === "percent"
-          ? (gross * commVal) / 100
-          : commVal
-        : 0;
-
-    const newExit: FrigoExitEntry = {
-      id: crypto.randomUUID(),
-      date: exitForm.date,
-      mode: exitForm.mode,
-      buyerName: exitForm.buyerName.trim() || (exitForm.mode === "mandataire" ? "Mandataire" : "Direct"),
-      qty: qtyNum,
-      unitPrice: unitP,
-      commissionType: exitForm.mode === "mandataire" ? exitForm.commissionType : undefined,
-      commissionValue: exitForm.mode === "mandataire" ? commVal : undefined,
-      commissionAmount: commAmt,
-      grossAmount: gross,
-      netAmount: gross - commAmt,
-      paymentStatus: exitForm.paymentStatus,
-      paidAmount: exitForm.paymentStatus === "partiel" ? parseFloat(exitForm.paidAmount) || 0 : undefined,
-    };
-
-    const nextExits = [...(exitRecord.frigoExits || []), newExit];
-    const totalExitsGross = nextExits.reduce((s, e) => s + e.grossAmount, 0);
-    const totalExitsComm = nextExits.reduce((s, e) => s + e.commissionAmount, 0);
-    const nextTotalCharges = (exitRecord.totalCharges ?? 0) + commAmt;
-    const nextNet = (exitRecord.totalVente ?? 0) + totalExitsGross - ((exitRecord.totalCharges ?? 0) + totalExitsComm);
-
-    update(parcelId, "recolte", exitRecord.id, {
-      frigoExits: nextExits,
-      total: nextTotalCharges,
-      net: nextNet,
-    });
-
-    toast.success(isAr ? "تم تسجيل خروج/بيع من غرفة التبريد" : "Sortie / vente depuis le frigo enregistrée !");
-    setExitRecord(null);
-    setExitForm({
-      date: new Date().toISOString().slice(0, 10),
-      mode: "mandataire",
-      buyerName: "",
-      qty: "",
-      unitPrice: "",
-      commissionType: "percent",
-      commissionValue: "8",
-      paymentStatus: "paye",
-      paidAmount: "",
-    });
   }
 
   function handleEditRecord(r: FreshFruitHarvestRecord) {
     setEditingHarvestId(r.id);
-    setF({
-      date: r.date || new Date().toISOString().slice(0, 10),
-      unit: r.unit === "Caisses" ? "Caisses" : "Kg",
-      avgCrateWeightKg: r.avgCrateWeightKg || "15",
-      choix1Qty: r.choix1Qty || "",
-      choix1Price: r.choix1Price || "",
-      choix2Qty: r.choix2Qty || "",
-      choix2Price: r.choix2Price || "",
-      choix3Qty: r.choix3Qty || "",
-      choix3Price: r.choix3Price || "",
-      choix4Qty: r.choix4Qty || "",
-      choix4Price: r.choix4Price || "",
-      rebutQty: r.rebutQty || "",
-      destination: r.destination || "mandataire",
-      mandataireName: r.mandataireName || "",
-      mandataireQty: r.mandataireQty || "",
-      mandatairePrice: r.mandatairePrice || "",
-      commissionType: r.commissionType || "percent",
-      commissionValue: r.commissionValue || "8",
-      paymentStatus: r.paymentStatus || "paye",
-      paidAmount: r.paidAmount || "",
-      frigoName: r.frigoName || "",
-      frigoEntryDate: r.frigoEntryDate || r.date || new Date().toISOString().slice(0, 10),
-      frigoQty: r.frigoQty || "",
-      frigoRateType: r.frigoRateType || "per_crate",
-      frigoRateValue: r.frigoRateValue || "",
-      directQty: r.directQty || "",
-      directPrice: r.directPrice || "",
-      mainOeuvre: r.mainOeuvre || "",
-      emballages: r.emballages || "",
-      transport: r.transport || "",
-      autres: r.autres || "",
-      notes: r.notes || "",
-      photo: r.photo,
-    });
+    setDate(r.date || todayIso);
+    setSelectedParcelIds(r.selectedParcelIds && r.selectedParcelIds.length > 0 ? r.selectedParcelIds : [parcelId]);
+    setUnit((r.unit === "Quintal" || r.unit === "Caisse/Colis" ? r.unit : "Kg") as HarvestUnit);
+
+    if (Array.isArray(r.harvestLots) && r.harvestLots.length > 0) {
+      setHarvestLots(r.harvestLots.map((l) => ({ ...l })));
+    } else {
+      // Migration douce depuis un ancien record Choix 1..4
+      const legacyLots: HarvestLotLine[] = [];
+      const cw = r.unit === "Caisses" ? Math.max(0.1, parseNum(r.avgCrateWeightKg) || 15) : 1;
+      const pushIf = (label: string, q?: string) => {
+        const n = parseNum(q);
+        if (n > 0) {
+          legacyLots.push({
+            id: createEmptyHarvestLot().id,
+            nature: label,
+            colis: r.unit === "Caisses" ? String(n) : "",
+            poidsNetKg: String(Number((n * cw).toFixed(2))),
+          });
+        }
+      };
+      pushIf("Choix 1", r.choix1Qty);
+      pushIf("Choix 2", r.choix2Qty);
+      pushIf("Choix 3", r.choix3Qty);
+      pushIf("Choix 4", r.choix4Qty);
+      if (legacyLots.length === 0) {
+        legacyLots.push({
+          id: createEmptyHarvestLot().id,
+          nature: "Choix 1",
+          colis: r.unit === "Caisses" ? r.qty || "" : "",
+          poidsNetKg: String(r.totalKg || parseNum(r.qty) * cw || ""),
+        });
+      }
+      setHarvestLots(legacyLots);
+    }
+
+    setRebutKg(r.rebutKg || r.rebutQty || "");
+    setPhoto(r.photo);
+    setNotes(r.notes || "");
+    setDestination(r.destination || "mandataire");
+
+    if (Array.isArray(r.bordereaux) && r.bordereaux.length > 0) {
+      setBordereaux(r.bordereaux.map((b) => ({ ...b, lines: b.lines.map((l) => ({ ...l })) })));
+    } else {
+      const bd = createEmptyBordereau(r.date || todayIso);
+      bd.mandataireName = r.mandataireName || "";
+      bd.paymentStatus = r.paymentStatus || "paye";
+      bd.commissionPercent = r.commissionType === "percent" && r.commissionValue ? r.commissionValue : "8";
+      setBordereaux([bd]);
+    }
+
+    if (Array.isArray(r.frigoBlocks) && r.frigoBlocks.length > 0) {
+      setFrigoBlocks(r.frigoBlocks.map((fb) => ({ ...fb, lots: fb.lots.map((l) => ({ ...l })) })));
+    } else {
+      const fb = createEmptyFrigoBlock(r.frigoEntryDate || r.date || todayIso);
+      fb.frigoName = r.frigoName || "";
+      setFrigoBlocks([fb]);
+    }
+
+    if (Array.isArray(r.directBlocks) && r.directBlocks.length > 0) {
+      setDirectBlocks(r.directBlocks.map((db) => ({ ...db, lines: db.lines.map((l) => ({ ...l })) })));
+    } else {
+      setDirectBlocks([createEmptyDirectBlock()]);
+    }
+
+    setMainOeuvre(r.mainOeuvre || "");
+    setTransport(r.transport || "");
+    setEmballages(r.emballages || "");
+    setAutres(r.autres || "");
     onOpenForm?.();
   }
 
-  const cls = "rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs sm:text-sm w-full";
+  // ========== SORTIE CHAMBRE FROIDE ==========
+  function openFrigoExitModal(r: FreshFruitHarvestRecord) {
+    const summary = getRecordFinancialSummary(r);
+    setExitRecord(r);
+    setExitMode("mandataire");
+    setExitDirectDate(todayIso);
+
+    // Pré-remplir avec le stock restant (par nature si disponible)
+    const frigoLots =
+      r.frigoBlocks && r.frigoBlocks.length > 0
+        ? r.frigoBlocks.flatMap((fb) => fb.lots)
+        : [
+            {
+              id: createEmptyHarvestLot().id,
+              nature: "Stock frigo",
+              colis: summary.remainingFrigoColis > 0 ? String(summary.remainingFrigoColis) : "",
+              poidsNetKg: String(Number(summary.remainingFrigoKg.toFixed(2))),
+            },
+          ];
+
+    const preLines = lotsToSaleLines(frigoLots);
+    setExitBordereau(createEmptyBordereau(todayIso, preLines));
+    setExitDirectBlock(createEmptyDirectBlock(preLines));
+  }
+
+  function handleSaveFrigoExit() {
+    if (!exitRecord) return;
+    const summary = getRecordFinancialSummary(exitRecord);
+
+    let newExit: FrigoExitEntry;
+    if (exitMode === "mandataire") {
+      const t = computeBordereauTotals(exitBordereau);
+      if (t.totalPoidsNet <= 0) {
+        toast.error(isAr ? "يرجى إدخال الوزن الخارج من التبريد" : "Veuillez saisir le poids net sorti du frigo.");
+        return;
+      }
+      if (t.totalPoidsNet > summary.remainingFrigoKg + 0.5) {
+        toast.error(
+          isAr
+            ? `الوزن (${formatNumber(t.totalPoidsNet)} كغ) يتجاوز المخزون المتبقي (${formatNumber(summary.remainingFrigoKg)} كغ)`
+            : `Le poids (${formatNumber(t.totalPoidsNet)} kg) dépasse le stock frigo restant (${formatNumber(summary.remainingFrigoKg)} kg).`,
+        );
+        return;
+      }
+      newExit = {
+        id: `exit_${Date.now()}`,
+        date: exitBordereau.dateFolio || todayIso,
+        mode: "mandataire",
+        buyerName: exitBordereau.mandataireName.trim() || (isAr ? "وكيل السوق" : "Mandataire"),
+        qty: Number(t.totalPoidsNet.toFixed(2)),
+        colis: Math.round(t.totalColis),
+        unitPrice: t.totalPoidsNet > 0 ? Number((t.totalVenteBrute / t.totalPoidsNet).toFixed(2)) : 0,
+        commissionType: "percent",
+        commissionValue: t.comPct,
+        commissionAmount: Number(t.comDA.toFixed(2)),
+        droitsMarcheAmount: Number(t.droitsMarche.toFixed(2)),
+        grossAmount: Number(t.totalVenteBrute.toFixed(2)),
+        netAmount: Number(t.netAPayer.toFixed(2)),
+        paymentStatus: exitBordereau.paymentStatus,
+        paidAmount: exitBordereau.paymentStatus === "partiel" ? parseNum(exitBordereau.paidAmount) : undefined,
+        bordereau: exitBordereau,
+      };
+    } else {
+      const totalKg = exitDirectBlock.lines.reduce((s, l) => s + parseNum(l.poidsNetKg), 0);
+      const totalColis = exitDirectBlock.lines.reduce((s, l) => s + parseNum(l.colis), 0);
+      const gross = exitDirectBlock.lines.reduce((s, l) => s + parseNum(l.poidsNetKg) * parseNum(l.prixUnitaire), 0);
+      if (totalKg <= 0) {
+        toast.error(isAr ? "يرجى إدخال الوزن الخارج من التبريد" : "Veuillez saisir le poids net sorti du frigo.");
+        return;
+      }
+      if (totalKg > summary.remainingFrigoKg + 0.5) {
+        toast.error(
+          isAr
+            ? `الوزن (${formatNumber(totalKg)} كغ) يتجاوز المخزون المتبقي (${formatNumber(summary.remainingFrigoKg)} كغ)`
+            : `Le poids (${formatNumber(totalKg)} kg) dépasse le stock frigo restant (${formatNumber(summary.remainingFrigoKg)} kg).`,
+        );
+        return;
+      }
+      newExit = {
+        id: `exit_${Date.now()}`,
+        date: exitDirectDate || todayIso,
+        mode: "direct",
+        buyerName: exitDirectBlock.clientName.trim() || (isAr ? "بيع مباشر" : "Vente directe"),
+        qty: Number(totalKg.toFixed(2)),
+        colis: Math.round(totalColis),
+        unitPrice: totalKg > 0 ? Number((gross / totalKg).toFixed(2)) : 0,
+        commissionAmount: 0,
+        grossAmount: Number(gross.toFixed(2)),
+        netAmount: Number(gross.toFixed(2)),
+        paymentStatus: exitDirectBlock.paymentStatus === "credit" ? "en_attente" : "paye",
+        directLines: exitDirectBlock.lines,
+      };
+    }
+
+    const nextExits = [...(exitRecord.frigoExits || []), newExit];
+    const updatedRecord: FreshFruitHarvestRecord = { ...exitRecord, frigoExits: nextExits };
+    const nextFin = getRecordFinancialSummary(updatedRecord);
+
+    update(parcelId, "recolte", exitRecord.id, {
+      frigoExits: nextExits,
+      totalVente: Number(nextFin.grossSales.toFixed(2)),
+      totalDeductionsMandataire: Number(nextFin.deductionsMandataire.toFixed(2)),
+      totalCharges: Number((nextFin.chargesFerme + nextFin.deductionsMandataire).toFixed(2)),
+      total: Number((nextFin.chargesFerme + nextFin.deductionsMandataire).toFixed(2)),
+      net: Number(nextFin.beneficeNetFerme.toFixed(2)),
+    });
+
+    toast.success(isAr ? "تم تسجيل خروج/بيع من غرفة التبريد!" : "Sortie / vente depuis la chambre froide enregistrée !");
+    setExitRecord(null);
+  }
+
+  function openPrintBordereau(bd: MandataireBordereau, parcelIds?: string[]) {
+    setPrintData({
+      ...bd,
+      accountLabel: buildAccountLabel(parcelIds),
+    });
+  }
+
+  const cls =
+    "w-full min-w-0 max-w-full box-border rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs sm:text-sm";
 
   return (
-    <div className="space-y-4" dir={isAr ? "rtl" : "ltr"}>
-      {/* SÉLECTEUR D'ANNÉE (Séparation stricte des résultats par année) */}
+    <div className="space-y-4 w-full min-w-0" dir={isAr ? "rtl" : "ltr"}>
+      {/* SÉLECTEUR D'ANNÉE */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/30 px-3 py-2">
         <span className="text-xs font-black text-muted-foreground">
           📅 {isAr ? "نتائج الجني لسنة :" : "Résultats par année :"}
@@ -608,69 +995,92 @@ export function RecolteFruitsFrais({
         </div>
       </div>
 
-      {/* KPI Cumulés Campagne Fruits Frais */}
+      {/* KPI CUMULÉS CAMPAGNE FRUITS FRAIS */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         <div className="rounded-xl border bg-card p-3">
           <span className="text-[10px] font-bold text-muted-foreground block">
-            {isAr ? "الكمية الإجمالية" : "Quantité totale"}
+            {isAr ? "الكمية الإجمالية المحصودة" : "Quantité totale récoltée"}
           </span>
           <p dir="ltr" className="text-base sm:text-lg font-black text-foreground">
-            {campaignKpis.sumKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Kg
+            {formatNumber(campaignKpis.sumKg, 1)} Kg
           </p>
-          {treeCount > 0 && (
-            <span dir="ltr" className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-              {campaignKpis.yieldPerTree.toFixed(1)} Kg/{isAr ? "شجرة" : "arbre"}
-            </span>
-          )}
+          <div className="flex flex-wrap gap-x-2 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+            {campaignKpis.sumColis > 0 && <span dir="ltr">{formatNumber(campaignKpis.sumColis, 0)} {isAr ? "صندوق" : "colis"}</span>}
+            {treeCount > 0 && (
+              <span dir="ltr">
+                {formatNumber(campaignKpis.yieldPerTree, 1)} Kg/{isAr ? "شجرة" : "arbre"}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-3">
           <span className="text-[10px] font-bold text-sky-700 dark:text-sky-300 flex items-center gap-1">
-            <Snowflake className="h-3 w-3" />
+            <Snowflake className="h-3 w-3 shrink-0" />
             <span>{isAr ? "مخزون غرفة التبريد" : "Stock chambre froide"}</span>
           </span>
           <p dir="ltr" className="text-base sm:text-lg font-black text-sky-700 dark:text-sky-300">
-            {campaignKpis.sumFrigoStockKg.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Kg
+            {formatNumber(campaignKpis.sumFrigoRemKg, 1)} Kg
           </p>
-          {campaignKpis.sumFrigoStockUnits > 0 && (
-            <span className="text-[10px] text-muted-foreground font-semibold">
-              {isAr ? "متاح للبيع التدريجي" : "Disponible pour sorties"}
+          {campaignKpis.sumFrigoRemColis > 0 && (
+            <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold">
+              {formatNumber(campaignKpis.sumFrigoRemColis, 0)} {isAr ? "صندوق متبقي" : "colis en stock"}
             </span>
           )}
         </div>
 
         <div className="col-span-2 sm:col-span-1 rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
           <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-            <TrendingUp className="h-3 w-3" />
-            <span>{isAr ? "صافي النتيجة" : "Résultat Net"}</span>
+            <TrendingUp className="h-3 w-3 shrink-0" />
+            <span>{isAr ? "الربح الصافي الحقيقي للمزرعة" : "Bénéfice Net Réel Ferme"}</span>
           </span>
-          <p dir="ltr" className={`text-base sm:text-lg font-black ${campaignKpis.sumNet >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>
-            {formatDA(campaignKpis.sumNet)}
+          <p
+            dir="ltr"
+            className={`text-base sm:text-lg font-black ${
+              campaignKpis.sumBeneficeNet >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"
+            }`}
+          >
+            {formatDA(campaignKpis.sumBeneficeNet)}
           </p>
-          <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold">
-            {isAr ? "مبيعات" : "Ventes"}: {formatNumber(campaignKpis.sumVentes, 0)} · {isAr ? "تكاليف" : "Charges"}: {formatNumber(campaignKpis.sumCharges, 0)}
+          <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold block">
+            {isAr ? "صافي المبيعات" : "Ventes nettes"}: {formatNumber(campaignKpis.sumNetVentes, 0)} ·{" "}
+            {isAr ? "تكاليف المزرعة" : "Charges ferme"}: {formatNumber(campaignKpis.sumChargesFerme, 0)}
           </span>
         </div>
       </div>
 
-      {/* FORMULAIRE SALLE DE TRI & DESTINATION */}
+      {/* ================================================================= */}
+      {/* FORMULAIRE EN 2 ÉTAPES — CUEILLETTE & BORDEREAU MARCHÉ DE GROS   */}
+      {/* ================================================================= */}
       {canEdit && showForm && (
-        <div className="space-y-4 rounded-2xl border-2 border-emerald-600/30 bg-card p-4 shadow-sm animate-in fade-in-50 duration-150">
-          <div className="flex items-center justify-between gap-2 border-b pb-2.5">
+        <div className="space-y-5 rounded-2xl border-2 border-emerald-600/35 bg-card p-3.5 sm:p-4 shadow-sm animate-in fade-in-50 duration-150 min-w-0">
+          {/* En-tête Formulaire */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
             <h3 className="text-sm font-black text-foreground flex items-center gap-2">
-              <Package className="h-4 w-4 text-primary" />
-              <span>{isAr ? "جني جديد (قاعة الفرز — فواكه طازجة)" : "Nouvelle récolte (Salle de tri — Fruits frais)"}</span>
+              <Package className="h-4 w-4 text-primary shrink-0" />
+              <span>
+                {editingHarvestId
+                  ? isAr
+                    ? "تعديل الجني وكشف المبيعات"
+                    : "Modifier la récolte & bordereau"
+                  : isAr
+                    ? "جني جديد — المرحلة 1 (القطف) والمرحلة 2 (الوجهة / الكشف)"
+                    : "Nouvelle récolte — Étape 1 (Lots) & Étape 2 (Destination / Bordereau)"}
+              </span>
             </h3>
             <div className="flex items-center gap-2">
               {treeCount > 0 && (
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                  🌳 <span dir="ltr">{treeCount}</span> {isAr ? "شجرة" : "arbres"}
+                  🌳 <span dir="ltr">{formatNumber(treeCount, 0)}</span> {isAr ? "شجرة" : "arbres"}
                 </span>
               )}
               {onCloseForm && (
                 <button
                   type="button"
-                  onClick={onCloseForm}
+                  onClick={() => {
+                    resetForm();
+                    onCloseForm();
+                  }}
                   className="p-1 rounded-lg text-muted-foreground hover:bg-muted cursor-pointer"
                   aria-label={isAr ? "إغلاق" : "Fermer"}
                 >
@@ -680,364 +1090,965 @@ export function RecolteFruitsFrais({
             </div>
           </div>
 
-          {/* Date, Unité & Poids moyen par caisse */}
-          <div className={`grid gap-2.5 ${f.unit === "Caisses" ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-2"}`}>
-            <div>
-              <label className="text-[10px] uppercase font-bold text-muted-foreground block mb-1">
-                {isAr ? "تاريخ الجني" : "Date de récolte"}
-              </label>
-              <input type="date" dir="ltr" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} className={cls} />
+          {/* ================= ÉTAPE 1 — SAISIE DE LA RÉCOLTE ================= */}
+          <div className="space-y-3 rounded-xl border bg-muted/20 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-1.5">
+              <h4 className="text-xs font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                {isAr ? "المرحلة 1 — تسجيل الجني والدفعات (Cueillette & Lots)" : "ÉTAPE 1 — Saisie de la Récolte (Cueillette & Lots)"}
+              </h4>
+              <span className="text-[11px] font-black text-foreground" dir="ltr">
+                {formatNumber(step1Totals.totalColis, 0)} {isAr ? "صندوق" : "colis"} ·{" "}
+                {formatNumber(step1Totals.totalPoidsNetKg, 2)} kg
+              </span>
             </div>
-            <div>
-              <label className="text-[10px] uppercase font-bold text-muted-foreground block mb-1">
-                {isAr ? "وحدة القياس" : "Unité"}
-              </label>
-              <select
-                value={f.unit}
-                onChange={(e) => setF({ ...f, unit: e.target.value as "Kg" | "Caisses" })}
-                className={cls}
-              >
-                <option value="Kg">Kg</option>
-                <option value="Caisses">{isAr ? "صناديق (Caisses)" : "Caisses"}</option>
-              </select>
-            </div>
-            {f.unit === "Caisses" && (
+
+            {/* Date, Unité, Parcelles */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
                 <label className="text-[10px] uppercase font-bold text-muted-foreground block mb-1">
-                  {isAr ? "متوسط وزن الصندوق (كغ)" : "Poids moyen / caisse (Kg)"}
+                  {isAr ? "تاريخ الجني" : "Date de récolte"}
                 </label>
                 <input
-                  type="number"
+                  type="date"
                   dir="ltr"
-                  inputMode="decimal"
-                  value={f.avgCrateWeightKg}
-                  onChange={(e) => setF({ ...f, avgCrateWeightKg: e.target.value })}
-                  placeholder="15"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
                   className={cls}
                 />
               </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-muted-foreground block mb-1">
+                  {isAr ? "وحدة القياس" : "Unité"}
+                </label>
+                <select
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value as HarvestUnit)}
+                  className={cls}
+                >
+                  <option value="Kg">Kg ({isAr ? "كيلوغرام — افتراضي" : "par défaut"})</option>
+                  <option value="Quintal">{isAr ? "قنطار (Quintal)" : "Quintal (100 kg)"}</option>
+                  <option value="Caisse/Colis">{isAr ? "صندوق / طرد (Caisse/Colis)" : "Caisse / Colis"}</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Parcelles concernées (multi-sélection) */}
+            {freshParcels.length > 0 && (
+              <div>
+                <label className="text-[10px] uppercase font-bold text-muted-foreground block mb-1">
+                  {isAr ? "القطعة / القطع المعنية" : "Parcelle(s) concernée(s)"}
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {freshParcels.map((p) => {
+                    const active = selectedParcelIds.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedParcelIds((prev) =>
+                            prev.includes(p.id)
+                              ? prev.length > 1
+                                ? prev.filter((id) => id !== p.id)
+                                : prev
+                              : [...prev, p.id],
+                          );
+                        }}
+                        className={`rounded-full border px-2.5 py-1 text-[11px] font-bold transition cursor-pointer ${
+                          active
+                            ? "border-emerald-600 bg-emerald-600 text-white shadow-xs"
+                            : "border-input bg-background text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        {p.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             )}
-          </div>
 
-          {/* Tri & Calibres */}
-          <div className="border-t pt-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-black uppercase tracking-wide text-primary">
-                {isAr ? "الفرز والأحجام" : "Tri & Calibres"}
-              </h4>
-              {totalQty > 0 && (
-                <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${rebutPercent > 15 ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>
-                  {isAr ? "نسبة الفضلات :" : "Rebut :"} <strong dir="ltr">{rebutPercent.toFixed(1)}%</strong>
+            {/* Suggestions rapides cliquables de Nature / Calibre */}
+            <div className="space-y-1">
+              <span className="text-[10px] font-bold uppercase text-muted-foreground block">
+                {isAr ? "اختيار سريع للعيار / الطبيعة (انقر لإضافة سطر) :" : "Suggestions rapides Nature / Calibre (cliquez pour ajouter) :"}
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {NATURE_SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      // Si la dernière ligne a un champ nature vide, on le remplit ; sinon on ajoute une nouvelle ligne
+                      const emptyIdx = harvestLots.findIndex((l) => !l.nature.trim() && !l.poidsNetKg && !l.colis);
+                      if (emptyIdx >= 0) {
+                        setHarvestLots((prev) => prev.map((l, i) => (i === emptyIdx ? { ...l, nature: s } : l)));
+                      } else {
+                        setHarvestLots((prev) => [...prev, createEmptyHarvestLot(s)]);
+                      }
+                    }}
+                    className="rounded-lg border border-primary/30 bg-primary/5 hover:bg-primary/15 px-2 py-1 text-[11px] font-bold text-primary transition cursor-pointer"
+                  >
+                    + {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Tableau dynamique multi-lignes « Lots récoltés » */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-black text-foreground">
+                  {isAr ? "الدفعات المحصودة (Lots récoltés)" : "Lots récoltés"}
                 </span>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setHarvestLots((prev) => [...prev, createEmptyHarvestLot("")])}
+                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-[10px] font-black transition cursor-pointer"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>{isAr ? "إضافة سطر" : "Ajouter une ligne"}</span>
+                </button>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border bg-card">
+                <table className="w-full min-w-[480px] border-collapse text-xs">
+                  <thead>
+                    <tr className="bg-muted/70 text-[10px] font-black uppercase text-muted-foreground border-b">
+                      <th className="p-2 text-left">{isAr ? "الطبيعة / العيار" : "Nature / Calibre"}</th>
+                      <th className="p-2 text-center w-24">{isAr ? "عدد الصناديق" : "Nb de colis"}</th>
+                      <th className="p-2 text-right w-28">{isAr ? "الوزن الصافي (كغ)" : "Poids net (kg)"}</th>
+                      <th className="p-2 text-center w-28">{isAr ? "متوسط الوزن/صندوق" : "Poids moy. / colis"}</th>
+                      <th className="p-2 w-10"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {harvestLots.map((lot) => {
+                      const c = parseNum(lot.colis);
+                      const kg = parseNum(lot.poidsNetKg);
+                      const avg = c > 0 ? kg / c : 0;
+                      return (
+                        <tr key={lot.id}>
+                          <td className="p-1.5">
+                            <input
+                              value={lot.nature}
+                              onChange={(e) =>
+                                setHarvestLots((prev) =>
+                                  prev.map((l) => (l.id === lot.id ? { ...l, nature: e.target.value } : l)),
+                                )
+                              }
+                              placeholder="ت/22, ت/26, Choix 1..."
+                              className="w-full rounded border border-input bg-background px-2 py-1 text-xs font-bold"
+                            />
+                          </td>
+                          <td className="p-1.5">
+                            <input
+                              dir="ltr"
+                              inputMode="numeric"
+                              value={lot.colis}
+                              onChange={(e) =>
+                                setHarvestLots((prev) =>
+                                  prev.map((l) => (l.id === lot.id ? { ...l, colis: e.target.value } : l)),
+                                )
+                              }
+                              placeholder="0"
+                              className="w-full rounded border border-input bg-background px-2 py-1 text-center text-xs font-semibold"
+                            />
+                          </td>
+                          <td className="p-1.5">
+                            <input
+                              dir="ltr"
+                              inputMode="decimal"
+                              value={lot.poidsNetKg}
+                              onChange={(e) =>
+                                setHarvestLots((prev) =>
+                                  prev.map((l) => (l.id === lot.id ? { ...l, poidsNetKg: e.target.value } : l)),
+                                )
+                              }
+                              placeholder="0.0"
+                              className="w-full rounded border border-input bg-background px-2 py-1 text-right text-xs font-semibold"
+                            />
+                          </td>
+                          <td dir="ltr" className="p-1.5 text-center font-mono text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
+                            {avg > 0 ? `${formatNumber(avg, 2)} kg` : "—"}
+                          </td>
+                          <td className="p-1.5 text-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setHarvestLots((prev) => {
+                                  const next = prev.filter((l) => l.id !== lot.id);
+                                  return next.length > 0 ? next : [createEmptyHarvestLot("")];
+                                })
+                              }
+                              className="p-1 rounded text-muted-foreground hover:text-destructive transition cursor-pointer"
+                              title={isAr ? "حذف السطر" : "Supprimer"}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-muted/50 font-black text-xs border-t">
+                      <td className="p-2 uppercase text-[10px]">{isAr ? "المجموع (Total Lots)" : "TOTAL LOTS"}</td>
+                      <td dir="ltr" className="p-2 text-center font-mono">
+                        {formatNumber(step1Totals.totalColis, 0)} {isAr ? "صندوق" : "colis"}
+                      </td>
+                      <td dir="ltr" className="p-2 text-right font-mono text-emerald-700 dark:text-emerald-300">
+                        {formatNumber(step1Totals.totalPoidsNetKg, 2)} kg
+                      </td>
+                      <td dir="ltr" className="p-2 text-center font-mono text-[11px] text-muted-foreground">
+                        {step1Totals.totalColis > 0
+                          ? `${formatNumber(step1Totals.totalPoidsNetKg / step1Totals.totalColis, 2)} kg/c`
+                          : "—"}
+                      </td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 items-center bg-muted/20 p-2.5 rounded-xl">
-              <span className="text-xs font-bold">{isAr ? "النوع الأول (Choix 1)" : "Choix 1"}</span>
-              <input value={f.choix1Qty} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, choix1Qty: e.target.value })} placeholder={isAr ? "الكمية" : "Quantité"} className={cls} />
-              <input value={f.choix1Price} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, choix1Price: e.target.value })} placeholder={isAr ? "السعر (دج)" : "Prix (DA)"} className={cls} />
-
-              <span className="text-xs font-bold">{isAr ? "النوع الثاني (Choix 2)" : "Choix 2"}</span>
-              <input value={f.choix2Qty} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, choix2Qty: e.target.value })} placeholder={isAr ? "الكمية" : "Quantité"} className={cls} />
-              <input value={f.choix2Price} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, choix2Price: e.target.value })} placeholder={isAr ? "السعر (دج)" : "Prix (DA)"} className={cls} />
-
-              <span className="text-xs font-bold">{isAr ? "النوع الثالث (Choix 3)" : "Choix 3"}</span>
-              <input value={f.choix3Qty} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, choix3Qty: e.target.value })} placeholder={isAr ? "الكمية" : "Quantité"} className={cls} />
-              <input value={f.choix3Price} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, choix3Price: e.target.value })} placeholder={isAr ? "السعر (دج)" : "Prix (DA)"} className={cls} />
-
-              <span className="text-xs font-bold">{isAr ? "صناعي / عصير" : "Industrie / Jus"}</span>
-              <input value={f.choix4Qty} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, choix4Qty: e.target.value })} placeholder={isAr ? "الكمية" : "Quantité"} className={cls} />
-              <input value={f.choix4Price} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, choix4Price: e.target.value })} placeholder={isAr ? "السعر (دج)" : "Prix (DA)"} className={cls} />
-
-              <span className="text-xs font-bold text-destructive">{isAr ? "فضلات (Rebut)" : "Rebut (déchets)"}</span>
-              <input
-                value={f.rebutQty}
-                dir="ltr"
-                inputMode="decimal"
-                onChange={(e) => setF({ ...f, rebutQty: e.target.value })}
-                placeholder={isAr ? "الكمية التالفة" : "Quantité jetée"}
-                className="col-span-2 rounded-lg border border-destructive/30 bg-background px-2.5 py-1.5 text-xs sm:text-sm w-full text-destructive"
-              />
+            {/* Ligne séparée Rebut / Déchets (kg) + Photo & Notes */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 items-end">
+              <div>
+                <label className="text-[10px] uppercase font-bold text-destructive flex items-center justify-between mb-1">
+                  <span>{isAr ? "الفضلات / التالف (كغ)" : "Rebut / Déchets (kg)"}</span>
+                  {step1Totals.rebut > 0 && (
+                    <span dir="ltr" className="font-black">
+                      ({formatNumber(step1Totals.rebutPercent, 1)} %)
+                    </span>
+                  )}
+                </label>
+                <input
+                  dir="ltr"
+                  inputMode="decimal"
+                  value={rebutKg}
+                  onChange={(e) => setRebutKg(e.target.value)}
+                  placeholder="0"
+                  className="w-full rounded-lg border border-destructive/35 bg-background px-2.5 py-1.5 text-xs text-destructive font-bold"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-input bg-background px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  <span>
+                    {photo
+                      ? isAr
+                        ? "تمت إضافة صورة الكشف ✓"
+                        : "Photo bordereau / caisses ✓"
+                      : isAr
+                        ? "صورة الكشف أو الصناديق"
+                        : "Photo (bordereau / caisses)"}
+                  </span>
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => onPhoto(e.target.files?.[0])} />
+                </label>
+              </div>
             </div>
+
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={isAr ? "ملاحظات حول القطف أو الجودة..." : "Notes (qualité, transport, observations...)"}
+              className={`${cls} min-h-12 resize-y`}
+            />
           </div>
 
-          {/* Destination du lot */}
-          <div className="border-t pt-3 space-y-3">
+          {/* ================= ÉTAPE 2 — CHOIX DE DESTINATION (4 MODES) ================= */}
+          <div className="space-y-3">
             <h4 className="text-xs font-black uppercase tracking-wide text-primary">
-              {isAr ? "وجهة المحصول (3 خيارات أو مختلط)" : "Destination du lot"}
+              {isAr ? "المرحلة 2 — اختيار الوجهة (4 خيارات)" : "ÉTAPE 2 — Choix de Destination (4 modes)"}
             </h4>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {(
                 [
-                  { id: "mandataire", fr: "🤝 Mandataire", ar: "🤝 وكيل سوق" },
-                  { id: "frigo", fr: "❄️ Chambre Froide", ar: "❄️ غرفة تبريد" },
-                  { id: "direct", fr: "🏪 Vente directe", ar: "🏪 بيع مباشر" },
-                  { id: "mixte", fr: "🔀 Mixte", ar: "🔀 مختلط" },
+                  { id: "mandataire", fr: "Mandataire (Marché de gros)", ar: "وكيل سوق الجملة", icon: Handshake },
+                  { id: "frigo", fr: "Chambre froide (Stockage)", ar: "غرفة التبريد (تخزين)", icon: Snowflake },
+                  { id: "direct", fr: "Vente directe", ar: "بيع مباشر", icon: Store },
+                  { id: "mixte", fr: "Mixte (Répartition)", ar: "مختلط (توزيع)", icon: Shuffle },
                 ] as const
-              ).map((opt) => (
+              ).map(({ id, fr, ar, icon: Icon }) => (
                 <button
-                  key={opt.id}
+                  key={id}
                   type="button"
-                  onClick={() => setF({ ...f, destination: opt.id })}
-                  className={`rounded-xl border px-2.5 py-2 text-xs font-bold transition cursor-pointer ${
-                    f.destination === opt.id
-                      ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                  onClick={() => switchDestination(id)}
+                  className={`flex flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2.5 text-center text-[11px] font-black transition cursor-pointer ${
+                    destination === id
+                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
                       : "bg-muted/30 text-foreground hover:bg-muted"
                   }`}
                 >
-                  {isAr ? opt.ar : opt.fr}
+                  <Icon className="h-4 w-4 shrink-0" />
+                  <span className="leading-tight">{isAr ? ar : fr}</span>
                 </button>
               ))}
             </div>
 
-            {/* Bloc 1 : Vente Mandataire */}
-            {(f.destination === "mandataire" || f.destination === "mixte") && (
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2.5">
-                <p className="text-xs font-black text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
-                  <Handshake className="h-3.5 w-3.5" />
-                  <span>{isAr ? "بيع عبر وكيل السوق (Mandataire)" : "Vente Mandataire"}</span>
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <input
-                    value={f.mandataireName}
-                    onChange={(e) => setF({ ...f, mandataireName: e.target.value })}
-                    placeholder={isAr ? "اسم الوكيل / سوق الجملة" : "Nom du mandataire"}
-                    className={cls}
-                  />
-                  {f.destination === "mixte" && (
-                    <>
-                      <input
-                        value={f.mandataireQty}
-                        dir="ltr"
-                        inputMode="decimal"
-                        onChange={(e) => setF({ ...f, mandataireQty: e.target.value })}
-                        placeholder={`${isAr ? "الكمية" : "Quantité"} (${f.unit})`}
-                        className={cls}
-                      />
-                      <input
-                        value={f.mandatairePrice}
-                        dir="ltr"
-                        inputMode="decimal"
-                        onChange={(e) => setF({ ...f, mandatairePrice: e.target.value })}
-                        placeholder={isAr ? "السعر / وحدة (دج)" : "Prix / unité (DA)"}
-                        className={cls}
-                      />
-                    </>
-                  )}
-                  {f.destination === "mandataire" && triGrossSale === 0 && (
-                    <input
-                      value={f.mandatairePrice}
-                      dir="ltr"
-                      inputMode="decimal"
-                      onChange={(e) => setF({ ...f, mandatairePrice: e.target.value })}
-                      placeholder={isAr ? "سعر موحد / وحدة (دج)" : "Prix moyen / unité (DA)"}
-                      className={cls}
-                    />
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <select
-                    value={f.commissionType}
-                    onChange={(e) => setF({ ...f, commissionType: e.target.value as "percent" | "fixed" })}
-                    className={cls}
-                  >
-                    <option value="percent">{isAr ? "عمولة (%)" : "Commission (%)"}</option>
-                    <option value="fixed">{isAr ? "عمولة ثابتة (دج)" : "Commission fixe (DA)"}</option>
-                  </select>
-                  <input
-                    value={f.commissionValue}
-                    dir="ltr"
-                    inputMode="decimal"
-                    onChange={(e) => setF({ ...f, commissionValue: e.target.value })}
-                    placeholder={f.commissionType === "percent" ? "8 %" : "DA"}
-                    className={cls}
-                  />
-                  <select
-                    value={f.paymentStatus}
-                    onChange={(e) => setF({ ...f, paymentStatus: e.target.value as PaymentStatus })}
-                    className={cls}
-                  >
-                    <option value="paye">{isAr ? "مدفوع" : "Payé"}</option>
-                    <option value="en_attente">{isAr ? "قيد الانتظار" : "En attente"}</option>
-                    <option value="partiel">{isAr ? "دفع جزئي" : "Partiel"}</option>
-                  </select>
-                  {f.paymentStatus === "partiel" && (
-                    <input
-                      value={f.paidAmount}
-                      dir="ltr"
-                      inputMode="decimal"
-                      onChange={(e) => setF({ ...f, paidAmount: e.target.value })}
-                      placeholder={isAr ? "المبلغ المقبوض (دج)" : "Montant payé (DA)"}
-                      className={cls}
-                    />
-                  )}
-                </div>
-                {mandataireResteDu > 0 && (
-                  <p className="text-[11px] font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1">
-                    <AlertCircle className="h-3.5 w-3.5" />
-                    <span>{isAr ? "المبلغ المتبقي للدفع :" : "Reste dû :"}</span>
-                    <strong dir="ltr">{mandataireResteDu.toFixed(0)} DA</strong>
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Bloc 2 : Chambre Froide (Frigo) */}
-            {(f.destination === "frigo" || f.destination === "mixte") && (
-              <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-3 space-y-2.5">
-                <p className="text-xs font-black text-sky-800 dark:text-sky-200 flex items-center gap-1.5">
-                  <Snowflake className="h-3.5 w-3.5" />
-                  <span>{isAr ? "تخزين في غرفة التبريد (Frigo)" : "Chambre Froide (Frigo)"}</span>
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <input
-                    value={f.frigoName}
-                    onChange={(e) => setF({ ...f, frigoName: e.target.value })}
-                    placeholder={isAr ? "اسم غرفة التبريد" : "Nom du frigo"}
-                    className={cls}
-                  />
-                  <input
-                    type="date"
-                    dir="ltr"
-                    value={f.frigoEntryDate}
-                    onChange={(e) => setF({ ...f, frigoEntryDate: e.target.value })}
-                    className={cls}
-                  />
-                  <input
-                    value={f.frigoQty}
-                    dir="ltr"
-                    inputMode="decimal"
-                    onChange={(e) => setF({ ...f, frigoQty: e.target.value })}
-                    placeholder={`${isAr ? "الكمية المخزنة" : "Qté stockée"} (${marketableQty || 0})`}
-                    className={cls}
-                  />
-                  <div className="flex gap-1">
-                    <select
-                      value={f.frigoRateType}
-                      onChange={(e) => setF({ ...f, frigoRateType: e.target.value as "per_crate" | "fixed" })}
-                      className="rounded-lg border border-input bg-background px-1.5 py-1 text-[11px] font-bold"
-                    >
-                      <option value="per_crate">{isAr ? "دج/وحدة" : "DA/u"}</option>
-                      <option value="fixed">{isAr ? "جزافي" : "Forfait"}</option>
-                    </select>
-                    <input
-                      value={f.frigoRateValue}
-                      dir="ltr"
-                      inputMode="decimal"
-                      onChange={(e) => setF({ ...f, frigoRateValue: e.target.value })}
-                      placeholder="DA"
-                      className={cls}
-                    />
+            {/* BARRE DE CONTRÔLE EN MODE MIXTE */}
+            {destination === "mixte" && (
+              <div
+                className={`rounded-xl border p-3 space-y-2 ${
+                  Math.abs(formFinancials.remainingToAssignKg) < 0.1
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-200"
+                    : formFinancials.remainingToAssignKg < 0
+                      ? "border-destructive/50 bg-destructive/10 text-destructive"
+                      : "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200"
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-black">
+                  <span className="flex items-center gap-1.5">
+                    {Math.abs(formFinancials.remainingToAssignKg) < 0.1 ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                    )}
+                    <span>
+                      {isAr ? "مراقبة التوزيع :" : "Contrôle répartition :"}
+                    </span>
+                  </span>
+                  <div dir="ltr" className="flex flex-wrap items-center gap-2 font-mono text-[11px]">
+                    <span>
+                      {isAr ? "المحصود" : "Récolté"} : <strong>{formatNumber(step1Totals.totalPoidsNetKg, 2)} kg</strong>
+                    </span>
+                    <span>|</span>
+                    <span>
+                      {isAr ? "الموزّع" : "Affecté"} : <strong>{formatNumber(formFinancials.assignedKg, 2)} kg</strong>
+                    </span>
+                    <span>|</span>
+                    <span>
+                      {isAr ? "المتبقي" : "Restant"} :{" "}
+                      <strong>{formatNumber(formFinancials.remainingToAssignKg, 2)} kg</strong>
+                    </span>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* Bloc 3 : Vente directe ferme */}
-            {(f.destination === "direct" || f.destination === "mixte") && (
-              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-2">
-                <p className="text-xs font-black text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
-                  <Store className="h-3.5 w-3.5" />
-                  <span>{isAr ? "بيع مباشر من الضيعة (بدون عمولة)" : "Vente directe ferme (sans commission)"}</span>
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    value={f.directQty}
-                    dir="ltr"
-                    inputMode="decimal"
-                    onChange={(e) => setF({ ...f, directQty: e.target.value })}
-                    placeholder={`${isAr ? "الكمية" : "Quantité"} (${f.unit})`}
-                    className={cls}
-                  />
-                  <input
-                    value={f.directPrice}
-                    dir="ltr"
-                    inputMode="decimal"
-                    onChange={(e) => setF({ ...f, directPrice: e.target.value })}
-                    placeholder={isAr ? "السعر / وحدة (دج)" : "Prix unitaire (DA)"}
-                    className={cls}
-                  />
+                {/* Boutons d'ajout multi-blocs en mode Mixte */}
+                <div className="flex flex-wrap gap-1.5 pt-1 border-t border-current/15">
+                  <button
+                    type="button"
+                    onClick={() => setBordereaux((prev) => [...prev, createEmptyBordereau(date)])}
+                    className="inline-flex items-center gap-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1 text-[10px] font-black cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>{isAr ? "+ كشف وكيل سوق" : "+ Bordereau Mandataire"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFrigoBlocks((prev) => [...prev, createEmptyFrigoBlock(date)])}
+                    className="inline-flex items-center gap-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white px-2.5 py-1 text-[10px] font-black cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>{isAr ? "+ غرفة تبريد" : "+ Chambre froide"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDirectBlocks((prev) => [...prev, createEmptyDirectBlock()])}
+                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2.5 py-1 text-[10px] font-black cursor-pointer"
+                  >
+                    <Plus className="h-3 w-3" />
+                    <span>{isAr ? "+ بيع مباشر" : "+ Vente directe"}</span>
+                  </button>
                 </div>
               </div>
             )}
+
+            {/* BLOCS MANDATAIRE (BORDEREAUX) */}
+            {activeBordereaux.map((bd, idx) => (
+              <BordereauEditorCard
+                key={bd.id}
+                bordereau={bd}
+                title={
+                  destination === "mixte"
+                    ? `${isAr ? "كشف الوكيل" : "Bordereau Mandataire"} #${idx + 1}`
+                    : undefined
+                }
+                knownMandataires={knownMandataires}
+                isAr={isAr}
+                onChange={(next) =>
+                  setBordereaux((prev) => prev.map((item) => (item.id === bd.id ? next : item)))
+                }
+                onRemove={
+                  destination === "mixte"
+                    ? () => setBordereaux((prev) => prev.filter((item) => item.id !== bd.id))
+                    : undefined
+                }
+                onPrefillFromStep1={() =>
+                  setBordereaux((prev) =>
+                    prev.map((item) =>
+                      item.id === bd.id
+                        ? { ...item, dateFolio: date, lines: lotsToSaleLines(harvestLots) }
+                        : item,
+                    ),
+                  )
+                }
+                onPrint={() => openPrintBordereau(bd, selectedParcelIds)}
+              />
+            ))}
+
+            {/* BLOCS CHAMBRE FROIDE */}
+            {activeFrigoBlocks.map((fb, idx) => {
+              const fbTotalColis = fb.lots.reduce((s, l) => s + parseNum(l.colis), 0);
+              const fbTotalKg = fb.lots.reduce((s, l) => s + parseNum(l.poidsNetKg), 0);
+              return (
+                <div key={fb.id} className="rounded-xl border-2 border-sky-500/35 bg-sky-500/[0.04] p-3 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-500/20 pb-2">
+                    <span className="text-xs font-black text-sky-800 dark:text-sky-200 flex items-center gap-1.5">
+                      <Snowflake className="h-4 w-4 shrink-0" />
+                      <span>
+                        {isAr ? "تخزين في غرفة التبريد" : "Stockage Chambre froide"}
+                        {destination === "mixte" ? ` #${idx + 1}` : ""}
+                      </span>
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFrigoBlocks((prev) =>
+                            prev.map((item) =>
+                              item.id === fb.id
+                                ? {
+                                    ...item,
+                                    entryDate: date,
+                                    lots: harvestLots.map((l) => ({ ...l, id: createEmptyHarvestLot().id })),
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg border border-sky-500/40 bg-background px-2 py-1 text-[10px] font-bold text-sky-800 dark:text-sky-200 cursor-pointer"
+                      >
+                        <ArrowDownToLine className="h-3 w-3" />
+                        <span>{isAr ? "تعبئة من المرحلة 1" : "Importer Étape 1"}</span>
+                      </button>
+                      {destination === "mixte" && (
+                        <button
+                          type="button"
+                          onClick={() => setFrigoBlocks((prev) => prev.filter((item) => item.id !== fb.id))}
+                          className="p-1 rounded text-muted-foreground hover:text-destructive cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                        {isAr ? "اسم غرفة التبريد" : "Nom du frigo"}
+                      </label>
+                      <input
+                        value={fb.frigoName}
+                        onChange={(e) =>
+                          setFrigoBlocks((prev) =>
+                            prev.map((item) => (item.id === fb.id ? { ...item, frigoName: e.target.value } : item)),
+                          )
+                        }
+                        placeholder={isAr ? "مثال: تبريد بوفاريك..." : "Ex: Frigo Boufarik..."}
+                        className={cls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                        {isAr ? "رقم الغرفة (Chambre N°)" : "Chambre N°"}
+                      </label>
+                      <input
+                        value={fb.chambreNo}
+                        onChange={(e) =>
+                          setFrigoBlocks((prev) =>
+                            prev.map((item) => (item.id === fb.id ? { ...item, chambreNo: e.target.value } : item)),
+                          )
+                        }
+                        placeholder="Ex: Ch. 04"
+                        className={cls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                        {isAr ? "تاريخ الدخول" : "Date d'entrée"}
+                      </label>
+                      <input
+                        type="date"
+                        dir="ltr"
+                        value={fb.entryDate}
+                        onChange={(e) =>
+                          setFrigoBlocks((prev) =>
+                            prev.map((item) => (item.id === fb.id ? { ...item, entryDate: e.target.value } : item)),
+                          )
+                        }
+                        className={cls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                        {isAr ? "تعريفة التخزين" : "Tarif stockage"}
+                      </label>
+                      <div className="grid grid-cols-2 gap-1">
+                        <select
+                          value={fb.tarifType}
+                          onChange={(e) =>
+                            setFrigoBlocks((prev) =>
+                              prev.map((item) =>
+                                item.id === fb.id
+                                  ? { ...item, tarifType: e.target.value as "per_kg_month" | "fixed" }
+                                  : item,
+                              ),
+                            )
+                          }
+                          className="rounded-lg border border-input bg-background px-1.5 py-1.5 text-[11px] font-semibold"
+                        >
+                          <option value="per_kg_month">DA/kg/mois</option>
+                          <option value="fixed">{isAr ? "جزافي دج" : "Forfait DA"}</option>
+                        </select>
+                        <input
+                          dir="ltr"
+                          inputMode="decimal"
+                          value={fb.tarifValue}
+                          onChange={(e) =>
+                            setFrigoBlocks((prev) =>
+                              prev.map((item) => (item.id === fb.id ? { ...item, tarifValue: e.target.value } : item)),
+                            )
+                          }
+                          placeholder="0"
+                          className="rounded-lg border border-input bg-background px-2 py-1.5 text-xs font-semibold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lots stockés au frigo */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-sky-800 dark:text-sky-200">
+                        {isAr ? "الدفعات المخزنة حسب العيار" : "Lots stockés (par nature / calibre)"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFrigoBlocks((prev) =>
+                            prev.map((item) =>
+                              item.id === fb.id ? { ...item, lots: [...item.lots, createEmptyHarvestLot("")] } : item,
+                            ),
+                          )
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white px-2 py-1 text-[10px] font-black cursor-pointer"
+                      >
+                        <Plus className="h-3 w-3" /> {isAr ? "إضافة سطر" : "Ajouter"}
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {fb.lots.map((lot) => (
+                        <div key={lot.id} className="grid grid-cols-12 gap-1.5 items-center">
+                          <input
+                            value={lot.nature}
+                            onChange={(e) =>
+                              setFrigoBlocks((prev) =>
+                                prev.map((item) =>
+                                  item.id === fb.id
+                                    ? {
+                                        ...item,
+                                        lots: item.lots.map((l) => (l.id === lot.id ? { ...l, nature: e.target.value } : l)),
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            placeholder={isAr ? "العيار / الطبيعة" : "Nature / Calibre"}
+                            className="col-span-5 rounded border border-input bg-background px-2 py-1 text-xs font-bold"
+                          />
+                          <input
+                            dir="ltr"
+                            inputMode="numeric"
+                            value={lot.colis}
+                            onChange={(e) =>
+                              setFrigoBlocks((prev) =>
+                                prev.map((item) =>
+                                  item.id === fb.id
+                                    ? {
+                                        ...item,
+                                        lots: item.lots.map((l) => (l.id === lot.id ? { ...l, colis: e.target.value } : l)),
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            placeholder={isAr ? "صناديق" : "Colis"}
+                            className="col-span-3 rounded border border-input bg-background px-2 py-1 text-center text-xs"
+                          />
+                          <input
+                            dir="ltr"
+                            inputMode="decimal"
+                            value={lot.poidsNetKg}
+                            onChange={(e) =>
+                              setFrigoBlocks((prev) =>
+                                prev.map((item) =>
+                                  item.id === fb.id
+                                    ? {
+                                        ...item,
+                                        lots: item.lots.map((l) => (l.id === lot.id ? { ...l, poidsNetKg: e.target.value } : l)),
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            placeholder="Kg"
+                            className="col-span-3 rounded border border-input bg-background px-2 py-1 text-right text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFrigoBlocks((prev) =>
+                                prev.map((item) =>
+                                  item.id === fb.id
+                                    ? {
+                                        ...item,
+                                        lots:
+                                          item.lots.length > 1
+                                            ? item.lots.filter((l) => l.id !== lot.id)
+                                            : [createEmptyHarvestLot("")],
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            className="col-span-1 flex justify-center text-muted-foreground hover:text-destructive cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-[11px] font-black text-sky-800 dark:text-sky-200 flex justify-end gap-3 pt-1 border-t border-sky-500/20">
+                      <span dir="ltr">
+                        {isAr ? "المخزن :" : "Stocké :"} {formatNumber(fbTotalColis, 0)} {isAr ? "صندوق" : "colis"} ·{" "}
+                        {formatNumber(fbTotalKg, 2)} kg
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* BLOCS VENTE DIRECTE */}
+            {activeDirectBlocks.map((db, idx) => {
+              const dbTotalKg = db.lines.reduce((s, l) => s + parseNum(l.poidsNetKg), 0);
+              const dbTotalDA = db.lines.reduce((s, l) => s + parseNum(l.poidsNetKg) * parseNum(l.prixUnitaire), 0);
+              return (
+                <div key={db.id} className="rounded-xl border-2 border-emerald-500/35 bg-emerald-500/[0.04] p-3 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-500/20 pb-2">
+                    <span className="text-xs font-black text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
+                      <Store className="h-4 w-4 shrink-0" />
+                      <span>
+                        {isAr ? "بيع مباشر (بدون عمولة وكيل)" : "Vente directe (sans commission mandataire)"}
+                        {destination === "mixte" ? ` #${idx + 1}` : ""}
+                      </span>
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDirectBlocks((prev) =>
+                            prev.map((item) =>
+                              item.id === db.id ? { ...item, lines: lotsToSaleLines(harvestLots) } : item,
+                            ),
+                          )
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/40 bg-background px-2 py-1 text-[10px] font-bold text-emerald-800 dark:text-emerald-200 cursor-pointer"
+                      >
+                        <ArrowDownToLine className="h-3 w-3" />
+                        <span>{isAr ? "تعبئة من المرحلة 1" : "Importer Étape 1"}</span>
+                      </button>
+                      {destination === "mixte" && (
+                        <button
+                          type="button"
+                          onClick={() => setDirectBlocks((prev) => prev.filter((item) => item.id !== db.id))}
+                          className="p-1 rounded text-muted-foreground hover:text-destructive cursor-pointer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                        {isAr ? "اسم الزبون (اختياري)" : "Nom du client (optionnel)"}
+                      </label>
+                      <input
+                        value={db.clientName}
+                        onChange={(e) =>
+                          setDirectBlocks((prev) =>
+                            prev.map((item) => (item.id === db.id ? { ...item, clientName: e.target.value } : item)),
+                          )
+                        }
+                        placeholder={isAr ? "اسم المشتري..." : "Client particulier / grossiste..."}
+                        className={cls}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                        {isAr ? "حالة الدفع" : "Statut"}
+                      </label>
+                      <select
+                        value={db.paymentStatus}
+                        onChange={(e) =>
+                          setDirectBlocks((prev) =>
+                            prev.map((item) =>
+                              item.id === db.id
+                                ? { ...item, paymentStatus: e.target.value as "paye" | "credit" }
+                                : item,
+                            ),
+                          )
+                        }
+                        className={cls}
+                      >
+                        <option value="paye">{isAr ? "✅ مدفوع (Payé)" : "✅ Payé"}</option>
+                        <option value="credit">{isAr ? "⏳ بالدين (Crédit)" : "⏳ Crédit"}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Lignes vendues en direct */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDirectBlocks((prev) =>
+                            prev.map((item) =>
+                              item.id === db.id ? { ...item, lines: [...item.lines, createEmptySaleLine()] } : item,
+                            ),
+                          )
+                        }
+                        className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-2 py-1 text-[10px] font-black cursor-pointer"
+                      >
+                        <Plus className="h-3 w-3" /> {isAr ? "إضافة سطر" : "Ajouter"}
+                      </button>
+                    </div>
+                    {db.lines.map((line) => {
+                      const amt = parseNum(line.poidsNetKg) * parseNum(line.prixUnitaire);
+                      return (
+                        <div key={line.id} className="grid grid-cols-12 gap-1.5 items-center">
+                          <input
+                            value={line.nature}
+                            onChange={(e) =>
+                              setDirectBlocks((prev) =>
+                                prev.map((item) =>
+                                  item.id === db.id
+                                    ? {
+                                        ...item,
+                                        lines: item.lines.map((l) => (l.id === line.id ? { ...l, nature: e.target.value } : l)),
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            placeholder={isAr ? "العيار" : "Nature"}
+                            className="col-span-3 rounded border border-input bg-background px-1.5 py-1 text-xs font-bold"
+                          />
+                          <input
+                            dir="ltr"
+                            inputMode="numeric"
+                            value={line.colis}
+                            onChange={(e) =>
+                              setDirectBlocks((prev) =>
+                                prev.map((item) =>
+                                  item.id === db.id
+                                    ? {
+                                        ...item,
+                                        lines: item.lines.map((l) => (l.id === line.id ? { ...l, colis: e.target.value } : l)),
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            placeholder={isAr ? "صناديق" : "Colis"}
+                            className="col-span-2 rounded border border-input bg-background px-1.5 py-1 text-center text-xs"
+                          />
+                          <input
+                            dir="ltr"
+                            inputMode="decimal"
+                            value={line.poidsNetKg}
+                            onChange={(e) =>
+                              setDirectBlocks((prev) =>
+                                prev.map((item) =>
+                                  item.id === db.id
+                                    ? {
+                                        ...item,
+                                        lines: item.lines.map((l) =>
+                                          l.id === line.id ? { ...l, poidsNetKg: e.target.value } : l,
+                                        ),
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            placeholder="Kg"
+                            className="col-span-2 rounded border border-input bg-background px-1.5 py-1 text-right text-xs"
+                          />
+                          <input
+                            dir="ltr"
+                            inputMode="decimal"
+                            value={line.prixUnitaire}
+                            onChange={(e) =>
+                              setDirectBlocks((prev) =>
+                                prev.map((item) =>
+                                  item.id === db.id
+                                    ? {
+                                        ...item,
+                                        lines: item.lines.map((l) =>
+                                          l.id === line.id ? { ...l, prixUnitaire: e.target.value } : l,
+                                        ),
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            placeholder="DA/kg"
+                            className="col-span-2 rounded border border-input bg-background px-1.5 py-1 text-right text-xs"
+                          />
+                          <span dir="ltr" className="col-span-2 text-right font-mono font-bold text-[11px] truncate">
+                            {formatNumber(amt, 0)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDirectBlocks((prev) =>
+                                prev.map((item) =>
+                                  item.id === db.id
+                                    ? {
+                                        ...item,
+                                        lines:
+                                          item.lines.length > 1
+                                            ? item.lines.filter((l) => l.id !== line.id)
+                                            : [createEmptySaleLine()],
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            className="col-span-1 flex justify-center text-muted-foreground hover:text-destructive cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <div className="flex justify-between text-xs font-black text-emerald-800 dark:text-emerald-200 pt-1 border-t border-emerald-500/20">
+                      <span dir="ltr">{formatNumber(dbTotalKg, 2)} kg</span>
+                      <span dir="ltr">{formatDA(dbTotalDA, 2)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Charges opérationnelles (DA) */}
+          {/* ================= CHARGES OPÉRATIONNELLES FERME (DA) ================= */}
           <div className="border-t pt-3 space-y-2">
             <h4 className="text-xs font-black uppercase tracking-wide text-primary">
-              {isAr ? "التكاليف التشغيلية (دج)" : "Charges opérationnelles (DA)"}
+              {isAr ? "التكاليف التشغيلية للمزرعة (دج)" : "Charges opérationnelles ferme (DA)"}
             </h4>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <input value={f.mainOeuvre} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, mainOeuvre: e.target.value })} placeholder={isAr ? "اليد العاملة للجني" : "Main-d'œuvre"} className={cls} />
-              <input value={f.emballages} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, emballages: e.target.value })} placeholder={isAr ? "الصناديق / التغليف" : "Emballages / Caisses"} className={cls} />
-              <input value={f.transport} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, transport: e.target.value })} placeholder={isAr ? "النقل" : "Transport"} className={cls} />
-              <input value={f.autres} dir="ltr" inputMode="decimal" onChange={(e) => setF({ ...f, autres: e.target.value })} placeholder={isAr ? "مصاريف أخرى" : "Autres"} className={cls} />
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">
+                  {isAr ? "اليد العاملة" : "Main-d'œuvre (DA)"}
+                </label>
+                <input dir="ltr" inputMode="decimal" value={mainOeuvre} onChange={(e) => setMainOeuvre(e.target.value)} placeholder="0" className={cls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">
+                  {isAr ? "النقل" : "Transport (DA)"}
+                </label>
+                <input dir="ltr" inputMode="decimal" value={transport} onChange={(e) => setTransport(e.target.value)} placeholder="0" className={cls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">
+                  {isAr ? "الصناديق / التغليف" : "Caisses / Emballage (DA)"}
+                </label>
+                <input dir="ltr" inputMode="decimal" value={emballages} onChange={(e) => setEmballages(e.target.value)} placeholder="0" className={cls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground block mb-0.5">
+                  {isAr ? "مصاريف أخرى" : "Autres (DA)"}
+                </label>
+                <input dir="ltr" inputMode="decimal" value={autres} onChange={(e) => setAutres(e.target.value)} placeholder="0" className={cls} />
+              </div>
             </div>
           </div>
 
-          {/* Photo & Notes */}
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed border-input px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
-              <ImageIcon className="h-3.5 w-3.5" />
-              <span>{f.photo ? (isAr ? "تمت إضافة الصورة ✓" : "Photo ajoutée ✓") : isAr ? "صورة الجني" : "Photo de la récolte"}</span>
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => onPhoto(e.target.files?.[0])} />
-            </label>
-          </div>
-
-          <textarea
-            value={f.notes}
-            onChange={(e) => setF({ ...f, notes: e.target.value })}
-            placeholder={isAr ? "ملاحظات..." : "Notes..."}
-            className={`${cls} min-h-14 resize-y`}
-          />
-
-          {/* Résumé automatique */}
-          <div className="space-y-1.5 rounded-xl bg-muted/35 border p-3.5 text-xs sm:text-sm">
+          {/* ================= CARTE RÉCAPITULATIVE FINALE ================= */}
+          <div className="space-y-1.5 rounded-xl bg-muted/40 border p-3.5 text-xs">
             <div className="flex justify-between">
-              <span>{isAr ? "الكمية الإجمالية" : "Quantité totale"}</span>
-              <b dir="ltr">
-                {totalKg.toFixed(1)} Kg {f.unit === "Caisses" ? `(${totalQty} c.)` : ""}
-              </b>
+              <span className="text-muted-foreground font-semibold">
+                {isAr ? "الكمية الإجمالية المحصودة" : "Quantité Totale récoltée"}
+              </span>
+              <strong dir="ltr">
+                {formatNumber(step1Totals.totalPoidsNetKg, 2)} kg · {formatNumber(step1Totals.totalColis, 0)}{" "}
+                {isAr ? "صندوق" : "colis"}
+              </strong>
             </div>
-            {treeCount > 0 && (
-              <div className="flex justify-between text-emerald-700 dark:text-emerald-300">
-                <span>{isAr ? "المردودية" : "Rendement"}</span>
-                <b dir="ltr">{yieldKgPerTree.toFixed(2)} Kg/{isAr ? "شجرة" : "arbre"}</b>
-              </div>
-            )}
-            {frigoStoredQty > 0 && (
-              <div className="flex justify-between text-sky-700 dark:text-sky-300">
-                <span>{isAr ? "مخزون في غرفة التبريد" : "Stocké en chambre froide"}</span>
-                <b dir="ltr">{frigoStoredQty} {f.unit} ({(frigoStoredQty * crateWeight).toFixed(0)} Kg)</b>
-              </div>
-            )}
             <div className="flex justify-between">
-              <span>{isAr ? "إجمالي البيع الخام" : "Total Vente brut"}</span>
-              <b dir="ltr">{formatDA(totalVenteBrut)}</b>
+              <span className="text-muted-foreground font-semibold">
+                {isAr ? "إجمالي البيع الخام" : "Total Vente brute"}
+              </span>
+              <strong dir="ltr">{formatDA(formFinancials.totalVenteBrute, 2)}</strong>
+            </div>
+            <div className="flex justify-between text-rose-700 dark:text-rose-400">
+              <span>{isAr ? "اقتطاعات الوكيل (العمولة + حقوق السوق)" : "Déductions Mandataire (COM + D. de marché)"}</span>
+              <span dir="ltr">− {formatDA(formFinancials.deductionsMandataire, 2)}</span>
+            </div>
+            <div className="flex justify-between font-bold text-foreground">
+              <span>{isAr ? "الصافي للدفع (الكشف / المبيعات)" : "Net à Payer Bordereau / Ventes"}</span>
+              <span dir="ltr">{formatDA(formFinancials.netAPayerBordereaux, 2)}</span>
             </div>
             <div className="flex justify-between text-muted-foreground">
-              <span>
-                {isAr ? "إجمالي التكاليف" : "Total Charges"}
-                {commissionAmount > 0 ? ` (${isAr ? "عمولة" : "comm."} ${formatNumber(commissionAmount, 0)})` : ""}
-                {frigoCost > 0 ? ` (${isAr ? "تبريد" : "frigo"} ${formatNumber(frigoCost, 0)})` : ""}
-              </span>
-              <span dir="ltr">− {formatDA(totalCharges)}</span>
+              <span>{isAr ? "تكاليف المزرعة" : "Charges ferme"}</span>
+              <span dir="ltr">− {formatDA(formFinancials.chargesFerme, 2)}</span>
             </div>
-            <div className="flex justify-between border-t pt-1.5 text-sm sm:text-base font-black">
-              <span>{isAr ? "الصافي" : "Net"}</span>
-              <span dir="ltr" className={netResult >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}>
-                {formatDA(netResult)}
+            {formFinancials.frigoStoredKg > 0 && (
+              <div className="flex justify-between text-sky-700 dark:text-sky-300 font-bold">
+                <span>❄️ {isAr ? "المخزون المودع في غرفة التبريد" : "Stock encore en chambre froide"}</span>
+                <span dir="ltr">{formatNumber(formFinancials.frigoStoredKg, 2)} kg</span>
+              </div>
+            )}
+            <div className="flex justify-between border-t pt-2 text-sm sm:text-base font-black">
+              <span>{isAr ? "الربح الصافي الحقيقي للمزرعة" : "Bénéfice Net Réel Ferme"}</span>
+              <span
+                dir="ltr"
+                className={
+                  formFinancials.beneficeNetFerme >= 0
+                    ? "text-emerald-700 dark:text-emerald-300"
+                    : "text-destructive"
+                }
+              >
+                {formatDA(formFinancials.beneficeNetFerme, 2)}
               </span>
             </div>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex flex-wrap justify-end gap-2">
+            {onCloseForm && (
+              <button
+                type="button"
+                onClick={() => {
+                  resetForm();
+                  onCloseForm();
+                }}
+                className="rounded-xl border px-3.5 py-2 text-xs font-bold text-muted-foreground hover:bg-muted cursor-pointer"
+              >
+                {isAr ? "إلغاء" : "Annuler"}
+              </button>
+            )}
             <button
               type="button"
-              onClick={save}
-              disabled={!f.date || totalQty <= 0}
+              onClick={handleSaveHarvest}
+              disabled={!date || (step1Totals.totalPoidsNetKg <= 0 && step1Totals.totalColis <= 0)}
               className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-black text-primary-foreground disabled:opacity-50 cursor-pointer"
             >
               <Save className="h-3.5 w-3.5" />
@@ -1055,12 +2066,14 @@ export function RecolteFruitsFrais({
         </div>
       )}
 
-      {/* ARCHIVE DES LOTS + SORTIES FRIGO (filtrés par année) */}
+      {/* ================================================================= */}
+      {/* HISTORIQUE DES RÉCOLTES + BORDEREAUX + SORTIES CHAMBRE FROIDE     */}
+      {/* ================================================================= */}
       <div className="rounded-2xl border bg-card overflow-hidden">
         <div className="flex items-center justify-between gap-2 border-b px-4 py-2.5 text-sm font-black">
           <span className="flex items-center gap-2">
             <History className="h-4 w-4 text-primary" />
-            <span>{isAr ? `الأرشيف (${filteredRecords.length})` : `Archive (${filteredRecords.length})`}</span>
+            <span>{isAr ? `سجل الجني والكشوف (${filteredRecords.length})` : `Historique des récoltes (${filteredRecords.length})`}</span>
           </span>
           {selectedYear !== "all" && (
             <span dir="ltr" className="rounded-full bg-primary/15 text-primary px-2.5 py-0.5 text-[11px] font-black">
@@ -1076,71 +2089,85 @@ export function RecolteFruitsFrais({
         ) : (
           <ul className="divide-y">
             {filteredRecords.map((r) => {
-              const rQty = parseFloat(r.qty || "0") || 0;
-              const rUnitWeight = r.unit === "Caisses" ? Math.max(0.1, parseFloat(r.avgCrateWeightKg || "15") || 15) : 1;
-              const rKg = typeof r.totalKg === "number" ? r.totalKg : rQty * rUnitWeight;
-              const initFrigo = parseFloat(r.frigoQty || "0") || 0;
-              const exitedFrigo = (r.frigoExits || []).reduce((s, e) => s + e.qty, 0);
-              const remFrigo = Math.max(0, initFrigo - exitedFrigo);
-              const exitsGross = (r.frigoExits || []).reduce((s, e) => s + e.grossAmount, 0);
-              const exitsComm = (r.frigoExits || []).reduce((s, e) => s + e.commissionAmount, 0);
+              const fin = getRecordFinancialSummary(r);
+              const firstBd = r.bordereaux?.[0];
+              const dest = r.destination || "mandataire";
 
-              const baseVente =
-                typeof r.totalVente === "number"
-                  ? r.totalVente
-                  : (parseFloat(r.choix1Qty || "0") * parseFloat(r.choix1Price || "0") +
-                      parseFloat(r.choix2Qty || "0") * parseFloat(r.choix2Price || "0") +
-                      parseFloat(r.choix3Qty || "0") * parseFloat(r.choix3Price || "0") +
-                      parseFloat(r.choix4Qty || "0") * parseFloat(r.choix4Price || "0")) ||
-                    rQty * (parseFloat(r.price || "0") || 0);
+              // Badge destination détaillé
+              const destBadge =
+                dest === "mandataire"
+                  ? [
+                      isAr ? "🤝 وكيل" : "🤝 Mandataire",
+                      firstBd?.marcheCarreau || r.mandataireName,
+                      firstBd?.numeroBordereau ? `N° ${firstBd.numeroBordereau}` : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" • ")
+                  : dest === "frigo"
+                    ? `❄️ ${isAr ? "غرفة تبريد" : "Chambre froide"}${r.frigoName ? ` • ${r.frigoName}` : ""}`
+                    : dest === "direct"
+                      ? `🏪 ${isAr ? "بيع مباشر" : "Vente directe"}`
+                      : `🔀 ${isAr ? "مختلط" : "Mixte"}`;
 
-              const baseCharges =
-                typeof r.totalCharges === "number"
-                  ? r.totalCharges
-                  : (parseFloat(r.mainOeuvre || "0") || 0) +
-                    (parseFloat(r.emballages || "0") || 0) +
-                    (parseFloat(r.transport || "0") || 0) +
-                    (parseFloat(r.autres || "0") || 0) +
-                    (r.frigoCost || 0) +
-                    (r.commissionAmount || 0);
-
-              const tv = baseVente + exitsGross;
-              const ch = baseCharges + exitsComm;
-              const netVal = tv - ch;
+              const statusBadge =
+                fin.remainingFrigoKg > 0.1 && dest === "frigo"
+                  ? { label: isAr ? "في المخزون" : "En stock", cls: "bg-sky-500/15 text-sky-800 dark:text-sky-200" }
+                  : (firstBd?.paymentStatus || r.paymentStatus) === "en_attente"
+                    ? { label: isAr ? "قيد الانتظار" : "En attente", cls: "bg-amber-500/15 text-amber-800 dark:text-amber-200" }
+                    : (firstBd?.paymentStatus || r.paymentStatus) === "partiel"
+                      ? { label: isAr ? "دفع جزئي" : "Partiel", cls: "bg-violet-500/15 text-violet-800 dark:text-violet-200" }
+                      : { label: isAr ? "مدفوع" : "Payé", cls: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200" };
 
               return (
                 <li key={r.id} className="p-3.5 text-xs space-y-2">
+                  {/* Ligne supérieure : Date + Quantité + Badges + Net + Actions */}
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span dir="ltr" className="font-black text-foreground">{formatDateFR(r.date)}</span>
-                      <span className="font-bold text-muted-foreground">—</span>
-                      <span dir="ltr" className="font-black text-primary">
-                        {formatNumber(rKg, 1)} Kg {r.unit === "Caisses" ? `(${formatNumber(r.qty)} c.)` : ""}
+                      <span dir="ltr" className="font-black text-foreground">
+                        {formatDateFR(r.date)}
                       </span>
-                      {r.destination && (
-                        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold">
-                          {r.destination === "frigo"
-                            ? "❄️ Frigo"
-                            : r.destination === "mandataire"
-                              ? `🤝 ${r.mandataireName || "Mandataire"}`
-                              : r.destination === "direct"
-                                ? "🏪 Direct"
-                                : "🔀 Mixte"}
-                        </span>
-                      )}
-                      {r.paymentStatus && r.paymentStatus !== "paye" && (
-                        <span className="rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 px-2 py-0.5 text-[10px] font-bold">
-                          {r.paymentStatus === "en_attente"
-                            ? isAr ? "قيد الانتظار" : "En attente"
-                            : isAr ? "دفع جزئي" : "Partiel"}
-                        </span>
-                      )}
+                      <span className="text-muted-foreground">—</span>
+                      <span dir="ltr" className="font-black text-primary">
+                        {formatNumber(fin.totalKg, 1)} kg
+                        {fin.totalColis > 0 ? ` (${formatNumber(fin.totalColis, 0)} ${isAr ? "صندوق" : "colis"})` : ""}
+                      </span>
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-foreground">
+                        {destBadge}
+                      </span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusBadge.cls}`}>
+                        {statusBadge.label}
+                      </span>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span dir="ltr" className={`font-black ${netVal >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>
-                        Net {formatDA(netVal)}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        dir="ltr"
+                        className={`font-black ${
+                          fin.beneficeNetFerme >= 0
+                            ? "text-emerald-700 dark:text-emerald-300"
+                            : "text-destructive"
+                        }`}
+                      >
+                        Net {formatDA(fin.beneficeNetFerme)}
                       </span>
+
+                      {/* Bouton Imprimer / PDF pour chaque bordereau Mandataire */}
+                      {(r.bordereaux || []).map((bd, bIdx) => (
+                        <button
+                          key={bd.id}
+                          type="button"
+                          onClick={() => openPrintBordereau(bd, r.selectedParcelIds)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white px-2 py-1 text-[10px] font-bold transition cursor-pointer"
+                          title={isAr ? "طباعة / PDF كشف المبيعات" : "Imprimer / PDF le bordereau"}
+                        >
+                          <Printer className="h-3 w-3" />
+                          <span>
+                            {isAr ? "طباعة / PDF" : "Imprimer / PDF"}
+                            {(r.bordereaux?.length || 0) > 1 ? ` #${bIdx + 1}` : ""}
+                          </span>
+                        </button>
+                      ))}
+
                       {canEdit && (
                         <>
                           <button
@@ -1164,43 +2191,80 @@ export function RecolteFruitsFrais({
                     </div>
                   </div>
 
-                  {/* Stock Frigo & Sorties */}
-                  {initFrigo > 0 && (
+                  {/* Détail financier compact */}
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+                    <span dir="ltr">
+                      {isAr ? "مبيعات خام" : "Vente brute"} : <strong>{formatDA(fin.grossSales)}</strong>
+                    </span>
+                    {fin.deductionsMandataire > 0 && (
+                      <span dir="ltr">
+                        {isAr ? "اقتطاعات الوكيل" : "COM + D. marché"} : −{formatDA(fin.deductionsMandataire)}
+                      </span>
+                    )}
+                    {fin.chargesFerme > 0 && (
+                      <span dir="ltr">
+                        {isAr ? "تكاليف المزرعة" : "Charges ferme"} : −{formatDA(fin.chargesFerme)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Suivi Stock Chambre Froide + Sorties */}
+                  {fin.storedKg > 0 && (
                     <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-2.5 space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-bold text-sky-800 dark:text-sky-200 flex items-center gap-1">
-                          <Snowflake className="h-3.5 w-3.5" />
+                        <span className="font-bold text-sky-800 dark:text-sky-200 flex items-center gap-1.5">
+                          <Snowflake className="h-3.5 w-3.5 shrink-0" />
                           <span>
                             {r.frigoName || (isAr ? "غرفة التبريد" : "Chambre froide")} :{" "}
-                            <strong dir="ltr">{remFrigo} / {initFrigo} {r.unit}</strong>{" "}
+                            <strong dir="ltr">
+                              {formatNumber(fin.remainingFrigoKg, 1)} / {formatNumber(fin.storedKg, 1)} kg
+                            </strong>{" "}
                             {isAr ? "متبقي" : "restants"}
                           </span>
                         </span>
-                        {canEdit && remFrigo > 0 && (
+                        {canEdit && fin.remainingFrigoKg > 0.1 && (
                           <button
                             type="button"
-                            onClick={() => {
-                              setExitRecord(r);
-                              setExitForm((prev) => ({ ...prev, qty: String(remFrigo) }));
-                            }}
+                            onClick={() => openFrigoExitModal(r)}
                             className="inline-flex items-center gap-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white px-2.5 py-1 text-[10px] font-black cursor-pointer"
                           >
                             <Plus className="h-3 w-3" />
-                            <span>{isAr ? "خروج / بيع من التبريد" : "Sortie / Vente frigo"}</span>
+                            <span>
+                              {isAr ? "تسجيل خروج من غرفة التبريد" : "Enregistrer une sortie du frigo"}
+                            </span>
                           </button>
                         )}
                       </div>
 
                       {(r.frigoExits || []).length > 0 && (
-                        <div className="space-y-1 border-t border-sky-500/20 pt-1.5">
+                        <div className="space-y-1.5 border-t border-sky-500/20 pt-1.5">
                           {(r.frigoExits || []).map((ex) => (
-                            <div key={ex.id} className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-muted-foreground">
+                            <div
+                              key={ex.id}
+                              className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground"
+                            >
                               <span>
-                                <strong dir="ltr">{formatDateFR(ex.date)}</strong> · {ex.buyerName} (<span dir="ltr">{formatNumber(ex.qty)} {r.unit} × {formatDA(ex.unitPrice)}</span>)
+                                <strong dir="ltr" className="text-foreground">
+                                  {formatDateFR(ex.date)}
+                                </strong>{" "}
+                                · {ex.mode === "mandataire" ? "🤝" : "🏪"} {ex.buyerName} (
+                                <span dir="ltr">{formatNumber(ex.qty, 1)} kg</span>)
                               </span>
-                              <span dir="ltr" className="font-bold text-emerald-700 dark:text-emerald-300">
-                                +{formatDA(ex.netAmount)}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span dir="ltr" className="font-bold text-emerald-700 dark:text-emerald-300">
+                                  +{formatDA(ex.netAmount)}
+                                </span>
+                                {ex.bordereau && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openPrintBordereau(ex.bordereau!, r.selectedParcelIds)}
+                                    className="inline-flex items-center gap-1 rounded bg-slate-900 hover:bg-slate-800 text-white px-1.5 py-0.5 text-[10px] font-bold cursor-pointer"
+                                  >
+                                    <Printer className="h-2.5 w-2.5" />
+                                    <span>PDF</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1208,16 +2272,8 @@ export function RecolteFruitsFrais({
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-3 text-[11px] text-muted-foreground">
-                    <span dir="ltr">{isAr ? "مبيعات" : "Ventes"}: {formatDA(tv)}</span>
-                    <span dir="ltr">{isAr ? "تكاليف" : "Charges"}: {formatDA(ch)}</span>
-                    {typeof r.rebutPercent === "number" && r.rebutPercent > 0 && (
-                      <span dir="ltr" className="text-destructive font-semibold">
-                        {isAr ? "فضلات" : "Rebut"}: {r.rebutPercent}%
-                      </span>
-                    )}
-                  </div>
                   {r.notes && <p className="text-[11px] italic text-muted-foreground">{r.notes}</p>}
+                  {r.photo && <img src={r.photo} alt="" className="h-20 rounded-lg border object-cover" />}
                 </li>
               );
             })}
@@ -1225,72 +2281,203 @@ export function RecolteFruitsFrais({
         )}
       </div>
 
-      {/* Modale Sortie / Vente depuis la Chambre Froide */}
+      {/* ================================================================= */}
+      {/* MODALE SORTIE DE CHAMBRE FROIDE (Mandataire Bordereau / Direct)   */}
+      {/* ================================================================= */}
       {exitRecord && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-md rounded-2xl border bg-card p-4 shadow-xl space-y-3 text-xs">
-            <div className="flex items-center justify-between border-b pb-2">
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-3xl max-h-[92dvh] overflow-y-auto rounded-2xl border bg-card p-3.5 sm:p-5 shadow-2xl space-y-4 text-xs my-auto">
+            <div className="flex items-center justify-between border-b pb-2.5">
               <h4 className="text-sm font-black text-sky-700 dark:text-sky-300 flex items-center gap-1.5">
-                <Snowflake className="h-4 w-4" />
-                <span>{isAr ? "تسجيل خروج / بيع من غرفة التبريد" : "Sortie / Vente depuis le Frigo"}</span>
+                <Snowflake className="h-4 w-4 shrink-0" />
+                <span>
+                  {isAr ? "تسجيل خروج / بيع من غرفة التبريد" : "Enregistrer une sortie de la Chambre froide"}
+                </span>
               </h4>
-              <button type="button" onClick={() => setExitRecord(null)} className="p-1 rounded-lg hover:bg-muted">
+              <button
+                type="button"
+                onClick={() => setExitRecord(null)}
+                className="p-1 rounded-lg hover:bg-muted cursor-pointer"
+              >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isAr ? "التاريخ" : "Date"}</label>
-                <input type="date" dir="ltr" value={exitForm.date} onChange={(e) => setExitForm({ ...exitForm, date: e.target.value })} className={cls} />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isAr ? "نوع البيع" : "Mode"}</label>
-                <select value={exitForm.mode} onChange={(e) => setExitForm({ ...exitForm, mode: e.target.value as "mandataire" | "direct" })} className={cls}>
-                  <option value="mandataire">{isAr ? "وكيل سوق" : "Mandataire"}</option>
-                  <option value="direct">{isAr ? "بيع مباشر" : "Vente directe"}</option>
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isAr ? "المشتري / الوكيل" : "Mandataire / Client"}</label>
-                <input value={exitForm.buyerName} onChange={(e) => setExitForm({ ...exitForm, buyerName: e.target.value })} placeholder={isAr ? "الاسم..." : "Nom..."} className={cls} />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isAr ? "الكمية" : "Quantité"} ({exitRecord.unit})</label>
-                <input dir="ltr" inputMode="decimal" value={exitForm.qty} onChange={(e) => setExitForm({ ...exitForm, qty: e.target.value })} className={cls} />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isAr ? "السعر / وحدة (دج)" : "Prix / unité (DA)"}</label>
-                <input dir="ltr" inputMode="decimal" value={exitForm.unitPrice} onChange={(e) => setExitForm({ ...exitForm, unitPrice: e.target.value })} className={cls} />
-              </div>
-              {exitForm.mode === "mandataire" && (
-                <>
-                  <div>
-                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isAr ? "العمولة" : "Commission"}</label>
-                    <select value={exitForm.commissionType} onChange={(e) => setExitForm({ ...exitForm, commissionType: e.target.value as "percent" | "fixed" })} className={cls}>
-                      <option value="percent">%</option>
-                      <option value="fixed">DA</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isAr ? "قيمة العمولة" : "Valeur"}</label>
-                    <input dir="ltr" inputMode="decimal" value={exitForm.commissionValue} onChange={(e) => setExitForm({ ...exitForm, commissionValue: e.target.value })} className={cls} />
-                  </div>
-                </>
-              )}
+              <button
+                type="button"
+                onClick={() => setExitMode("mandataire")}
+                className={`rounded-xl border px-3 py-2 font-black flex items-center justify-center gap-1.5 cursor-pointer ${
+                  exitMode === "mandataire"
+                    ? "bg-amber-600 text-white border-amber-600"
+                    : "bg-muted/30 text-foreground"
+                }`}
+              >
+                <Handshake className="h-4 w-4" />
+                <span>{isAr ? "نحو وكيل سوق (كشف مبيعات)" : "Vers Mandataire (Bordereau)"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setExitMode("direct")}
+                className={`rounded-xl border px-3 py-2 font-black flex items-center justify-center gap-1.5 cursor-pointer ${
+                  exitMode === "direct"
+                    ? "bg-emerald-600 text-white border-emerald-600"
+                    : "bg-muted/30 text-foreground"
+                }`}
+              >
+                <Store className="h-4 w-4" />
+                <span>{isAr ? "بيع مباشر" : "Vente directe"}</span>
+              </button>
             </div>
 
-            <div className="flex justify-end gap-2 border-t pt-2.5">
-              <button type="button" onClick={() => setExitRecord(null)} className="rounded-lg border px-3 py-1.5 font-bold text-muted-foreground">
+            {exitMode === "mandataire" ? (
+              <BordereauEditorCard
+                bordereau={exitBordereau}
+                onChange={setExitBordereau}
+                onPrint={() => openPrintBordereau(exitBordereau, exitRecord.selectedParcelIds)}
+                knownMandataires={knownMandataires}
+                isAr={isAr}
+              />
+            ) : (
+              <div className="rounded-xl border border-emerald-500/35 bg-emerald-500/[0.04] p-3 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "تاريخ الخروج" : "Date de sortie"}
+                    </label>
+                    <input
+                      type="date"
+                      dir="ltr"
+                      value={exitDirectDate}
+                      onChange={(e) => setExitDirectDate(e.target.value)}
+                      className={cls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "اسم الزبون" : "Client (optionnel)"}
+                    </label>
+                    <input
+                      value={exitDirectBlock.clientName}
+                      onChange={(e) => setExitDirectBlock({ ...exitDirectBlock, clientName: e.target.value })}
+                      placeholder={isAr ? "اسم المشتري..." : "Nom client..."}
+                      className={cls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold uppercase text-muted-foreground block mb-0.5">
+                      {isAr ? "حالة الدفع" : "Statut"}
+                    </label>
+                    <select
+                      value={exitDirectBlock.paymentStatus}
+                      onChange={(e) =>
+                        setExitDirectBlock({
+                          ...exitDirectBlock,
+                          paymentStatus: e.target.value as "paye" | "credit",
+                        })
+                      }
+                      className={cls}
+                    >
+                      <option value="paye">{isAr ? "مدفوع (Payé)" : "Payé"}</option>
+                      <option value="credit">{isAr ? "بالدين (Crédit)" : "Crédit"}</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  {exitDirectBlock.lines.map((line) => (
+                    <div key={line.id} className="grid grid-cols-12 gap-1.5 items-center">
+                      <input
+                        value={line.nature}
+                        onChange={(e) =>
+                          setExitDirectBlock({
+                            ...exitDirectBlock,
+                            lines: exitDirectBlock.lines.map((l) =>
+                              l.id === line.id ? { ...l, nature: e.target.value } : l,
+                            ),
+                          })
+                        }
+                        placeholder="Nature"
+                        className="col-span-4 rounded border bg-background px-2 py-1 text-xs font-bold"
+                      />
+                      <input
+                        dir="ltr"
+                        inputMode="numeric"
+                        value={line.colis}
+                        onChange={(e) =>
+                          setExitDirectBlock({
+                            ...exitDirectBlock,
+                            lines: exitDirectBlock.lines.map((l) =>
+                              l.id === line.id ? { ...l, colis: e.target.value } : l,
+                            ),
+                          })
+                        }
+                        placeholder="Colis"
+                        className="col-span-2 rounded border bg-background px-1.5 py-1 text-center text-xs"
+                      />
+                      <input
+                        dir="ltr"
+                        inputMode="decimal"
+                        value={line.poidsNetKg}
+                        onChange={(e) =>
+                          setExitDirectBlock({
+                            ...exitDirectBlock,
+                            lines: exitDirectBlock.lines.map((l) =>
+                              l.id === line.id ? { ...l, poidsNetKg: e.target.value } : l,
+                            ),
+                          })
+                        }
+                        placeholder="Kg"
+                        className="col-span-3 rounded border bg-background px-1.5 py-1 text-right text-xs"
+                      />
+                      <input
+                        dir="ltr"
+                        inputMode="decimal"
+                        value={line.prixUnitaire}
+                        onChange={(e) =>
+                          setExitDirectBlock({
+                            ...exitDirectBlock,
+                            lines: exitDirectBlock.lines.map((l) =>
+                              l.id === line.id ? { ...l, prixUnitaire: e.target.value } : l,
+                            ),
+                          })
+                        }
+                        placeholder="DA/kg"
+                        className="col-span-3 rounded border bg-background px-1.5 py-1 text-right text-xs"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 border-t pt-3">
+              <button
+                type="button"
+                onClick={() => setExitRecord(null)}
+                className="rounded-xl border px-3.5 py-2 font-bold text-muted-foreground cursor-pointer"
+              >
                 {isAr ? "إلغاء" : "Annuler"}
               </button>
-              <button type="button" onClick={saveFrigoExit} className="rounded-lg bg-sky-600 text-white px-4 py-1.5 font-black cursor-pointer">
-                {isAr ? "تسجيل الخروج" : "Valider la sortie"}
+              <button
+                type="button"
+                onClick={handleSaveFrigoExit}
+                className="rounded-xl bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 font-black cursor-pointer"
+              >
+                {isAr ? "تأكيد الخروج" : "Valider la sortie"}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* MODALE IMPRESSION / EXPORT PDF A4 DU BORDEREAU */}
+      <BordereauPrintModal
+        open={Boolean(printData)}
+        onClose={() => setPrintData(null)}
+        data={printData}
+        isAr={isAr}
+      />
     </div>
   );
 }

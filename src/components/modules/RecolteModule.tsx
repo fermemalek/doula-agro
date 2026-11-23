@@ -9,6 +9,7 @@ import {
 } from "@/lib/chilling/varietiesConfig";
 import { RecolteFruitsFrais } from "./RecolteFruitsFrais";
 import { RecolteOlivier } from "./RecolteOlivier";
+import { formatDateFR } from "@/lib/format";
 
 export function RecolteModule({ parcelId, canEdit }: { parcelId: string; canEdit: boolean }) {
   const { lang } = useTranslation();
@@ -117,13 +118,13 @@ export function RecolteModule({ parcelId, canEdit }: { parcelId: string; canEdit
                       <span className="font-bold text-foreground flex items-center gap-1">
                         <CalendarCheck className="h-3.5 w-3.5 text-emerald-600" />
                         <span>{isAr ? "بداية الجني :" : "Début récolte :"}</span>
-                        <span dir="ltr" className="font-mono">{h.harvestStartDate}</span>
+                        <span dir="ltr" className="font-mono">{formatDateFR(h.harvestStartDate)}</span>
                       </span>
                       {h.bloomStartDate && (
                         <span className="text-muted-foreground flex items-center gap-1">
                           <Flower2 className="h-3.5 w-3.5 text-rose-500" />
                           <span>{isAr ? "التزهير :" : "Floraison :"}</span>
-                          <span dir="ltr" className="font-mono font-semibold text-foreground">{h.bloomStartDate}</span>
+                          <span dir="ltr" className="font-mono font-semibold text-foreground">{formatDateFR(h.bloomStartDate)}</span>
                         </span>
                       )}
                     </div>
