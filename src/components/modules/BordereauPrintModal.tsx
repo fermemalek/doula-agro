@@ -9,6 +9,7 @@ export interface BordereauPrintLine {
   colis: string;
   poidsNetKg: string;
   prixUnitaire: string;
+  montantManualDA?: string;
 }
 
 export interface BordereauPrintData {
@@ -32,6 +33,15 @@ function parseNum(v: string | number | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+export function getBordereauLineAmount(l: BordereauPrintLine): number {
+  const hasManual =
+    l.montantManualDA !== undefined &&
+    String(l.montantManualDA).trim() !== "" &&
+    Number.isFinite(parseFloat(String(l.montantManualDA).replace(/\s/g, "").replace(",", ".")));
+  if (hasManual) return parseNum(l.montantManualDA);
+  return parseNum(l.poidsNetKg) * parseNum(l.prixUnitaire);
+}
+
 export function computeBordereauTotals(b: {
   lines: BordereauPrintLine[];
   commissionPercent: string;
@@ -46,10 +56,9 @@ export function computeBordereauTotals(b: {
   for (const l of b.lines) {
     const c = parseNum(l.colis);
     const kg = parseNum(l.poidsNetKg);
-    const pu = parseNum(l.prixUnitaire);
     totalColis += c;
     totalPoidsNet += kg;
-    totalVenteBrute += kg * pu;
+    totalVenteBrute += getBordereauLineAmount(l);
   }
 
   const comPct = parseNum(b.commissionPercent);
@@ -224,7 +233,7 @@ export function BordereauPrintModal({
                   const kg = parseNum(line.poidsNetKg);
                   const pu = parseNum(line.prixUnitaire);
                   const avgPerColis = colis > 0 ? kg / colis : 0;
-                  const amount = kg * pu;
+                  const amount = getBordereauLineAmount(line);
                   return (
                     <tr key={line.id} className="hover:bg-slate-50">
                       <td dir="ltr" className="border border-slate-800 px-2 py-1.5 text-center font-mono">

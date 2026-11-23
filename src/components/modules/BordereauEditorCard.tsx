@@ -1,6 +1,6 @@
 import { Plus, Trash2, Printer, Copy, Handshake, ArrowDownToLine } from "lucide-react";
 import { formatDA, formatNumber } from "@/lib/format";
-import { computeBordereauTotals, type BordereauPrintLine } from "./BordereauPrintModal";
+import { computeBordereauTotals, getBordereauLineAmount, type BordereauPrintLine } from "./BordereauPrintModal";
 
 export type BordereauPaymentStatus = "paye" | "en_attente" | "partiel";
 
@@ -10,6 +10,7 @@ export interface MandataireBordereau {
   marcheCarreau: string;
   numeroBordereau: string;
   dateFolio: string;
+  accountLabel?: string;
   paymentStatus: BordereauPaymentStatus;
   paidAmount?: string;
   lines: BordereauPrintLine[];
@@ -304,9 +305,8 @@ export function BordereauEditorCard({
               {bordereau.lines.map((line) => {
                 const c = parseNum(line.colis);
                 const kg = parseNum(line.poidsNetKg);
-                const pu = parseNum(line.prixUnitaire);
                 const avg = c > 0 ? kg / c : 0;
-                const amt = kg * pu;
+                const amt = getBordereauLineAmount(line);
                 return (
                   <tr key={line.id}>
                     <td dir="ltr" className="p-1.5 text-center font-mono text-[11px] text-muted-foreground">
@@ -327,7 +327,7 @@ export function BordereauEditorCard({
                         list={natureListId}
                         value={line.nature}
                         onChange={(e) => updateLine(line.id, { nature: e.target.value })}
-                        placeholder="ت/22, Choix 1..."
+                        placeholder="Cal. 22, Frag..."
                         className="w-full rounded border border-input bg-background px-2 py-1 text-xs font-bold"
                       />
                     </td>
@@ -336,7 +336,7 @@ export function BordereauEditorCard({
                         dir="ltr"
                         inputMode="decimal"
                         value={line.poidsNetKg}
-                        onChange={(e) => updateLine(line.id, { poidsNetKg: e.target.value })}
+                        onChange={(e) => updateLine(line.id, { poidsNetKg: e.target.value, montantManualDA: undefined })}
                         placeholder="0.0"
                         className="w-full rounded border border-input bg-background px-1.5 py-1 text-right text-xs font-semibold"
                       />
@@ -346,13 +346,20 @@ export function BordereauEditorCard({
                         dir="ltr"
                         inputMode="decimal"
                         value={line.prixUnitaire}
-                        onChange={(e) => updateLine(line.id, { prixUnitaire: e.target.value })}
+                        onChange={(e) => updateLine(line.id, { prixUnitaire: e.target.value, montantManualDA: undefined })}
                         placeholder="DA/kg"
                         className="w-full rounded border border-input bg-background px-1.5 py-1 text-right text-xs font-semibold"
                       />
                     </td>
-                    <td dir="ltr" className="p-1.5 text-right font-mono font-bold text-foreground whitespace-nowrap">
-                      {formatNumber(amt, 2)}
+                    <td className="p-1.5">
+                      <input
+                        dir="ltr"
+                        inputMode="decimal"
+                        value={line.montantManualDA !== undefined ? line.montantManualDA : amt > 0 ? amt.toFixed(2) : ""}
+                        onChange={(e) => updateLine(line.id, { montantManualDA: e.target.value })}
+                        placeholder="0.00"
+                        className="w-full rounded border border-input bg-background px-1.5 py-1 text-right font-mono text-xs font-bold text-foreground"
+                      />
                     </td>
                     <td className="p-1.5">
                       <div className="flex items-center justify-center gap-1">

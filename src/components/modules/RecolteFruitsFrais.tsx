@@ -38,6 +38,7 @@ import {
   createEmptySaleLine,
   type MandataireBordereau,
 } from "./BordereauEditorCard";
+import { seedBordereau36387IfNeeded } from "@/lib/recolte-seed";
 
 export type FruitDestination = "mandataire" | "frigo" | "direct" | "mixte";
 export type PaymentStatus = "paye" | "en_attente" | "partiel";
@@ -397,9 +398,35 @@ export function RecolteFruitsFrais({
   const { lang } = useTranslation();
   const isAr = lang === "ar";
   const allParcels = useParcels();
-  const records = useModuleRecords<FreshFruitHarvestRecord>(parcelId, "recolte");
+  const ownRecords = useModuleRecords<FreshFruitHarvestRecord>(parcelId, "recolte");
+  const pommier1Records = useModuleRecords<FreshFruitHarvestRecord>("pommier1", "recolte");
   const { add, update, remove } = useModuleActions();
   const [editingHarvestId, setEditingHarvestId] = useState<string | null>(null);
+  const [editingOwnerParcelId, setEditingOwnerParcelId] = useState<string>(parcelId);
+
+  // Seed idempotent du bordereau réel N° 36387 (Pommier 1 & 2) — exécuté une seule fois
+  useEffect(() => {
+    if (parcelId === "pommier1" || parcelId === "pommier2") {
+      seedBordereau36387IfNeeded(pommier1Records, add);
+    }
+  }, [parcelId, pommier1Records, add]);
+
+  // Sur Pommier 2, afficher aussi les récoltes partagées Pommier 1 & 2 sans doublon
+  const records = useMemo(() => {
+    if (parcelId !== "pommier2") return ownRecords;
+    const ownIds = new Set(ownRecords.map((r) => r.id));
+    const shared = pommier1Records.filter(
+      (r) => !ownIds.has(r.id) && Array.isArray(r.selectedParcelIds) && r.selectedParcelIds.includes("pommier2"),
+    );
+    return [...ownRecords, ...shared].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [parcelId, ownRecords, pommier1Records]);
+
+  const getRecordOwnerParcelId = (r: FreshFruitHarvestRecord): string => {
+    if (parcelId === "pommier2" && !ownRecords.some((own) => own.id === r.id)) {
+      return "pommier1";
+    }
+    return parcelId;
+  };
 
   const CUSTOM_SPECIES_KEY = "doula_recolte_custom_species_v1";
   const [customSpeciesList, setCustomSpeciesList] = useState<string[]>(() => {
@@ -789,7 +816,7 @@ export function RecolteFruitsFrais({
     };
 
     if (editingHarvestId) {
-      update(parcelId, "recolte", editingHarvestId, payload);
+      update(editingOwnerParcelId || parcelId, "recolte", editingHarvestId, payload);
       toast.success(isAr ? "تم تحديث الجني والكشف بنجاح!" : "Récolte et bordereau mis à jour !");
     } else {
       add(parcelId, "recolte", {
@@ -807,6 +834,7 @@ export function RecolteFruitsFrais({
 
   function handleEditRecord(r: FreshFruitHarvestRecord) {
     setEditingHarvestId(r.id);
+    setEditingOwnerParcelId(getRecordOwnerParcelId(r));
     setDate(r.date || todayIso);
     setSelectedParcelIds(r.selectedParcelIds && r.selectedParcelIds.length > 0 ? r.selectedParcelIds : [parcelId]);
     setUnit((r.unit === "Quintal" || r.unit === "Caisse/Colis" ? r.unit : "Kg") as HarvestUnit);
@@ -993,7 +1021,7 @@ export function RecolteFruitsFrais({
   function openPrintBordereau(bd: MandataireBordereau, parcelIds?: string[]) {
     setPrintData({
       ...bd,
-      accountLabel: buildAccountLabel(parcelIds),
+      accountLabel: bd.accountLabel || buildAccountLabel(parcelIds),
     });
   }
 
@@ -2271,7 +2299,7 @@ export function RecolteFruitsFrais({
                           </button>
                           <button
                             type="button"
-                            onClick={() => remove(parcelId, "recolte", r.id)}
+                            onClick={() => remove(getRecordOwnerParcelId(r), "recolte", r.id)}
                             className="p-1 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition cursor-pointer"
                             title={isAr ? "حذف" : "Supprimer"}
                           >
