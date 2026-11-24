@@ -8,9 +8,10 @@ const createMutateAsync = vi.fn();
 const updateMutateAsync = vi.fn();
 const removeMutateAsync = vi.fn();
 const acceptMutateAsync = vi.fn();
+let mockExistingRecos: any[] = [];
 
 vi.mock("@/lib/cloud/recommendations", () => ({
-  useRecommendations: () => ({ data: [], isLoading: false }),
+  useRecommendations: () => ({ data: mockExistingRecos, isLoading: false }),
   useRecommendationActions: () => ({
     create: { mutateAsync: createMutateAsync },
     update: { mutateAsync: updateMutateAsync },
@@ -101,6 +102,7 @@ function setupPhytoTwoProductsForm() {
 describe("Tests d'intégration UI — RecommendationForm (Tank-Mix & Double Emploi)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockExistingRecos = [];
     createMutateAsync.mockResolvedValue({ id: "created-reco-1" });
   });
 
@@ -176,5 +178,55 @@ describe("Tests d'intégration UI — RecommendationForm (Tank-Mix & Double Empl
     await waitFor(() => {
       expect(createMutateAsync).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("Cas D (Conflit temporel <= 14 j avec reco en attente) : affiche la bannière rouge, désactive les boutons et bloque la sauvegarde", () => {
+    mockExistingRecos = [
+      {
+        id: "existing-pending-bellis",
+        kind: "phytosanitaire",
+        status: "envoyee",
+        parcel_ids: ["pommier1", "pommier2"],
+        payload: {
+          crop_group: ["pommiers"],
+          program: {
+            date: "2026-11-01",
+            products: [{ product: "BELLIS® WG" }],
+          },
+        },
+      },
+    ];
+
+    const onOpenChange = vi.fn();
+    render(<RecommendationForm open={true} onOpenChange={onOpenChange} />);
+
+    // Sélectionner POMMIERS + Phytosanitaire + date J+1 (2026-11-02)
+    fireEvent.click(screen.getByRole("button", { name: /crop\.pommiers|POMMIERS/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reco\.form\.shortFertIrrigation/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reco\.form\.shortPhyto|Phytosanitaire/i }));
+
+    const dateInputs = document.querySelectorAll<HTMLInputElement>('input[type="date"]');
+    dateInputs.forEach((inp) => {
+      fireEvent.change(inp, { target: { value: "2026-11-02" } });
+    });
+
+    const phytoSelect = Array.from(document.querySelectorAll<HTMLSelectElement>("select")).find((sel) =>
+      Array.from(sel.options).some((opt) => opt.value === "BELLIS® WG"),
+    )!;
+    expect(phytoSelect).toBeDefined();
+    fireEvent.change(phytoSelect, { target: { value: "BELLIS® WG" } });
+
+    // Bannière rouge temporelle visible avec date conflictuelle 2026-11-01
+    expect(screen.getByText(/Répétition interdite à ≤ 14 jours/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/2026-11-01/).length).toBeGreaterThanOrEqual(1);
+
+    // Boutons désactivés et 0 appel create
+    const blockedBtns = screen.getAllByRole("button", { name: /Bloqué : Répétition ≤ 14 jours/i });
+    expect(blockedBtns.length).toBe(2);
+    for (const btn of blockedBtns) {
+      expect(btn).toBeDisabled();
+      fireEvent.click(btn);
+    }
+    expect(createMutateAsync).not.toHaveBeenCalled();
   });
 });

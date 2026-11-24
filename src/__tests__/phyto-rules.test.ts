@@ -155,8 +155,8 @@ describe("2. Rotation, Intervalles (pending + accepted + executed) & Quotas", ()
 });
 
 describe("3. Stades Phénologiques, Abeilles & DAR", () => {
-  it("ne bloque jamais le DAR sur les stades sans fruit (repos_hivernal, floraison, post_recolte, chute_feuilles)", () => {
-    expect(isFruitBearingStage("repos_hivernal")).toBe(false);
+  it("ne bloque jamais le DAR sur les stades sans fruit (dormance, floraison, post_recolte, chute_feuilles)", () => {
+    expect(isFruitBearingStage("dormance")).toBe(false);
     expect(isFruitBearingStage("floraison")).toBe(false);
     expect(isFruitBearingStage("post_recolte")).toBe(false);
     expect(isFruitBearingStage("chute_feuilles")).toBe(false);
@@ -167,14 +167,14 @@ describe("3. Stades Phénologiques, Abeilles & DAR", () => {
       parcelHistory: [],
       allIngredients: ACTIVE_INGREDIENTS_DATABASE,
       currentSeasonYear: 2026,
-      growthStage: "repos_hivernal",
+      growthStage: "dormance",
       crop: "pomme",
       conditions: {
         isRainExpectedSoon: false,
         hasVisibleSymptoms: false,
         isRapidShootsGrowth: false,
         daysBeforeHarvest: 2, // même si < DAR, hors stade fruitier donc DAR inactif
-        growthStage: "repos_hivernal",
+        growthStage: "dormance",
       },
     });
     expect(options.length).toBeGreaterThan(0);

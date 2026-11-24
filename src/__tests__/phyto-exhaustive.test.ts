@@ -14,7 +14,7 @@ import {
 
 const ALL_STAGES: GrowthStage[] = PHENOLOGICAL_STAGES.map((s) => s.id);
 const NON_FRUIT_STAGES: GrowthStage[] = [
-  "repos_hivernal",
+  "dormance",
   "floraison",
   "post_recolte",
   "chute_feuilles",
