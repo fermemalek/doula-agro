@@ -1,4 +1,4 @@
-name: Doula Agro CI — Typecheck, Phyto Tests & Build
+name: Doula Agro CI — Typecheck, Phyto Tests, Build & Playwright E2E
 
 on:
   push:
@@ -30,3 +30,9 @@ jobs:
 
       - name: Production Vite build
         run: npm run build
+
+      - name: Install Playwright Chromium browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Run Playwright E2E (Mobile 360×800, FR/AR RTL & User Flows)
+        run: npm run test:e2e

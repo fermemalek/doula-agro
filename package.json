@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "vite dev",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "build": "vitest run && vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
@@ -26,6 +27,7 @@
     "@capacitor/local-notifications": "^8.2.0",
     "@eslint/js": "^9.32.0",
     "@hookform/resolvers": "^5.2.2",
+    "@playwright/test": "^1.65.1",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",

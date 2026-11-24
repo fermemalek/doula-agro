@@ -39,3 +39,5 @@ dist-ssr
 /--win32-x64/
 *.zip
 scratch/
+test-results/
+playwright-report/
