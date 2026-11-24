@@ -355,6 +355,10 @@ export function RecolteOlivier({
     const costPerLiterDA = totalNetOilL > 0 ? grandTotalChargesDA / totalNetOilL : 0;
     const avgSalePricePerL = soldOilLiters > 0 ? soldOilRevenueDA / soldOilLiters : 950;
     const estimatedStockValueDA = totalRemainingOilL * avgSalePricePerL;
+    const stockValueAtCostDA = totalRemainingOilL * costPerLiterDA;
+    const cashBalanceDA = totalCollectedDA - grandTotalChargesDA;
+    const netResultWithStockAtCostDA = totalCollectedDA + stockValueAtCostDA - grandTotalChargesDA;
+    const projectedNetResultDA = totalCollectedDA + estimatedStockValueDA - grandTotalChargesDA;
 
     return {
       totalOlivesTrituredKg,
@@ -368,6 +372,7 @@ export function RecolteOlivier({
       costPerLiterDA,
       avgSalePricePerL,
       estimatedStockValueDA,
+      stockValueAtCostDA,
       harvestAndMillChargesDA,
       autoTailleYearDA,
       autoEngraisYearDA,
@@ -377,7 +382,9 @@ export function RecolteOlivier({
       totalChargesDA: grandTotalChargesDA,
       totalRevenueDA,
       totalCollectedDA,
-      netResultDA: totalCollectedDA - grandTotalChargesDA,
+      cashBalanceDA,
+      netResultDA: netResultWithStockAtCostDA,
+      projectedNetResultDA,
     };
   }, [oliveCampaignRecords, allTailleRecords, allFertRecords, allPulvRecords, allPhytoRecords, allAmendRecords, parcelId, selectedYear, manualCharges]);
 
@@ -903,17 +910,47 @@ export function RecolteOlivier({
             {(f.destination === "vente_brut" || f.destination === "mixte") && (
               <div className="grid grid-cols-2 gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-2.5">
                 {f.destination === "mixte" && (
-                  <input dir="ltr" inputMode="decimal" value={f.rawOliveSoldKg} onChange={(e) => setF({ ...f, rawOliveSoldKg: e.target.value })} placeholder={isAr ? "وزن الزيتون المباع خام (كغ)" : "Olives vendues brutes (Kg)"} className={cls} />
+                  <div>
+                    <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                      {isAr ? "وزن الزيتون المباع خام (كغ)" : "Olives vendues brutes (Kg)"}
+                    </label>
+                    <input dir="ltr" inputMode="decimal" value={f.rawOliveSoldKg} onChange={(e) => setF({ ...f, rawOliveSoldKg: e.target.value })} placeholder="0" className={cls} />
+                  </div>
                 )}
-                <input dir="ltr" inputMode="decimal" value={f.rawOlivePricePerKg} onChange={(e) => setF({ ...f, rawOlivePricePerKg: e.target.value })} placeholder={isAr ? "سعر الكيلوغرام خام (دج)" : "Prix olives brutes (DA/Kg)"} className={cls} />
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                    {isAr ? "سعر الكيلوغرام خام (دج)" : "Prix olives brutes (DA/Kg)"}
+                  </label>
+                  <input dir="ltr" inputMode="decimal" value={f.rawOlivePricePerKg} onChange={(e) => setF({ ...f, rawOlivePricePerKg: e.target.value })} placeholder="0" className={cls} />
+                </div>
               </div>
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <input dir="ltr" inputMode="decimal" value={f.mainOeuvre} onChange={(e) => setF({ ...f, mainOeuvre: e.target.value })} placeholder={isAr ? "اليد العاملة (دج)" : "Main-d'œuvre (DA)"} className={cls} />
-              <input dir="ltr" inputMode="decimal" value={f.transport} onChange={(e) => setF({ ...f, transport: e.target.value })} placeholder={isAr ? "النقل للمعصرة (دج)" : "Transport huilerie (DA)"} className={cls} />
-              <input dir="ltr" inputMode="decimal" value={f.sacsCaisses} onChange={(e) => setF({ ...f, sacsCaisses: e.target.value })} placeholder={isAr ? "أكياس / صناديق (دج)" : "Sacs / Caisses (DA)"} className={cls} />
-              <input dir="ltr" inputMode="decimal" value={f.autres} onChange={(e) => setF({ ...f, autres: e.target.value })} placeholder={isAr ? "مصاريف أخرى (دج)" : "Autres (DA)"} className={cls} />
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                  {isAr ? "اليد العاملة (دج)" : "Main-d'œuvre (DA)"}
+                </label>
+                <input dir="ltr" inputMode="decimal" value={f.mainOeuvre} onChange={(e) => setF({ ...f, mainOeuvre: e.target.value })} placeholder={isAr ? "اليد العاملة (دج)" : "Main-d'œuvre (DA)"} className={cls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                  {isAr ? "النقل للمعصرة (دج)" : "Transport huilerie (DA)"}
+                </label>
+                <input dir="ltr" inputMode="decimal" value={f.transport} onChange={(e) => setF({ ...f, transport: e.target.value })} placeholder={isAr ? "النقل للمعصرة (دج)" : "Transport huilerie (DA)"} className={cls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                  {isAr ? "أكياس / صناديق (دج)" : "Sacs / Caisses (DA)"}
+                </label>
+                <input dir="ltr" inputMode="decimal" value={f.sacsCaisses} onChange={(e) => setF({ ...f, sacsCaisses: e.target.value })} placeholder={isAr ? "أكياس / صناديق (دج)" : "Sacs / Caisses (DA)"} className={cls} />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                  {isAr ? "مصاريف أخرى (دج)" : "Autres (DA)"}
+                </label>
+                <input dir="ltr" inputMode="decimal" value={f.autres} onChange={(e) => setF({ ...f, autres: e.target.value })} placeholder={isAr ? "مصاريف أخرى (دج)" : "Autres (DA)"} className={cls} />
+              </div>
             </div>
           </div>
 
@@ -933,54 +970,95 @@ export function RecolteOlivier({
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <input value={f.millName} onChange={(e) => setF({ ...f, millName: e.target.value })} placeholder={isAr ? "اسم المعصرة" : "Nom de l'huilerie"} className={cls} />
-                <input type="date" dir="ltr" value={f.triturationDate} onChange={(e) => setF({ ...f, triturationDate: e.target.value })} className={cls} />
-                <input
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={f.olivesTrituredKg}
-                  onChange={(e) => setF({ ...f, olivesTrituredKg: e.target.value })}
-                  placeholder={`${isAr ? "وزن معصور (كغ)" : "Olives triturées (Kg)"} (${Math.max(0, harvestedKg - rawSoldKg) || 0})`}
-                  className={cls}
-                />
-                <input
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={f.oilObtainedL}
-                  onChange={(e) => setF({ ...f, oilObtainedL: e.target.value })}
-                  placeholder={isAr ? "الزيت المستخرج (لتر)" : "Huile obtenue (Litres)"}
-                  className={cls}
-                />
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                    {isAr ? "اسم المعصرة" : "Nom de l'huilerie"}
+                  </label>
+                  <input value={f.millName} onChange={(e) => setF({ ...f, millName: e.target.value })} placeholder={isAr ? "اسم المعصرة" : "Nom de l'huilerie"} className={cls} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                    {isAr ? "تاريخ العصر" : "Date de trituration"}
+                  </label>
+                  <input type="date" dir="ltr" value={f.triturationDate} onChange={(e) => setF({ ...f, triturationDate: e.target.value })} className={cls} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                    {isAr ? "الوزن المعصور (كغ)" : "Olives triturées (Kg)"}
+                  </label>
+                  <input
+                    dir="ltr"
+                    inputMode="decimal"
+                    value={f.olivesTrituredKg}
+                    onChange={(e) => setF({ ...f, olivesTrituredKg: e.target.value })}
+                    placeholder={`${isAr ? "وزن معصور (كغ)" : "Olives triturées (Kg)"} (${Math.max(0, harvestedKg - rawSoldKg) || 0})`}
+                    className={cls}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                    {isAr ? "الزيت المستخرج (لتر)" : "Huile obtenue (Litres)"}
+                  </label>
+                  <input
+                    dir="ltr"
+                    inputMode="decimal"
+                    value={f.oilObtainedL}
+                    onChange={(e) => setF({ ...f, oilObtainedL: e.target.value })}
+                    placeholder={isAr ? "الزيت المستخرج (لتر)" : "Huile obtenue (Litres)"}
+                    className={cls}
+                  />
+                </div>
               </div>
 
               {/* Frais de trituration & Acidité */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <select value={f.millFeeType} onChange={(e) => setF({ ...f, millFeeType: e.target.value as any })} className={cls}>
-                  <option value="da_quintal">{isAr ? "تكلفة العصر (دج / قنطار)" : "Frais DA / Quintal"}</option>
-                  <option value="da_forfait">{isAr ? "تكلفة العصر (مبلغ جزافي دج)" : "Forfait en DA"}</option>
-                  <option value="nature_percent">{isAr ? "اقتطاع عيني (% من الزيت)" : "Prélèvement nature (%)"}</option>
-                  <option value="nature_liters">{isAr ? "اقتطاع عيني (لتر للمعصرة)" : "Prélèvement nature (Litres)"}</option>
-                </select>
-                <input
-                  dir="ltr"
-                  inputMode="decimal"
-                  value={f.millFeeValue}
-                  onChange={(e) => setF({ ...f, millFeeValue: e.target.value })}
-                  placeholder={f.millFeeType.startsWith("da") ? "DA" : f.millFeeType === "nature_percent" ? "%" : "L"}
-                  className={cls}
-                />
-                <div className="flex items-center gap-1.5">
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                    {isAr ? "طريقة حساب تكلفة العصر" : "Mode frais huilerie"}
+                  </label>
+                  <select value={f.millFeeType} onChange={(e) => setF({ ...f, millFeeType: e.target.value as any })} className={cls}>
+                    <option value="da_quintal">{isAr ? "تكلفة العصر (دج / قنطار)" : "Frais DA / Quintal"}</option>
+                    <option value="da_forfait">{isAr ? "تكلفة العصر (مبلغ جزافي دج)" : "Forfait en DA"}</option>
+                    <option value="nature_percent">{isAr ? "اقتطاع عيني (% من الزيت)" : "Prélèvement nature (%)"}</option>
+                    <option value="nature_liters">{isAr ? "اقتطاع عيني (لتر للمعصرة)" : "Prélèvement nature (Litres)"}</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                    {f.millFeeType === "da_quintal"
+                      ? isAr ? "سعر العصر (دج / قنطار)" : "Tarif (DA / Quintal)"
+                      : f.millFeeType === "da_forfait"
+                        ? isAr ? "المبلغ الجزافي (دج)" : "Montant forfait (DA)"
+                        : f.millFeeType === "nature_percent"
+                          ? isAr ? "نسبة الاقتطاع (%)" : "Prélèvement (%)"
+                          : isAr ? "الكمية المقتطعة (لتر)" : "Prélèvement (Litres)"}
+                  </label>
                   <input
                     dir="ltr"
                     inputMode="decimal"
-                    value={f.acidityPercent}
-                    onChange={(e) => setF({ ...f, acidityPercent: e.target.value })}
-                    placeholder={isAr ? "الحموضة %" : "Acidité %"}
+                    value={f.millFeeValue}
+                    onChange={(e) => setF({ ...f, millFeeValue: e.target.value })}
+                    placeholder={f.millFeeType.startsWith("da") ? "DA" : f.millFeeType === "nature_percent" ? "%" : "L"}
                     className={cls}
                   />
-                  <span className={`shrink-0 rounded-lg border px-2 py-1.5 text-[10px] font-black whitespace-nowrap ${qualityBadge(oilQuality).cls}`}>
-                    {qualityBadge(oilQuality).label}
-                  </span>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-muted-foreground block mb-1">
+                    {isAr ? "درجة الحموضة (%) والجودة" : "Acidité (%) & Qualité"}
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      dir="ltr"
+                      inputMode="decimal"
+                      value={f.acidityPercent}
+                      onChange={(e) => setF({ ...f, acidityPercent: e.target.value })}
+                      placeholder={isAr ? "الحموضة %" : "Acidité %"}
+                      className={cls}
+                    />
+                    <span className={`shrink-0 rounded-lg border px-2 py-1.5 text-[10px] font-black whitespace-nowrap ${qualityBadge(oilQuality).cls}`}>
+                      {qualityBadge(oilQuality).label}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -998,9 +1076,18 @@ export function RecolteOlivier({
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    <input dir="ltr" inputMode="numeric" value={f.bidons5LCount} onChange={(e) => setF({ ...f, bidons5LCount: e.target.value })} placeholder={isAr ? "صفائح 5 لتر" : "Bidons 5 L"} className={cls} />
-                    <input dir="ltr" inputMode="numeric" value={f.bouteilles1LCount} onChange={(e) => setF({ ...f, bouteilles1LCount: e.target.value })} placeholder={isAr ? "قارورات 1 لتر" : "Bouteilles 1 L"} className={cls} />
-                    <input dir="ltr" inputMode="decimal" value={f.packagingCostDA} onChange={(e) => setF({ ...f, packagingCostDA: e.target.value })} placeholder={isAr ? "تكلفة التعبئة (دج)" : "Coût emballage (DA)"} className={cls} />
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isAr ? "صفائح 5 لتر" : "Bidons 5 L"}</label>
+                      <input dir="ltr" inputMode="numeric" value={f.bidons5LCount} onChange={(e) => setF({ ...f, bidons5LCount: e.target.value })} placeholder="0" className={cls} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isAr ? "قارورات 1 لتر" : "Bouteilles 1 L"}</label>
+                      <input dir="ltr" inputMode="numeric" value={f.bouteilles1LCount} onChange={(e) => setF({ ...f, bouteilles1LCount: e.target.value })} placeholder="0" className={cls} />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-muted-foreground block mb-1">{isAr ? "تكلفة التعبئة (دج)" : "Coût emballage (DA)"}</label>
+                      <input dir="ltr" inputMode="decimal" value={f.packagingCostDA} onChange={(e) => setF({ ...f, packagingCostDA: e.target.value })} placeholder="0" className={cls} />
+                    </div>
                   </div>
                 </div>
               )}
@@ -1124,20 +1211,30 @@ export function RecolteOlivier({
           <p dir="ltr" className="text-base font-black text-amber-700 dark:text-amber-300">
             {formatNumber(oliveStats.totalRemainingOilL, 0)} L
           </p>
-          <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold">
-            ≈ {formatDA(oliveStats.estimatedStockValueDA)}
+          <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold block">
+            {isAr ? "قيمة البيع :" : "Vente ≈"} {formatDA(oliveStats.estimatedStockValueDA)}
           </span>
+          {oliveStats.stockValueAtCostDA > 0 && (
+            <span dir="ltr" className="text-[10px] text-muted-foreground/80 font-medium block">
+              {isAr ? "بسعر التكلفة :" : "Prix revient :"} {formatDA(oliveStats.stockValueAtCostDA)}
+            </span>
+          )}
         </div>
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
           <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
             <TrendingUp className="h-3 w-3" />
-            <span>{isAr ? "النتيجة الصافية" : "Résultat Net"}</span>
+            <span>{isAr ? "النتيجة الصافية (مع المخزون)" : "Résultat Net (avec stock)"}</span>
           </span>
           <p dir="ltr" className={`text-base font-black ${oliveStats.netResultDA >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}>
-            {formatDA(oliveStats.netResultDA)}
+            {oliveStats.netResultDA >= 0 ? "+" : ""}{formatDA(oliveStats.netResultDA)}
           </p>
-          <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold">
-            +{formatNumber(oliveStats.totalCollectedDA, 0)} / −{formatNumber(oliveStats.totalChargesDA, 0)}
+          {oliveStats.totalRemainingOilL > 0 && (
+            <span dir="ltr" className="text-[10px] font-bold text-emerald-700/90 dark:text-emerald-300/90 block">
+              {isAr ? "بعد بيع المخزون :" : "Potentiel vente :"} {oliveStats.projectedNetResultDA >= 0 ? "+" : ""}{formatDA(oliveStats.projectedNetResultDA)}
+            </span>
+          )}
+          <span dir="ltr" className="text-[10px] text-muted-foreground font-semibold block">
+            {isAr ? "الخزينة :" : "Trésorerie :"} {formatDA(oliveStats.cashBalanceDA)} (+{formatNumber(oliveStats.totalCollectedDA, 0)} / −{formatNumber(oliveStats.totalChargesDA, 0)})
           </span>
         </div>
       </div>
