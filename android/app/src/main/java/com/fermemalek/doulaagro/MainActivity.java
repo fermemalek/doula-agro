@@ -1,4 +1,4 @@
-package app.lovable.farmfriendy;
+package com.fermemalek.doulaagro;
 
 import com.getcapacitor.BridgeActivity;
 
