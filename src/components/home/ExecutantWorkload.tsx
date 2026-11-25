@@ -416,7 +416,48 @@ export function ExecutantWorkload() {
             </p>
           )}
 
-          {people.map((p) => {
+          {(
+            [
+              {
+                order: 0,
+                titleFr: "Niveau 1 · 🛡️ Superviseurs",
+                titleAr: "المستوى 1 · 🛡️ المشرفون",
+                cls: "bg-indigo-500/10 text-indigo-800 dark:text-indigo-200 border-indigo-500/30",
+              },
+              {
+                order: 1,
+                titleFr: "Niveau 2 · 👥 Exécutants",
+                titleAr: "المستوى 2 · 👥 المنفذون",
+                cls: "bg-sky-500/10 text-sky-800 dark:text-sky-200 border-sky-500/30",
+              },
+              {
+                order: 2,
+                titleFr: "Niveau 3 · 👷 Manœuvres",
+                titleAr: "المستوى 3 · 👷 العمال",
+                cls: "bg-amber-500/10 text-amber-900 dark:text-amber-200 border-amber-500/30",
+              },
+              {
+                order: 3,
+                titleFr: "Autres rôles",
+                titleAr: "أدوار أخرى",
+                cls: "bg-teal-500/10 text-teal-800 dark:text-teal-200 border-teal-500/30",
+              },
+            ] as const
+          ).map((level) => {
+            const groupPeople = people.filter((p) => getTeamRoleOrder(p.role) === level.order);
+            if (groupPeople.length === 0) return null;
+            const groupFree = groupPeople.filter((p) => p.status === "libre" && p.tasks.length === 0).length;
+            return (
+              <div key={level.order} className="space-y-2">
+                <div
+                  className={`flex items-center justify-between rounded-lg border px-2.5 py-1 text-[11px] font-black ${level.cls}`}
+                >
+                  <span>{isAr ? level.titleAr : level.titleFr}</span>
+                  <span>
+                    {groupFree}/{groupPeople.length} {isAr ? "متاح" : "libre(s)"}
+                  </span>
+                </div>
+                {groupPeople.map((p) => {
             const overdue = p.tasks.filter((t) => t.due_date && new Date(t.due_date).getTime() < Date.now()).length;
             const todayN = p.tasks.filter((t) => t.due_date && dayStart(new Date(t.due_date)) === today).length;
             const weekN = p.tasks.filter((t) => {
@@ -614,6 +655,9 @@ export function ExecutantWorkload() {
                     })}
                   </ul>
                 )}
+              </div>
+            );
+          })}
               </div>
             );
           })}

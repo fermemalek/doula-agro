@@ -391,6 +391,46 @@ function TachePage() {
   const years = useYearsFromDates(dates);
   const [open, setOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [selectedLevel, setSelectedLevel] = useState<"all" | "superviseur" | "executant" | "manoeuvre">("all");
+
+  const getLevelKey = (role: string): "superviseur" | "executant" | "manoeuvre" | "other" => {
+    const order = getTeamRoleOrder(role);
+    if (order === 0) return "superviseur";
+    if (order === 1) return "executant";
+    if (order === 2) return "manoeuvre";
+    return "other";
+  };
+
+  const getTaskLevels = (t: CloudTask) => {
+    const levels = new Set<"superviseur" | "executant" | "manoeuvre">();
+    const sibs = siblingsOf.get(t.id) ?? [t];
+    const norm = (s: string) =>
+      s
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+
+    for (const st of sibs) {
+      if (st.assigned_to) {
+        const match = teamRoster.find((r) => r.accountId === st.assigned_to);
+        if (match) {
+          const lk = getLevelKey(match.member.role);
+          if (lk !== "other") levels.add(lk);
+        }
+      }
+      const { externalWorkers } = unpackTaskDescription(st.description);
+      for (const w of externalWorkers) {
+        const nw = norm(w);
+        const match = teamRoster.find((r) => norm(r.member.name) === nw);
+        if (match) {
+          const lk = getLevelKey(match.member.role);
+          if (lk !== "other") levels.add(lk);
+        }
+      }
+    }
+    return levels;
+  };
 
   const [dueDate, setDueDate] = useState(new Date().toISOString().slice(0, 10));
   const [dueTime, setDueTime] = useState("12:00");
@@ -506,6 +546,10 @@ function TachePage() {
       const parcel = parcels.find(p => p.id === t.parcel_id);
       return parcel?.type === selectedSpecies;
     })
+    .filter((t) => {
+      if (selectedLevel === "all") return true;
+      return getTaskLevels(t).has(selectedLevel);
+    })
     .filter((t) =>
       showArchived
         ? t.status === "fait" || t.status === "annule"
@@ -537,6 +581,15 @@ function TachePage() {
   const countOlivier = tasks.filter(t => (t.status === "a_faire" || t.status === "en_cours") && parcels.find(p => p.id === t.parcel_id)?.type === 'olivier').length;
   const countPommier = tasks.filter(t => (t.status === "a_faire" || t.status === "en_cours") && parcels.find(p => p.id === t.parcel_id)?.type === 'pommier').length;
   const countNectarine = tasks.filter(t => (t.status === "a_faire" || t.status === "en_cours") && parcels.find(p => p.id === t.parcel_id)?.type === 'nectarine').length;
+  const countLevelSuperviseur = tasks.filter(
+    (t) => (t.status === "a_faire" || t.status === "en_cours") && getTaskLevels(t).has("superviseur"),
+  ).length;
+  const countLevelExecutant = tasks.filter(
+    (t) => (t.status === "a_faire" || t.status === "en_cours") && getTaskLevels(t).has("executant"),
+  ).length;
+  const countLevelManoeuvre = tasks.filter(
+    (t) => (t.status === "a_faire" || t.status === "en_cours") && getTaskLevels(t).has("manoeuvre"),
+  ).length;
 
   const hasUrgent = tasks.some(t => {
     const info = getTaskStatusInfo(t.due_date, t.status);
@@ -780,10 +833,46 @@ function TachePage() {
 
       {/* Tableau de disponibilité des exécutants (réservé aux admins) */}
       {isAdmin && (
-        <div className="mb-6">
+        <div className="mb-4">
           <ExecutantWorkload />
         </div>
       )}
+
+      {/* Filtre 3 Niveaux : Superviseur · Exécutant · Manœuvre */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border bg-card p-2.5 shadow-xs">
+        <span className="text-[11px] font-black uppercase tracking-wide text-muted-foreground px-1">
+          Niveaux :
+        </span>
+        {(
+          [
+            { key: "all" as const, label: "Tous", count: countAll, activeCls: "bg-slate-900 text-white border-slate-900", badgeCls: "bg-white/20 text-white" },
+            { key: "superviseur" as const, label: "🛡️ 1. Superviseur", count: countLevelSuperviseur, activeCls: "bg-indigo-600 text-white border-indigo-600", badgeCls: "bg-white/20 text-white" },
+            { key: "executant" as const, label: "👥 2. Exécutant", count: countLevelExecutant, activeCls: "bg-sky-600 text-white border-sky-600", badgeCls: "bg-white/20 text-white" },
+            { key: "manoeuvre" as const, label: "👷 3. Manœuvre", count: countLevelManoeuvre, activeCls: "bg-amber-600 text-white border-amber-600", badgeCls: "bg-white/20 text-white" },
+          ] as const
+        ).map((lvl) => {
+          const isActive = selectedLevel === lvl.key;
+          return (
+            <button
+              key={lvl.key}
+              type="button"
+              onClick={() => setSelectedLevel(lvl.key)}
+              className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+                isActive ? lvl.activeCls : "border-border bg-background text-foreground hover:bg-muted"
+              }`}
+            >
+              <span>{lvl.label}</span>
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-black ${
+                  isActive ? lvl.badgeCls : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {lvl.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* External Notifications & Alerts settings panel */}
       {showSettings && (
@@ -1086,37 +1175,111 @@ function TachePage() {
                 {teamRoster.length === 0 && (
                   <p className="text-xs text-muted-foreground">Aucun membre disponible.</p>
                 )}
-                <div className="max-h-48 space-y-1 overflow-auto">
-                  {teamRoster.map(({ member, accountId }) => {
-                    const checked = accountId
-                      ? assignedToIds.includes(accountId)
-                      : selectedExternalWorkers.includes(member.name);
-                    const onToggle = () => {
-                      if (accountId) toggleAssign(accountId);
-                      else toggleExternalWorker(member.name);
-                    };
-                    return (
-                      <label
-                        key={member.id}
-                        className={`flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-sm transition ${
-                          checked ? "bg-primary/10" : "hover:bg-muted"
-                        }`}
-                      >
-                        <span className="flex items-center gap-2 min-w-0">
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={onToggle}
-                            className="accent-primary"
-                          />
-                          <span className="truncate font-medium">{member.name}</span>
-                        </span>
-                        <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
-                          {member.role}
-                        </span>
-                      </label>
-                    );
-                  })}
+                <div className="max-h-64 space-y-2.5 overflow-auto pr-0.5">
+                  {(
+                    [
+                      {
+                        key: "superviseur" as const,
+                        title: "Niveau 1 · 🛡️ Superviseur",
+                        headerCls: "bg-indigo-500/15 text-indigo-800 dark:text-indigo-200 border-indigo-500/30",
+                        items: teamRoster.filter((r) => getLevelKey(r.member.role) === "superviseur"),
+                      },
+                      {
+                        key: "executant" as const,
+                        title: "Niveau 2 · 👥 Exécutant",
+                        headerCls: "bg-sky-500/15 text-sky-800 dark:text-sky-200 border-sky-500/30",
+                        items: teamRoster.filter((r) => getLevelKey(r.member.role) === "executant"),
+                      },
+                      {
+                        key: "manoeuvre" as const,
+                        title: "Niveau 3 · 👷 Manœuvre",
+                        headerCls: "bg-amber-500/15 text-amber-900 dark:text-amber-200 border-amber-500/30",
+                        items: teamRoster.filter((r) => getLevelKey(r.member.role) === "manoeuvre"),
+                      },
+                      {
+                        key: "other" as const,
+                        title: "Autres rôles",
+                        headerCls: "bg-teal-500/15 text-teal-800 dark:text-teal-200 border-teal-500/30",
+                        items: teamRoster.filter((r) => getLevelKey(r.member.role) === "other"),
+                      },
+                    ] as const
+                  )
+                    .filter((g) => g.items.length > 0)
+                    .map((group) => {
+                      const allGroupChecked = group.items.every((r) =>
+                        r.accountId
+                          ? assignedToIds.includes(r.accountId)
+                          : selectedExternalWorkers.includes(r.member.name),
+                      );
+                      return (
+                        <div key={group.key} className="rounded-lg border overflow-hidden">
+                          <div
+                            className={`flex items-center justify-between px-2.5 py-1 text-[10px] font-black uppercase border-b ${group.headerCls}`}
+                          >
+                            <span>
+                              {group.title} ({group.items.length})
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const accIds = group.items
+                                  .map((r) => r.accountId)
+                                  .filter((id): id is string => Boolean(id));
+                                const extNames = group.items
+                                  .filter((r) => !r.accountId)
+                                  .map((r) => r.member.name);
+                                if (allGroupChecked) {
+                                  setAssignedToIds((prev) => prev.filter((id) => !accIds.includes(id)));
+                                  setSelectedExternalWorkers((prev) =>
+                                    prev.filter((n) => !extNames.includes(n)),
+                                  );
+                                } else {
+                                  setAssignedToIds((prev) => Array.from(new Set([...prev, ...accIds])));
+                                  setSelectedExternalWorkers((prev) =>
+                                    Array.from(new Set([...prev, ...extNames])),
+                                  );
+                                }
+                              }}
+                              className="underline cursor-pointer normal-case font-bold"
+                            >
+                              {allGroupChecked ? "Décocher" : "Tout cocher"}
+                            </button>
+                          </div>
+                          <div className="divide-y bg-background">
+                            {group.items.map(({ member, accountId }) => {
+                              const checked = accountId
+                                ? assignedToIds.includes(accountId)
+                                : selectedExternalWorkers.includes(member.name);
+                              const onToggle = () => {
+                                if (accountId) toggleAssign(accountId);
+                                else toggleExternalWorker(member.name);
+                              };
+                              return (
+                                <label
+                                  key={member.id}
+                                  className={`flex cursor-pointer items-center justify-between gap-2 px-2.5 py-1.5 text-sm transition ${
+                                    checked ? "bg-primary/10" : "hover:bg-muted/50"
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-2 min-w-0">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={onToggle}
+                                      className="accent-primary"
+                                    />
+                                    <span className="truncate font-medium">{member.name}</span>
+                                  </span>
+                                  <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+                                    {member.role}
+                                  </span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
 
