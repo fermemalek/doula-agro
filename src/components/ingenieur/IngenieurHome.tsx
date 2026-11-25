@@ -46,11 +46,64 @@ export function IngenieurHome() {
       ? recos.filter((r) => r.created_by === userId)
       : recos;
     return [...base].sort((a, b) => {
-      const da = String((a.payload as any)?.date || (a.payload as any)?.program?.date || a.created_at || "");
-      const db = String((b.payload as any)?.date || (b.payload as any)?.program?.date || b.created_at || "");
-      return db.localeCompare(da) || String(b.created_at || "").localeCompare(String(a.created_at || ""));
+      const ca = String(a.created_at || "");
+      const cb = String(b.created_at || "");
+      const da = String((a.payload as any)?.date || (a.payload as any)?.program?.date || ca.slice(0, 10));
+      const db = String((b.payload as any)?.date || (b.payload as any)?.program?.date || cb.slice(0, 10));
+      return db.localeCompare(da) || cb.localeCompare(ca);
     });
   }, [recos, userId]);
+
+  // Regrouper les recommandations en "Ordonnances" (même date + même groupe de parcelles/titre de base)
+  // afin d'afficher les 3 dernières ordonnances distinctes sur l'accueil Ingénieur.
+  const latestOrdonnances = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        key: string;
+        baseTitle: string;
+        date: string;
+        latestCreatedAt: string;
+        items: Recommendation[];
+      }
+    >();
+
+    for (const r of mine) {
+      const dateMatch = r.title.match(/\b(20\d{2}-\d{2}-\d{2})\b/);
+      const dateStr =
+        String((r.payload as any)?.date || (r.payload as any)?.program?.date || dateMatch?.[1] || r.created_at || "").slice(
+          0,
+          10,
+        );
+      // Retirer le suffixe entre parenthèses final ex: "(Programme A1)", "(Pulvérisation 1)"
+      const baseTitle = r.title.replace(/\s*\([^)]+\)\s*$/, "").trim() || r.title;
+      const parcelKey = [...(r.parcel_ids || [])].sort().join(",");
+      const key = `${dateStr}|${baseTitle.toLowerCase()}|${parcelKey}`;
+
+      const existing = groups.get(key);
+      if (existing) {
+        existing.items.push(r);
+        if ((r.created_at || "") > existing.latestCreatedAt) {
+          existing.latestCreatedAt = r.created_at || "";
+        }
+      } else {
+        groups.set(key, {
+          key,
+          baseTitle,
+          date: dateStr,
+          latestCreatedAt: r.created_at || "",
+          items: [r],
+        });
+      }
+    }
+
+    return Array.from(groups.values())
+      .sort(
+        (a, b) =>
+          b.date.localeCompare(a.date) || b.latestCreatedAt.localeCompare(a.latestCreatedAt),
+      )
+      .slice(0, 3);
+  }, [mine]);
 
   const pendingCount = useMemo(() => {
     return mine.filter((r) => r.status === "envoyee" || !r.status).length;
@@ -224,75 +277,133 @@ export function IngenieurHome() {
 
       <section className="mt-6">
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-base font-semibold">{t("eng.myRecos", "Mes recommandations")}</h2>
+          <h2 className="text-base font-semibold">
+            {currentLang === "ar" ? "آخر 3 وصفات (توصياتي)" : "3 dernières ordonnances"}
+          </h2>
           <button
             onClick={() => navigate({ to: "/recommandations" })}
-            className="text-xs font-medium text-muted-foreground hover:text-foreground"
+            className="text-xs font-medium text-muted-foreground hover:text-foreground cursor-pointer"
           >
             {t("eng.seeAll", "Tout voir →")}
           </button>
         </div>
-        {mine.length === 0 ? (
+        {latestOrdonnances.length === 0 ? (
           <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
             {t("eng.noReco", "Aucune recommandation envoyée pour l'instant.")}
           </p>
         ) : (
-          <ul className="space-y-2">
-            {mine.slice(0, 3).map((r) => {
-              const isPulv = r.payload?.method === "pulverisation" || (r.payload?.program as any)?.kind === "pulverisation";
-              const isPhyto = r.kind === "phytosanitaire";
-              const Icon = isPhyto ? FlaskConical : isPulv ? SprayCan : Droplet;
-              const statusInfo = getRecoStatusInfo(r);
-              const targetParcels = getTargetParcelsForReco(r, parcels);
+          <ul className="space-y-2.5">
+            {latestOrdonnances.map((ord) => {
+              const primary = ord.items[0];
+              const targetParcels = getTargetParcelsForReco(primary, parcels);
               const parcelCount = targetParcels.length;
+              const allAccepted = ord.items.every(
+                (it) => it.status === "acceptee" || it.status === "transferee",
+              );
+              const someAccepted = ord.items.some(
+                (it) => it.status === "acceptee" || it.status === "transferee",
+              );
+              const overallTone = allAccepted
+                ? "border-emerald-500/35 bg-emerald-500/5"
+                : someAccepted
+                  ? "border-amber-500/35 bg-amber-500/5"
+                  : "border-blue-500/30 bg-blue-500/5";
+              const overallBadge = allAccepted
+                ? {
+                    label: currentLang === "ar" ? "مقبولة" : "Acceptée",
+                    cls: "bg-emerald-500/15 text-emerald-700 border-emerald-500/30",
+                  }
+                : someAccepted
+                  ? {
+                      label: currentLang === "ar" ? "مقبولة جزئياً" : "Partielle",
+                      cls: "bg-amber-500/15 text-amber-800 border-amber-500/30",
+                    }
+                  : {
+                      label: currentLang === "ar" ? "قيد الانتظار" : "En attente",
+                      cls: "bg-blue-500/15 text-blue-700 border-blue-500/30",
+                    };
 
-              const typeLabel = isPhyto
-                ? (currentLang === "ar" ? "الصحة النباتية (معالجة)" : "Phytosanitaire")
-                : isPulv
-                  ? (currentLang === "ar" ? "رش ورقي (تسميد)" : "Pulvérisation foliaire")
-                  : (currentLang === "ar" ? "تسميد عبر الري" : "Fertilisation (Irrigation)");
-
-              const parcelLabel = currentLang === "ar"
-                ? `${parcelCount} ${parcelCount > 10 ? "قطعة" : parcelCount >= 3 ? "قطع" : parcelCount === 2 ? "قطعتان" : parcelCount === 1 ? "قطعة واحدة" : "0 قطعة"}`
-                : `${parcelCount} parcelle${parcelCount > 1 ? "s" : ""}`;
+              const parcelLabel =
+                currentLang === "ar"
+                  ? `${parcelCount} ${parcelCount > 10 ? "قطعة" : parcelCount >= 3 ? "قطع" : parcelCount === 2 ? "قطعتان" : parcelCount === 1 ? "قطعة واحدة" : "0 قطعة"}`
+                  : `${parcelCount} parcelle${parcelCount > 1 ? "s" : ""}`;
 
               return (
                 <li
-                  key={r.id}
+                  key={ord.key}
                   onClick={() => {
-                    setEditingReco(r);
+                    setEditingReco(primary);
                     setIsDuplicate(false);
                     setFormOpen(true);
                   }}
-                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-3 transition hover:opacity-90 ${statusInfo.tone}`}
+                  className={`rounded-2xl border p-3 transition hover:opacity-95 cursor-pointer space-y-2 ${overallTone}`}
                 >
-                  <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background/60">
-                    <Icon className="h-5 w-5" />
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold leading-tight">{r.title}</p>
-                    <p className="text-xs opacity-80 text-left">
-                      {typeLabel} · {parcelLabel}
-                    </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-sm leading-tight text-foreground">{ord.baseTitle}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {parcelLabel} ·{" "}
+                        {currentLang === "ar"
+                          ? `${ord.items.length} ${ord.items.length > 1 ? "برامج" : "برنامج"}`
+                          : `${ord.items.length} programme${ord.items.length > 1 ? "s" : ""}`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        title={currentLang === "ar" ? "نسخ هذه الوصفة" : "Dupliquer cette ordonnance"}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingReco(primary);
+                          setIsDuplicate(true);
+                          setFormOpen(true);
+                        }}
+                        className="inline-flex h-7 px-2 items-center gap-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-bold active:scale-90 transition cursor-pointer"
+                      >
+                        <Copy className="h-3 w-3" />
+                        <span>{currentLang === "ar" ? "نسخ" : "Dupliquer"}</span>
+                      </button>
+                      <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${overallBadge.cls}`}>
+                        {overallBadge.label}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      title={currentLang === "ar" ? "نسخ هذه التوصية" : "Dupliquer cette recommandation"}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingReco(r);
-                        setIsDuplicate(true);
-                        setFormOpen(true);
-                      }}
-                      className="inline-flex h-7 px-2 items-center gap-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 text-[10px] font-bold active:scale-90 transition"
-                    >
-                      <Copy className="h-3 w-3" />
-                      <span>{currentLang === "ar" ? "نسخ" : "Dupliquer"}</span>
-                    </button>
-                    <span className="rounded-full border bg-background/50 px-2.5 py-0.5 text-[10px] font-semibold uppercase">
-                      {statusInfo.label}
-                    </span>
+
+                  {/* Sous-programmes inclus dans cette ordonnance */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {ord.items.map((r) => {
+                      const isPulv =
+                        r.payload?.method === "pulverisation" ||
+                        (r.payload?.program as any)?.kind === "pulverisation";
+                      const isPhyto = r.kind === "phytosanitaire";
+                      const Icon = isPhyto ? FlaskConical : isPulv ? SprayCan : Droplet;
+                      const tagMatch = r.title.match(/\(([^)]+)\)\s*$/);
+                      const subLabel =
+                        tagMatch?.[1] ||
+                        (isPhyto
+                          ? currentLang === "ar" ? "معالجة" : "Phyto"
+                          : isPulv
+                            ? currentLang === "ar" ? "رش ورقي" : "Pulvérisation"
+                            : currentLang === "ar" ? "تسميد" : "Fertilisation");
+                      const statusInfo = getRecoStatusInfo(r);
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingReco(r);
+                            setIsDuplicate(false);
+                            setFormOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border bg-background/80 hover:bg-background px-2 py-1 text-[11px] font-semibold text-foreground transition cursor-pointer"
+                        >
+                          <Icon className="h-3.5 w-3.5 text-primary shrink-0" />
+                          <span>{subLabel}</span>
+                          <span className="text-[9px] opacity-70">· {statusInfo.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </li>
               );
