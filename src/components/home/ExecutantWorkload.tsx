@@ -136,7 +136,7 @@ export function ExecutantWorkload() {
   const parcels = useParcels();
   const navigate = useNavigate();
 
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
 
   // Formulaire Ajout d'une personne
