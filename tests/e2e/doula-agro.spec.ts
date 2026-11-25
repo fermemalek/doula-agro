@@ -99,7 +99,32 @@ async function setupMockSessionAndBackend(
       return route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify([{ user_id: MOCK_USER_ID, role }]),
+        body: JSON.stringify([
+          { user_id: MOCK_USER_ID, role },
+          { user_id: "00000000-0000-0000-0000-000000000101", role: "ingenieur" },
+          { user_id: "00000000-0000-0000-0000-000000000102", role: "admin" },
+        ]),
+      });
+    }
+
+    if (pathname.includes("/rest/v1/profiles")) {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: "00000000-0000-0000-0000-000000000101",
+            full_name: "Zeinab Shawaly",
+            phone: "u_zeinab_9f83c7a21b4e5d60a1b2c3d4@doulaagro.local|+213555123456",
+            created_at: "2026-01-01T00:00:00.000Z",
+          },
+          {
+            id: "00000000-0000-0000-0000-000000000102",
+            full_name: "Abderrahmane",
+            phone: "fermemalek@gmail.com|+213661000000",
+            created_at: "2026-01-01T00:00:00.000Z",
+          },
+        ]),
       });
     }
 
@@ -301,6 +326,15 @@ test.describe("1. Audit Mobile (360×800) & FR LTR / AR RTL — Zéro débordeme
       });
       await frigoTab.click();
       await assertNoHorizontalOverflow(page, `${lang}:Rendement:ChambreFroide`);
+
+      // 6. Gestion des utilisateurs (/utilisateurs) — vérification mobile 360px & longs usernames + onglet المردودية en AR
+      await page.goto("/#/utilisateurs");
+      await expect(page.locator("main")).toBeVisible();
+      await expect(page.getByText("Zeinab Shawaly")).toBeVisible();
+      if (lang === "ar") {
+        await expect(page.getByRole("link", { name: /المردودية/i })).toBeVisible();
+      }
+      await assertNoHorizontalOverflow(page, `${lang}:ManageUsers`);
 
       expect(pageErrors, `Erreurs JS détectées en ${lang}: ${pageErrors.join(" | ")}`).toEqual([]);
     });

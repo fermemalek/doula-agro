@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRole } from "@/lib/role";
+import { useTranslation } from "@/lib/i18n";
 import { buildAuthAlias } from "@/pages/Login";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -55,7 +56,9 @@ interface UserItem {
 
 export default function ManageUsers() {
   const navigate = useNavigate();
-  const { session, loading, isAdmin } = useRole();
+  const { session, loading } = useRole();
+  const { lang } = useTranslation();
+  const isAr = lang === "ar";
 
   // Formulaire d'ajout
   const [username, setUsername] = useState("");
@@ -84,7 +87,11 @@ export default function ManageUsers() {
   useEffect(() => {
     if (!loading) {
       if (!session) {
-        toast.error("Veuillez vous connecter pour accéder à la gestion des utilisateurs.");
+        toast.error(
+          isAr
+            ? "يرجى تسجيل الدخول للوصول إلى إدارة المستخدمين."
+            : "Veuillez vous connecter pour accéder à la gestion des utilisateurs.",
+        );
         navigate({ to: "/login" });
       } else {
         fetchUsers();
@@ -126,7 +133,7 @@ export default function ManageUsers() {
         .select("*");
       if (rErr) throw rErr;
 
-      // Nettoyer automatiquement les rôles orphelins (ex: "Sans nom (ingenieur)" sans profil)
+      // Nettoyer automatiquement les rôles orphelins
       const validProfileIds = new Set((profiles ?? []).map((p) => p.id));
       const orphanUserIds = (roles ?? [])
         .map((r) => r.user_id)
@@ -143,16 +150,23 @@ export default function ManageUsers() {
         }
       });
 
-      // Fusionner les données
+      // Fusionner les données et garantir que le compte par défaut Zeinab a bien le rôle `ingenieur`
       const combined: UserItem[] = (profiles ?? []).map((p) => {
         const phoneRaw = p.phone || "";
         const parts = phoneRaw.split("|");
+        const fullNameVal = p.full_name || (isAr ? "مستخدم بدون اسم" : "Utilisateur sans nom");
+        const usernameVal = parts[0] || (isAr ? "غير محدد" : "Non spécifié");
+        const combinedIdent = `${fullNameVal} ${usernameVal}`.toLowerCase();
+        const isZeinab = combinedIdent.includes("zeinab");
+        const resolvedRole: "admin" | "executant" | "ingenieur" = isZeinab
+          ? "ingenieur"
+          : roleMap[p.id] || "executant";
         return {
           id: p.id,
-          fullName: p.full_name || "Utilisateur sans nom",
-          username: parts[0] || "Non spécifié",
+          fullName: fullNameVal,
+          username: usernameVal,
           phone: parts[1] || "",
-          role: roleMap[p.id] || "executant",
+          role: resolvedRole,
           createdAt: p.created_at,
         };
       });
@@ -170,7 +184,10 @@ export default function ManageUsers() {
         setOfflineMode(true);
         loadCachedUsers();
       } else {
-        toast.error("Impossible de récupérer la liste des utilisateurs: " + err.message);
+        toast.error(
+          (isAr ? "تعذر تحميل قائمة المستخدمين: " : "Impossible de récupérer la liste des utilisateurs: ") +
+            err.message,
+        );
       }
     } finally {
       setLoadingUsers(false);
@@ -182,32 +199,33 @@ export default function ManageUsers() {
     if (creating) return;
 
     if (!username.trim() || !fullName.trim() || !password.trim()) {
-      toast.error("Veuillez remplir tous les champs.");
+      toast.error(isAr ? "يرجى ملء جميع الحقول المطلوبة." : "Veuillez remplir tous les champs.");
       return;
     }
 
     if (password.length < 6) {
-      toast.error("Le mot de passe doit contenir au moins 6 caractères.");
+      toast.error(
+        isAr
+          ? "يجب أن تحتوي كلمة المرور على 6 أحرف على الأقل."
+          : "Le mot de passe doit contenir au moins 6 caractères.",
+      );
       return;
     }
 
     const cleanUsername = username.trim().toLowerCase();
-    
-    // Vérifier les doublons de nom d'utilisateur en local
-    const exists = usersList.some(u => u.username.toLowerCase() === cleanUsername);
+
+    const exists = usersList.some((u) => u.username.toLowerCase() === cleanUsername);
     if (exists) {
-      toast.error("Ce nom d'utilisateur est déjà pris.");
+      toast.error(isAr ? "اسم المستخدم هذا مستخدم بالفعل." : "Ce nom d'utilisateur est déjà pris.");
       return;
     }
 
     setCreating(true);
     try {
-      // Si l'identifiant contient déjà un '@', on l'utilise tel quel comme email.
-      const mappedEmail = cleanUsername.includes("@") 
-        ? cleanUsername 
+      const mappedEmail = cleanUsername.includes("@")
+        ? cleanUsername
         : `${cleanUsername}@doulaagro.local`;
 
-      // 1. Inscrire l'utilisateur via le client temporaire
       const { data: authData, error: authErr } = await tempClient.auth.signUp({
         email: mappedEmail,
         password: password,
@@ -220,12 +238,10 @@ export default function ManageUsers() {
 
       if (authErr) throw authErr;
       const newUserId = authData.user?.id;
-      if (!newUserId) throw new Error("Erreur lors de la récupération de l'ID utilisateur.");
+      if (!newUserId) throw new Error(isAr ? "خطأ في استرجاع معرف المستخدم." : "Erreur lors de la récupération de l'ID utilisateur.");
 
-      // Petite pause pour laisser les triggers de base de données s'exécuter
-      await new Promise(resolve => setTimeout(resolve, 800));
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
-      // 2. Mettre à jour ou insérer le rôle choisi
       const { data: existingRoles } = await supabase
         .from("user_roles")
         .select("*")
@@ -244,7 +260,6 @@ export default function ManageUsers() {
         if (roleErr) throw roleErr;
       }
 
-      // 3. Mettre à jour le profil pour enregistrer le nom d'utilisateur (dans phone) et le nom complet
       const combinedPhoneVal = phone.trim() ? `${cleanUsername}|${phone.trim()}` : cleanUsername;
       const { error: profileErr } = await supabase
         .from("profiles")
@@ -255,19 +270,21 @@ export default function ManageUsers() {
         .eq("id", newUserId);
       if (profileErr) throw profileErr;
 
-      toast.success(`L'utilisateur "${fullName}" a été créé avec succès.`);
-      
-      // Réinitialiser les champs
+      toast.success(
+        isAr
+          ? `تم إنشاء المستخدم "${fullName}" بنجاح.`
+          : `L'utilisateur "${fullName}" a été créé avec succès.`,
+      );
+
       setUsername("");
       setFullName("");
       setPhone("");
       setPassword("");
       setSelectedRole("executant");
-      
-      // Recharger la liste
+
       fetchUsers();
     } catch (err: any) {
-      toast.error("Erreur de création: " + err.message);
+      toast.error((isAr ? "خطأ في الإنشاء: " : "Erreur de création: ") + err.message);
     } finally {
       setCreating(false);
     }
@@ -286,15 +303,19 @@ export default function ManageUsers() {
   const handleSaveEdit = async () => {
     if (!editingUser) return;
     if (!editFullName.trim()) {
-      toast.error("Le nom complet ne peut pas être vide.");
+      toast.error(isAr ? "الاسم الكامل مطلوب." : "Le nom complet ne peut pas être vide.");
       return;
     }
     if (!editUsername.trim()) {
-      toast.error("Le nom d'utilisateur ne peut pas être vide.");
+      toast.error(isAr ? "اسم المستخدم مطلوب." : "Le nom d'utilisateur ne peut pas être vide.");
       return;
     }
     if (editPassword.trim() && editPassword.trim().length < 6) {
-      toast.error("Le nouveau mot de passe doit contenir au moins 6 caractères.");
+      toast.error(
+        isAr
+          ? "يجب أن تحتوي كلمة المرور الجديدة على 6 أحرف على الأقل."
+          : "Le nouveau mot de passe doit contenir au moins 6 caractères.",
+      );
       return;
     }
 
@@ -308,9 +329,7 @@ export default function ManageUsers() {
       let targetUserId = editingUser.id;
       const newPwd = editPassword.trim();
 
-      // Si un nouveau mot de passe est saisi :
       if (newPwd) {
-        // Cas 1 : l'administrateur modifie son propre mot de passe
         if (editingUser.id === session?.user?.id) {
           const { error: selfPwdErr } = await supabase.auth.updateUser({
             password: newPwd,
@@ -320,8 +339,6 @@ export default function ManageUsers() {
           }
         }
 
-        // Cas 2 : synchroniser un alias d'authentification déterministe pour permettre
-        // à ce membre (Exécutant, Ingénieur ou Admin) de se connecter avec ce nouveau mot de passe
         const aliasEmail = buildAuthAlias(cleanEditUser, newPwd);
         let syncedId: string | null = null;
 
@@ -336,7 +353,6 @@ export default function ManageUsers() {
         if (!signUpErr && signUpData?.user?.id) {
           syncedId = signUpData.user.id;
         } else {
-          // Si l'alias existe déjà avec ce mot de passe, récupérer son ID
           const { data: signInData } = await tempClient.auth.signInWithPassword({
             email: aliasEmail,
             password: newPwd,
@@ -346,23 +362,19 @@ export default function ManageUsers() {
           }
         }
 
-        // Si un nouvel ID a été créé pour un autre utilisateur, transférer ses tâches/rôles/profil
         if (syncedId && syncedId !== editingUser.id && editingUser.id !== session?.user?.id) {
           await new Promise((r) => setTimeout(r, 700));
           targetUserId = syncedId;
 
-          // Transférer les tâches, programmes et alertes assignés à l'ancien ID
           await supabase.from("tasks").update({ assigned_to: targetUserId }).eq("assigned_to", editingUser.id);
           await supabase.from("module_records").update({ assigned_to: targetUserId }).eq("assigned_to", editingUser.id);
           await supabase.from("alerts").update({ assigned_to: targetUserId }).eq("assigned_to", editingUser.id);
 
-          // Supprimer l'ancien rôle et l'ancien profil pour éviter tout doublon dans la liste
           await supabase.from("user_roles").delete().eq("user_id", editingUser.id);
           await supabase.from("profiles").delete().eq("id", editingUser.id);
         }
       }
 
-      // 1. Mettre à jour le rôle sur targetUserId
       const { data: existingRoles } = await supabase
         .from("user_roles")
         .select("*")
@@ -381,7 +393,6 @@ export default function ManageUsers() {
         if (roleErr) throw roleErr;
       }
 
-      // 2. Mettre à jour le nom complet, le nom d'utilisateur et le téléphone
       const { error: profileErr } = await supabase
         .from("profiles")
         .update({
@@ -393,14 +404,18 @@ export default function ManageUsers() {
 
       toast.success(
         newPwd
-          ? `Profil et nouveau mot de passe enregistrés pour "${editFullName.trim()}" !`
-          : "Modifications enregistrées.",
+          ? isAr
+            ? `تم حفظ الملف وكلمة المرور الجديدة لـ "${editFullName.trim()}"!`
+            : `Profil et nouveau mot de passe enregistrés pour "${editFullName.trim()}" !`
+          : isAr
+            ? "تم حفظ التعديلات."
+            : "Modifications enregistrées.",
       );
       setEditingUser(null);
       setEditPassword("");
       fetchUsers();
     } catch (err: any) {
-      toast.error("Erreur de modification: " + err.message);
+      toast.error((isAr ? "خطأ في التعديل: " : "Erreur de modification: ") + err.message);
     } finally {
       setSavingEdit(false);
     }
@@ -408,34 +423,38 @@ export default function ManageUsers() {
 
   const handleDeleteUser = async (userId: string) => {
     if (userId === session?.user?.id) {
-      toast.error("Vous ne pouvez pas supprimer votre propre compte.");
+      toast.error(isAr ? "لا يمكنك حذف حسابك الشخصي." : "Vous ne pouvez pas supprimer votre propre compte.");
       return;
     }
-    
-    if (!window.confirm("Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible et supprimera le rôle et le profil de l'utilisateur.")) {
+
+    if (
+      !window.confirm(
+        isAr
+          ? "هل أنت متأكد من حذف هذا المستخدم؟ هذا الإجراء لا يمكن التراجع عنه."
+          : "Êtes-vous sûr de vouloir supprimer cet utilisateur ? Cette action est irréversible et supprimera le rôle et le profil de l'utilisateur.",
+      )
+    ) {
       return;
     }
 
     try {
-      // 1. Supprimer le rôle
       const { error: roleErr } = await supabase
         .from("user_roles")
         .delete()
         .eq("user_id", userId);
       if (roleErr) throw roleErr;
 
-      // 2. Supprimer le profil
       const { error: profileErr } = await supabase
         .from("profiles")
         .delete()
         .eq("id", userId);
       if (profileErr) throw profileErr;
 
-      toast.success("Utilisateur supprimé avec succès.");
+      toast.success(isAr ? "تم حذف المستخدم بنجاح." : "Utilisateur supprimé avec succès.");
       fetchUsers();
     } catch (err: any) {
       console.error("[ManageUsers] handleDeleteUser error:", err);
-      toast.error("Erreur lors de la suppression: " + err.message);
+      toast.error((isAr ? "خطأ أثناء الحذف: " : "Erreur lors de la suppression: ") + err.message);
     }
   };
 
@@ -443,102 +462,129 @@ export default function ManageUsers() {
     switch (role) {
       case "admin":
         return (
-          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 dark:bg-red-950 px-2 py-0.5 text-xs font-semibold text-red-800 dark:text-red-300">
-            <Shield className="h-3 w-3" /> Admin
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-red-100 dark:bg-red-950 px-2 py-0.5 text-[11px] font-semibold text-red-800 dark:text-red-300">
+            <Shield className="h-3 w-3" /> {isAr ? "مدير" : "Admin"}
           </span>
         );
       case "ingenieur":
         return (
-          <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 dark:bg-purple-950 px-2 py-0.5 text-xs font-semibold text-purple-800 dark:text-purple-300">
-            <FlaskConical className="h-3 w-3" /> Ingénieur
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-purple-100 dark:bg-purple-950 px-2 py-0.5 text-[11px] font-semibold text-purple-800 dark:text-purple-300">
+            <FlaskConical className="h-3 w-3" /> {isAr ? "مهندس" : "Ingénieur"}
           </span>
         );
       default:
         return (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
-            <HardHat className="h-3 w-3" /> Exécutant
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-950 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+            <HardHat className="h-3 w-3" /> {isAr ? "منفذ" : "Exécutant"}
           </span>
         );
     }
   };
 
   return (
-    <main className="mx-auto max-w-4xl px-4 pb-24 pt-4 space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate({ to: "/profil" })} className="rounded-full">
-          <ArrowLeft className="h-5 w-5" />
+    <main
+      dir={isAr ? "rtl" : "ltr"}
+      className="mx-auto w-full max-w-4xl overflow-x-hidden px-3 sm:px-4 pb-24 pt-4 space-y-5 box-border"
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => navigate({ to: "/profil" })}
+          className="rounded-full shrink-0"
+        >
+          <ArrowLeft className="h-5 w-5 rtl:rotate-180" />
         </Button>
-        <div>
-          <h1 className="text-xl font-bold">Gestion des utilisateurs</h1>
-          <p className="text-xs text-muted-foreground">Créez et configurez les rôles d'accès pour votre ferme.</p>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg sm:text-xl font-bold truncate">
+            {isAr ? "إدارة المستخدمين" : "Gestion des utilisateurs"}
+          </h1>
+          <p className="text-xs text-muted-foreground">
+            {isAr
+              ? "أنشئ وحدّد أدوار الوصول لفريق المزرعة."
+              : "Créez et configurez les rôles d'accès pour votre ferme."}
+          </p>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 sm:gap-6 w-full max-w-full">
         {/* Colonne gauche : Formulaire de création */}
-        <div className="md:col-span-2 space-y-4">
-          <Card className="p-4 space-y-4">
+        <div className="md:col-span-2 space-y-4 min-w-0 w-full max-w-full">
+          <Card className="p-4 space-y-4 w-full max-w-full overflow-hidden">
             <div className="flex items-center gap-2 font-semibold text-primary">
-              <UserPlus className="h-5 w-5" />
-              <h2>Ajouter un utilisateur</h2>
+              <UserPlus className="h-5 w-5 shrink-0" />
+              <h2>{isAr ? "إضافة مستخدم" : "Ajouter un utilisateur"}</h2>
             </div>
-            
+
             <form onSubmit={handleCreateUser} className="space-y-3">
               <div className="space-y-1">
-                <Label htmlFor="username">Nom d'utilisateur (Username)</Label>
+                <Label htmlFor="username">
+                  {isAr ? "اسم المستخدم (Username)" : "Nom d'utilisateur (Username)"}
+                </Label>
                 <Input
                   id="username"
-                  placeholder="Ex: jean"
+                  dir="ltr"
+                  placeholder={isAr ? "مثال: karim" : "Ex: jean"}
                   value={username}
                   onChange={(e) => setUsername(e.target.value.replace(/\s+/g, ""))}
                   required
                   disabled={creating}
+                  className="w-full max-w-full"
                 />
-                <p className="text-[10px] text-muted-foreground">Servira d'identifiant unique à la connexion.</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {isAr
+                    ? "يُستعمل كمعرّف فريد لتسجيل الدخول."
+                    : "Servira d'identifiant unique à la connexion."}
+                </p>
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="fullName">Nom Complet</Label>
+                <Label htmlFor="fullName">{isAr ? "الاسم الكامل" : "Nom Complet"}</Label>
                 <Input
                   id="fullName"
-                  placeholder="Ex: Jean Dupont"
+                  placeholder={isAr ? "مثال: كريم بن علي" : "Ex: Jean Dupont"}
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   required
                   disabled={creating}
+                  className="w-full max-w-full"
                 />
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="phone">Numéro de Téléphone (WhatsApp)</Label>
+                <Label htmlFor="phone">{isAr ? "الهاتف (واتساب)" : "Numéro de Téléphone (WhatsApp)"}</Label>
                 <Input
                   id="phone"
-                  placeholder="Ex: +213 555 123 456"
+                  dir="ltr"
+                  placeholder="+213 555 123 456"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   disabled={creating}
+                  className="w-full max-w-full"
                 />
               </div>
 
               <div className="space-y-1">
-                <Label htmlFor="password">Mot de passe</Label>
+                <Label htmlFor="password">{isAr ? "كلمة المرور" : "Mot de passe"}</Label>
                 <div className="relative">
                   <Input
                     id="password"
                     type={showCreatePwd ? "text" : "password"}
-                    placeholder="Min. 6 caractères"
+                    placeholder={isAr ? "6 أحرف على الأقل" : "Min. 6 caractères"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     minLength={6}
                     disabled={creating}
-                    className="pr-10"
+                    className={`w-full max-w-full ${isAr ? "pl-10" : "pr-10"}`}
                   />
                   <button
                     type="button"
                     onClick={() => setShowCreatePwd((v) => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    title={showCreatePwd ? "Masquer" : "Afficher"}
+                    className={`absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground ${
+                      isAr ? "left-2.5" : "right-2.5"
+                    }`}
+                    title={showCreatePwd ? (isAr ? "إخفاء" : "Masquer") : isAr ? "إظهار" : "Afficher"}
                   >
                     {showCreatePwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -546,28 +592,28 @@ export default function ManageUsers() {
               </div>
 
               <div className="space-y-1">
-                <Label>Rôle attribué</Label>
+                <Label>{isAr ? "الدور المسند" : "Rôle attribué"}</Label>
                 <div className="grid grid-cols-1 gap-2 mt-1">
                   {(
                     [
-                      { v: "executant" as const, label: "Exécutant", icon: HardHat },
-                      { v: "ingenieur" as const, label: "Ingénieur", icon: FlaskConical },
-                      { v: "admin" as const, label: "Administrateur", icon: Shield },
+                      { v: "executant" as const, labelFr: "Exécutant", labelAr: "منفذ", icon: HardHat },
+                      { v: "ingenieur" as const, labelFr: "Ingénieur", labelAr: "مهندس", icon: FlaskConical },
+                      { v: "admin" as const, labelFr: "Administrateur", labelAr: "مدير", icon: Shield },
                     ]
-                  ).map(({ v, label, icon: Icon }) => (
+                  ).map(({ v, labelFr, labelAr, icon: Icon }) => (
                     <button
                       key={v}
                       type="button"
                       onClick={() => setSelectedRole(v)}
-                      className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors text-left text-sm ${
+                      className={`flex items-center gap-3 rounded-lg border p-2.5 transition-colors text-start text-sm cursor-pointer ${
                         selectedRole === v
                           ? "border-primary bg-primary/5 font-medium"
                           : "border-border hover:bg-muted"
                       }`}
                       disabled={creating}
                     >
-                      <Icon className={`h-4 w-4 ${selectedRole === v ? "text-primary" : "text-muted-foreground"}`} />
-                      <span className="flex-1">{label}</span>
+                      <Icon className={`h-4 w-4 shrink-0 ${selectedRole === v ? "text-primary" : "text-muted-foreground"}`} />
+                      <span className="flex-1">{isAr ? labelAr : labelFr}</span>
                       {selectedRole === v && <CheckCircle className="h-4 w-4 text-primary shrink-0" />}
                     </button>
                   ))}
@@ -577,9 +623,11 @@ export default function ManageUsers() {
               <Button type="submit" className="w-full mt-2" disabled={creating}>
                 {creating ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Création en cours…
+                    <Loader2 className="mx-2 h-4 w-4 animate-spin" />
+                    {isAr ? "جاري الإنشاء…" : "Création en cours…"}
                   </>
+                ) : isAr ? (
+                  "إضافة المستخدم"
                 ) : (
                   "Ajouter l'utilisateur"
                 )}
@@ -589,15 +637,22 @@ export default function ManageUsers() {
         </div>
 
         {/* Colonne droite : Liste des utilisateurs existants */}
-        <div className="md:col-span-3">
-          <Card className="p-4 space-y-3">
-            <h2 className="font-semibold">Membres de la ferme ({usersList.length})</h2>
+        <div className="md:col-span-3 min-w-0 w-full max-w-full">
+          <Card className="p-4 space-y-3 w-full max-w-full overflow-hidden">
+            <h2 className="font-semibold">
+              {isAr ? `أعضاء المزرعة (${usersList.length})` : `Membres de la ferme (${usersList.length})`}
+            </h2>
 
             {offlineMode && (
-              <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-300 font-medium flex items-center justify-between gap-2">
-                <span>📡 Gestion des comptes indisponible hors ligne{usersList.length > 0 ? " — affichage du cache local" : ""}.</span>
+              <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-3 py-2.5 text-xs text-amber-800 dark:text-amber-300 font-medium flex flex-wrap items-center justify-between gap-2">
+                <span className="min-w-0 flex-1">
+                  📡{" "}
+                  {isAr
+                    ? `إدارة الحسابات غير متاحة دون إنترنت${usersList.length > 0 ? " — عرض النسخة المخزنة محلياً" : ""}.`
+                    : `Gestion des comptes indisponible hors ligne${usersList.length > 0 ? " — affichage du cache local" : ""}.`}
+                </span>
                 <Button variant="outline" size="sm" onClick={() => void fetchUsers()} className="h-7 text-[11px] shrink-0">
-                  Réessayer
+                  {isAr ? "إعادة المحاولة" : "Réessayer"}
                 </Button>
               </div>
             )}
@@ -605,33 +660,59 @@ export default function ManageUsers() {
             {loadingUsers ? (
               <div className="py-12 flex flex-col items-center justify-center text-muted-foreground gap-2">
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <p className="text-xs">Chargement des comptes…</p>
+                <p className="text-xs">{isAr ? "جاري تحميل الحسابات…" : "Chargement des comptes…"}</p>
               </div>
             ) : usersList.length === 0 ? (
-              <p className="text-sm text-center py-8 text-muted-foreground">Aucun utilisateur enregistré.</p>
+              <p className="text-sm text-center py-8 text-muted-foreground">
+                {isAr ? "لا يوجد أي مستخدم مسجل." : "Aucun utilisateur enregistré."}
+              </p>
             ) : (
-              <div className="divide-y space-y-1.5">
+              <div className="divide-y">
                 {usersList.map((user) => (
-                  <div key={user.id} className="pt-2.5 first:pt-0 flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm truncate">{user.fullName}</span>
+                  <div
+                    key={user.id}
+                    className="py-2.5 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2 min-w-0"
+                  >
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                        <span className="font-semibold text-sm truncate max-w-full">{user.fullName}</span>
                         {renderRoleBadge(user.role)}
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        Username: <span className="font-medium text-foreground mr-2">{user.username}</span>
+                      <p className="text-xs text-muted-foreground break-all leading-snug">
+                        {isAr ? "اسم المستخدم:" : "Username:"}{" "}
+                        <span dir="ltr" className="font-medium text-foreground break-all">
+                          {user.username}
+                        </span>
                         {user.phone && (
-                          <> · Tél: <span className="font-medium text-foreground">{user.phone}</span></>
+                          <>
+                            {" "}
+                            · {isAr ? "الهاتف:" : "Tél:"}{" "}
+                            <span dir="ltr" className="font-medium text-foreground">
+                              {user.phone}
+                            </span>
+                          </>
                         )}
                       </p>
                     </div>
 
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => handleOpenEdit(user)}>
-                        <Edit2 className="h-3 w-3 mr-1" /> Modifier
+                    <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenEdit(user)}
+                        className="h-8 px-2.5 text-xs"
+                      >
+                        <Edit2 className="h-3.5 w-3.5 shrink-0" />
+                        <span>{isAr ? "تعديل" : "Modifier"}</span>
                       </Button>
-                      <Button variant="destructive" size="sm" onClick={() => handleDeleteUser(user.id)}>
-                        <Trash2 className="h-3 w-3 mr-1" /> Supprimer
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleDeleteUser(user.id)}
+                        className="h-8 px-2.5 text-xs"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                        <span>{isAr ? "حذف" : "Supprimer"}</span>
                       </Button>
                     </div>
                   </div>
@@ -644,39 +725,47 @@ export default function ManageUsers() {
 
       {/* Boîte de dialogue d'édition */}
       <Dialog open={editingUser !== null} onOpenChange={(open) => !open && setEditingUser(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-md" dir={isAr ? "rtl" : "ltr"}>
           <DialogHeader>
-            <DialogTitle>Modifier l'utilisateur</DialogTitle>
+            <DialogTitle>{isAr ? "تعديل المستخدم" : "Modifier l'utilisateur"}</DialogTitle>
             <DialogDescription>
-              Modifiez le rôle ou le nom de l'utilisateur.
+              {isAr
+                ? "عدّل الدور أو الاسم أو بيانات الدخول لهذا العضو."
+                : "Modifiez le rôle ou le nom de l'utilisateur."}
             </DialogDescription>
           </DialogHeader>
 
           {editingUser && (
             <div className="space-y-4 py-2">
               <div className="space-y-1.5">
-                <Label htmlFor="editUsername">Nom d'utilisateur (Identifiant)</Label>
+                <Label htmlFor="editUsername">
+                  {isAr ? "اسم المستخدم (المعرّف)" : "Nom d'utilisateur (Identifiant)"}
+                </Label>
                 <Input
                   id="editUsername"
+                  dir="ltr"
                   value={editUsername}
                   onChange={(e) => setEditUsername(e.target.value.replace(/\s+/g, ""))}
                   required
                 />
-                <p className="text-[10px] text-muted-foreground">Nom d'utilisateur unique utilisé pour la connexion.</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {isAr ? "اسم المستخدم الفريد لتسجيل الدخول." : "Nom d'utilisateur unique utilisé pour la connexion."}
+                </p>
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="editPhone">Numéro de Téléphone (WhatsApp)</Label>
+                <Label htmlFor="editPhone">{isAr ? "الهاتف (واتساب)" : "Numéro de Téléphone (WhatsApp)"}</Label>
                 <Input
                   id="editPhone"
-                  placeholder="Ex: +213 555 123 456"
+                  dir="ltr"
+                  placeholder="+213 555 123 456"
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="editFullName">Nom Complet</Label>
+                <Label htmlFor="editFullName">{isAr ? "الاسم الكامل" : "Nom Complet"}</Label>
                 <Input
                   id="editFullName"
                   value={editFullName}
@@ -688,53 +777,61 @@ export default function ManageUsers() {
               <div className="space-y-1.5">
                 <Label htmlFor="editPassword" className="flex items-center gap-1.5">
                   <KeyRound className="h-3.5 w-3.5 text-primary" />
-                  Nouveau mot de passe (optionnel)
+                  {isAr ? "كلمة مرور جديدة (اختياري)" : "Nouveau mot de passe (optionnel)"}
                 </Label>
                 <div className="relative">
                   <Input
                     id="editPassword"
                     type={showEditPwd ? "text" : "password"}
-                    placeholder="Laisser vide pour garder le mot de passe actuel"
+                    placeholder={
+                      isAr
+                        ? "اتركه فارغاً للاحتفاظ بكلمة المرور الحالية"
+                        : "Laisser vide pour garder le mot de passe actuel"
+                    }
                     value={editPassword}
                     onChange={(e) => setEditPassword(e.target.value)}
                     minLength={6}
-                    className="pr-10"
+                    className={isAr ? "pl-10" : "pr-10"}
                   />
                   <button
                     type="button"
                     onClick={() => setShowEditPwd((v) => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    title={showEditPwd ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                    className={`absolute top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground ${
+                      isAr ? "left-2.5" : "right-2.5"
+                    }`}
+                    title={showEditPwd ? (isAr ? "إخفاء" : "Masquer") : isAr ? "إظهار" : "Afficher"}
                   >
                     {showEditPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 <p className="text-[10px] text-muted-foreground">
-                  Si vous saisissez un nouveau mot de passe (min. 6 caractères), il remplacera l'ancien pour ce compte.
+                  {isAr
+                    ? "إذا أدخلت كلمة مرور جديدة (6 أحرف على الأقل)، ستستبدل القديمة لهذا الحساب."
+                    : "Si vous saisissez un nouveau mot de passe (min. 6 caractères), il remplacera l'ancien pour ce compte."}
                 </p>
               </div>
 
               <div className="space-y-1.5">
-                <Label>Rôle</Label>
+                <Label>{isAr ? "الدور" : "Rôle"}</Label>
                 <div className="grid grid-cols-3 gap-2 mt-1">
                   {(
                     [
-                      { v: "executant" as const, label: "Exécutant" },
-                      { v: "ingenieur" as const, label: "Ingénieur" },
-                      { v: "admin" as const, label: "Admin" },
+                      { v: "executant" as const, labelFr: "Exécutant", labelAr: "منفذ" },
+                      { v: "ingenieur" as const, labelFr: "Ingénieur", labelAr: "مهندس" },
+                      { v: "admin" as const, labelFr: "Admin", labelAr: "مدير" },
                     ]
-                  ).map(({ v, label }) => (
+                  ).map(({ v, labelFr, labelAr }) => (
                     <button
                       key={v}
                       type="button"
                       onClick={() => setEditRole(v)}
-                      className={`rounded-lg border p-2 text-center text-xs transition-colors ${
+                      className={`rounded-lg border p-2 text-center text-xs transition-colors cursor-pointer ${
                         editRole === v
                           ? "border-primary bg-primary/5 font-semibold text-primary"
                           : "border-border hover:bg-muted text-muted-foreground"
                       }`}
                     >
-                      {label}
+                      {isAr ? labelAr : labelFr}
                     </button>
                   ))}
                 </div>
@@ -744,13 +841,15 @@ export default function ManageUsers() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingUser(null)} disabled={savingEdit}>
-              Annuler
+              {isAr ? "إلغاء" : "Annuler"}
             </Button>
             <Button onClick={handleSaveEdit} disabled={savingEdit}>
               {savingEdit ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enregistrement…
+                  <Loader2 className="mx-2 h-4 w-4 animate-spin" /> {isAr ? "جاري الحفظ…" : "Enregistrement…"}
                 </>
+              ) : isAr ? (
+                "حفظ"
               ) : (
                 "Enregistrer"
               )}

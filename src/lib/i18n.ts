@@ -5,6 +5,7 @@ export const translations = {
     // Tabs
     "tabs.home": "Accueil",
     "tabs.programs": "Programmes",
+    "tabs.rendement": "Rendement",
     "tabs.tasks": "Tâches",
     "tabs.maintenance": "Maintenance",
     "tabs.profile": "Profil",
@@ -200,6 +201,7 @@ export const translations = {
     "tabs.reminders": "التذكيرات",
     "tabs.anomalies": "الأعطال",
     "tabs.weather": "الطقس",
+    "tabs.rendement": "المردودية",
     // Engineer space
     "eng.title": "فضاء المهندس",
     "eng.pending": "قيد الانتظار",
