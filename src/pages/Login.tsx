@@ -16,6 +16,12 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Sprout, AlertCircle, Eye, EyeOff, KeyRound, Shield, CheckCircle } from "lucide-react";
+import {
+  applyDefaultLangForRole,
+  clearCachedRoles,
+  inferFallbackRoleFromUser,
+  type Role,
+} from "@/lib/role";
 
 const SUPABASE_URL = "https://krmvdahejfczrziobesi.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9GTs8V5G33NYHqEQUPoHzA_Nd4xHgRq";
@@ -98,8 +104,10 @@ function LoginPage() {
 
       // Définir rôle administrateur si compte fermemalek ou admin
       const isAdm = cleanUser.includes("ferme") || cleanUser.includes("abder") || cleanUser.includes("admin") || cleanUser.includes("malek");
-      const targetRole = isAdm ? "admin" : "executant";
+      const targetRole: Role = isAdm ? "admin" : "executant";
+      clearCachedRoles();
       localStorage.setItem("doula-active-role", targetRole);
+      applyDefaultLangForRole(targetRole);
       if (typeof window !== "undefined") {
         sessionStorage.setItem("doula-session-active", "1");
       }
@@ -201,6 +209,31 @@ function LoginPage() {
           throw lastError;
         }
       }
+
+      // Réinitialiser tout rôle temporaire hérité puis appliquer le rôle réel et la langue par défaut du profil
+      clearCachedRoles();
+      try {
+        const { data: sessData } = await supabase.auth.getSession();
+        const user = sessData?.session?.user;
+        let realRole: Role = inferFallbackRoleFromUser(user);
+        if (user?.id) {
+          const { data: roleRows } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", user.id);
+          const roles = (roleRows ?? []).map((r) => r.role as Role);
+          if (roles.includes("admin")) realRole = "admin";
+          else if (roles.includes("ingenieur")) realRole = "ingenieur";
+          else if (roles.includes("executant")) realRole = "executant";
+          localStorage.setItem("doula-active-role", realRole);
+          localStorage.setItem(`doula-role:${user.id}`, realRole);
+          localStorage.setItem("doula-last-uid", user.id);
+        }
+        applyDefaultLangForRole(realRole);
+      } catch {
+        // fallback géré par RoleProvider
+      }
+
       navigate({ to: "/" });
     } catch (err: any) {
       if (typeof window !== "undefined") {

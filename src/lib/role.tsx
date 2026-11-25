@@ -20,6 +20,43 @@ const Ctx = createContext<AuthCtx | null>(null);
 
 const ROLE_CACHE_PREFIX = "doula-role:";
 const ACTIVE_ROLE_KEY = "doula-active-role";
+const LAST_USER_KEY = "doula-last-uid";
+
+export function getDefaultLangForRole(r: Role): "ar" | "fr" {
+  return r === "ingenieur" ? "ar" : "fr";
+}
+
+export function applyDefaultLangForRole(r: Role) {
+  const targetLang = getDefaultLangForRole(r);
+  saveConfig({ lang: targetLang, role: r, configured: true });
+  if (typeof document !== "undefined") {
+    document.documentElement.dir = targetLang === "ar" ? "rtl" : "ltr";
+    document.documentElement.lang = targetLang;
+  }
+}
+
+export function inferFallbackRoleFromUser(user?: { email?: string | null; user_metadata?: Record<string, any> } | null): Role {
+  const email = (user?.email || "").trim().toLowerCase();
+  const fullName = String(user?.user_metadata?.full_name || "").trim().toLowerCase();
+  const combined = `${email} ${fullName}`;
+  if (
+    combined.includes("fermemalek") ||
+    combined.includes("abderrahmane") ||
+    combined.includes("abdelmalek") ||
+    combined.includes("malekfilois")
+  ) {
+    return "admin";
+  }
+  if (
+    combined.includes("zeinab") ||
+    combined.includes("khadij") ||
+    combined.includes("doujadz") ||
+    combined.includes("ingenieur")
+  ) {
+    return "ingenieur";
+  }
+  return "executant";
+}
 
 function readCachedRole(uid?: string | null): Role | null {
   if (typeof window === "undefined") return null;
@@ -49,21 +86,25 @@ function writeCachedRole(uid: string | null | undefined, role: Role) {
     localStorage.setItem(ACTIVE_ROLE_KEY, role);
     if (uid) {
       localStorage.setItem(ROLE_CACHE_PREFIX + uid, role);
+      localStorage.setItem(LAST_USER_KEY, uid);
     }
     saveConfig({ role, configured: true });
   } catch { }
 }
 
-function clearCachedRoles() {
+export function clearCachedRoles() {
   if (typeof window === "undefined") return;
   try {
     localStorage.removeItem(ACTIVE_ROLE_KEY);
+    localStorage.removeItem(LAST_USER_KEY);
     const keys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (k && k.startsWith(ROLE_CACHE_PREFIX)) keys.push(k);
     }
     keys.forEach((k) => localStorage.removeItem(k));
+    // Réinitialiser le flag configured afin que l'ancien rôle de doula-config ne persiste pas
+    saveConfig({ configured: false });
   } catch { }
 }
 
@@ -83,11 +124,22 @@ export function RoleProvider({ children }: { children: ReactNode }) {
         setRole(null);
         setLoading(false);
       } else {
+        const lastUid = typeof window !== "undefined" ? localStorage.getItem(LAST_USER_KEY) : null;
+        const isFreshSignIn = event === "SIGNED_IN" && lastUid !== s.user.id;
         setSession(s);
-        const cached = readCachedRole(s.user.id);
-        setRole(cached ?? "executant");
-        setLoading(false);
-        setTimeout(() => fetchRole(s.user.id), 0);
+        if (isFreshSignIn) {
+          clearCachedRoles();
+          const immediateRole = inferFallbackRoleFromUser(s.user);
+          setRole(immediateRole);
+          applyDefaultLangForRole(immediateRole);
+          setLoading(false);
+          setTimeout(() => fetchRole(s.user.id, { forceRefresh: true, applyDefaultLang: true, user: s.user }), 0);
+        } else {
+          const cached = readCachedRole(s.user.id);
+          setRole(cached ?? inferFallbackRoleFromUser(s.user));
+          setLoading(false);
+          setTimeout(() => fetchRole(s.user.id, { forceRefresh: false, applyDefaultLang: false, user: s.user }), 0);
+        }
       }
     });
 
@@ -100,9 +152,9 @@ export function RoleProvider({ children }: { children: ReactNode }) {
           }
           setSession(data.session);
           const cached = readCachedRole(data.session.user.id);
-          setRole(cached ?? "executant");
+          setRole(cached ?? inferFallbackRoleFromUser(data.session.user));
           setLoading(false);
-          fetchRole(data.session.user.id);
+          fetchRole(data.session.user.id, { forceRefresh: false, applyDefaultLang: false, user: data.session.user });
         } else {
           setSession(null);
           setRole(null);
@@ -118,13 +170,18 @@ export function RoleProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  async function fetchRole(uid: string) {
+  async function fetchRole(
+    uid: string,
+    opts?: { forceRefresh?: boolean; applyDefaultLang?: boolean; user?: Session["user"] },
+  ) {
     try {
-      // 1. Priorité au rôle explicitement choisi en local si configuré
-      const cached = readCachedRole(uid);
-      if (cached) {
-        setRole(cached);
-        return;
+      // 1. Si même session déjà active (pas un nouveau login), respecter le rôle choisi via RoleSwitcher
+      if (!opts?.forceRefresh) {
+        const cached = readCachedRole(uid);
+        if (cached) {
+          setRole(cached);
+          return;
+        }
       }
 
       const { data, error } = await supabase
@@ -134,17 +191,26 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
 
       const roles = (data ?? []).map((d) => d.role as Role);
-      let r: Role = "executant";
+      let r: Role;
       if (roles.includes("admin")) r = "admin";
       else if (roles.includes("ingenieur")) r = "ingenieur";
       else if (roles.includes("executant")) r = "executant";
+      else r = inferFallbackRoleFromUser(opts?.user);
 
       setRole(r);
       writeCachedRole(uid, r);
+      if (opts?.applyDefaultLang) {
+        applyDefaultLangForRole(r);
+      }
     } catch (err: any) {
       console.error("[RoleProvider] fetchRole failed:", err);
-      const cached = readCachedRole(uid);
-      setRole(cached ?? "executant");
+      const fallback = opts?.forceRefresh
+        ? inferFallbackRoleFromUser(opts?.user)
+        : readCachedRole(uid) ?? inferFallbackRoleFromUser(opts?.user);
+      setRole(fallback);
+      if (opts?.applyDefaultLang) {
+        applyDefaultLangForRole(fallback);
+      }
     } finally {
       setLoading(false);
     }
