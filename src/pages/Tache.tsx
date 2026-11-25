@@ -536,6 +536,14 @@ function TachePage() {
     }
   }
 
+  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const isOverdueValidatedTask = (t: CloudTask) => {
+    if (t.status === "fait" || t.status === "annule") return true;
+    // Tâche validée/programmée par l'administrateur dont la date d'échéance est strictement dépassée (< aujourd'hui)
+    const dueOnly = (t.due_date ?? "").slice(0, 10);
+    return Boolean(dueOnly && dueOnly < todayDateStr);
+  };
+
   const filtered = tasks
     .filter((t) => {
       const dateStr = (t.due_date ?? t.created_at).slice(0, 10);
@@ -550,11 +558,7 @@ function TachePage() {
       if (selectedLevel === "all") return true;
       return getTaskLevels(t).has(selectedLevel);
     })
-    .filter((t) =>
-      showArchived
-        ? t.status === "fait" || t.status === "annule"
-        : t.status === "a_faire" || t.status === "en_cours",
-    )
+    .filter((t) => (showArchived ? isOverdueValidatedTask(t) : !isOverdueValidatedTask(t)))
     .sort((a, b) => {
       const aMine = Boolean(a.assigned_to && matchedIds.has(a.assigned_to)) ? 1 : 0;
       const bMine = Boolean(b.assigned_to && matchedIds.has(b.assigned_to)) ? 1 : 0;
@@ -577,18 +581,18 @@ function TachePage() {
     );
   }
 
-  const countAll = tasks.filter(t => t.status === "a_faire" || t.status === "en_cours").length;
-  const countOlivier = tasks.filter(t => (t.status === "a_faire" || t.status === "en_cours") && parcels.find(p => p.id === t.parcel_id)?.type === 'olivier').length;
-  const countPommier = tasks.filter(t => (t.status === "a_faire" || t.status === "en_cours") && parcels.find(p => p.id === t.parcel_id)?.type === 'pommier').length;
-  const countNectarine = tasks.filter(t => (t.status === "a_faire" || t.status === "en_cours") && parcels.find(p => p.id === t.parcel_id)?.type === 'nectarine').length;
+  const countAll = tasks.filter((t) => !isOverdueValidatedTask(t)).length;
+  const countOlivier = tasks.filter((t) => !isOverdueValidatedTask(t) && parcels.find(p => p.id === t.parcel_id)?.type === 'olivier').length;
+  const countPommier = tasks.filter((t) => !isOverdueValidatedTask(t) && parcels.find(p => p.id === t.parcel_id)?.type === 'pommier').length;
+  const countNectarine = tasks.filter((t) => !isOverdueValidatedTask(t) && parcels.find(p => p.id === t.parcel_id)?.type === 'nectarine').length;
   const countLevelSuperviseur = tasks.filter(
-    (t) => (t.status === "a_faire" || t.status === "en_cours") && getTaskLevels(t).has("superviseur"),
+    (t) => !isOverdueValidatedTask(t) && getTaskLevels(t).has("superviseur"),
   ).length;
   const countLevelExecutant = tasks.filter(
-    (t) => (t.status === "a_faire" || t.status === "en_cours") && getTaskLevels(t).has("executant"),
+    (t) => !isOverdueValidatedTask(t) && getTaskLevels(t).has("executant"),
   ).length;
   const countLevelManoeuvre = tasks.filter(
-    (t) => (t.status === "a_faire" || t.status === "en_cours") && getTaskLevels(t).has("manoeuvre"),
+    (t) => !isOverdueValidatedTask(t) && getTaskLevels(t).has("manoeuvre"),
   ).length;
 
   const hasUrgent = tasks.some(t => {

@@ -277,9 +277,8 @@ export function TodayView() {
     if (p !== 0) return p;
     return (a.due_date ?? "").localeCompare(b.due_date ?? "");
   };
-  const overdue = myTasks
-    .filter((t) => t.due_date && dateOnly(t.due_date) < today)
-    .sort(sortByPriorityThenDate);
+  // Les tâches validées/programmées par l'administrateur dont la date est dépassée (< aujourd'hui) sont archivées
+  const overdue: CloudTask[] = [];
   const todayTasks = myTasks
     .filter((t) => t.due_date && dateOnly(t.due_date) === today)
     .sort(sortByPriorityThenDate);
@@ -306,12 +305,21 @@ export function TodayView() {
       p.status !== "annule" &&
       (p.assigned_to === userId || p.assigned_to === null),
   );
+  // Règle métier : les programmes/tâches validés par l'administrateur dont la date est dépassée (< aujourd'hui)
+  // sont automatiquement archivés et retirés de la liste active "En retard".
   const upcomingPrograms = myPrograms
     .filter((p) => p.scheduled_at && dateOnly(p.scheduled_at) >= today && dateOnly(p.scheduled_at) <= horizon)
     .sort((a, b) => (a.scheduled_at ?? "").localeCompare(b.scheduled_at ?? ""));
-  const overduePrograms = myPrograms
-    .filter((p) => p.scheduled_at && dateOnly(p.scheduled_at) < today)
+  const archivedPrograms = programs
+    .filter(
+      (p) =>
+        (p.assigned_to === userId || p.assigned_to === null) &&
+        (p.status === "execute" ||
+          p.status === "annule" ||
+          Boolean(p.scheduled_at && dateOnly(p.scheduled_at) < today)),
+    )
     .sort((a, b) => (b.scheduled_at ?? "").localeCompare(a.scheduled_at ?? ""));
+  const overduePrograms: typeof myPrograms = [];
 
   // Anomalies à traiter : non résolues, assignées à moi OU sans assignation (pool commun)
   const openAlerts = alerts.filter(
@@ -324,6 +332,7 @@ export function TodayView() {
   const [execTarget, setExecTarget] = useState<ExecutionTarget | null>(null);
   const [activeFertProg, setActiveFertProg] = useState<any | null>(null);
   const [openPanel, setOpenPanel] = useState<null | "alerts" | "programs">(null);
+  const [showArchivedPrograms, setShowArchivedPrograms] = useState(false);
   const [alertDetail, setAlertDetail] = useState<CloudAlert | null>(null);
   const [taskDetail, setTaskDetail] = useState<CloudTask | null>(null);
   const { remove: removeCloudProgram } = useProgramActions();
@@ -498,23 +507,82 @@ export function TodayView() {
       )}
 
       {openPanel === "programs" && (
-        <section className="mt-3 animate-fade-in">
-          {programsCount === 0 ? (
+        <section className="mt-3 animate-fade-in space-y-2.5">
+          {/* Onglets Actifs / Archivés (programmes dont la date est dépassée) */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex rounded-xl border bg-muted/40 p-0.5 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setShowArchivedPrograms(false)}
+                className={`rounded-lg px-3 py-1 transition cursor-pointer ${
+                  !showArchivedPrograms ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                À venir ({upcomingPrograms.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowArchivedPrograms(true)}
+                className={`rounded-lg px-3 py-1 transition cursor-pointer ${
+                  showArchivedPrograms ? "bg-card text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                📦 Archivés ({archivedPrograms.length})
+              </button>
+            </div>
+            {isAdmin && !showArchivedPrograms && programsCount > 0 && (
+              <button
+                onClick={deleteAllPrograms}
+                className="inline-flex items-center gap-1 rounded-xl border border-destructive/40 px-3 py-1.5 text-xs font-bold text-destructive hover:bg-destructive/10 cursor-pointer"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Tout effacer ({programsCount})
+              </button>
+            )}
+          </div>
+
+          {showArchivedPrograms ? (
+            archivedPrograms.length === 0 ? (
+              <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                Aucun programme archivé.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {archivedPrograms.map((p) => {
+                  const meta = PROGRAM_META[p.kind] || {
+                    label: p.kind || "Programme",
+                    icon: Droplet,
+                    tone: "text-slate-600 bg-slate-500/10 border-slate-500/30",
+                  };
+                  const Icon = meta.icon;
+                  return (
+                    <li
+                      key={p.id}
+                      className="flex items-center gap-3 rounded-2xl border bg-muted/20 p-3 opacity-80"
+                    >
+                      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${meta.tone}`}>
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold leading-tight text-foreground">{meta.label}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {fmtDate(p.scheduled_at)}
+                          {parcelName(p.parcel_id) && ` · ${parcelName(p.parcel_id)}`}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-slate-500/15 border border-slate-400/30 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-700 dark:text-slate-300">
+                        Archivé
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )
+          ) : programsCount === 0 ? (
             <p className="rounded-2xl border border-dashed p-6 text-center text-sm text-muted-foreground">
               Rien à traiter.
             </p>
           ) : (
             <ul className="space-y-2">
-              {isAdmin && (
-              <li className="flex justify-end">
-                <button
-                  onClick={deleteAllPrograms}
-                  className="inline-flex items-center gap-1 rounded-xl border border-destructive/40 px-3 py-1.5 text-xs font-bold text-destructive hover:bg-destructive/10"
-                >
-                  <Trash2 className="h-3.5 w-3.5" /> Tout effacer ({programsCount})
-                </button>
-              </li>
-              )}
               {[...overduePrograms, ...upcomingPrograms].map((p) => {
                 const meta = PROGRAM_META[p.kind] || {
                   label: p.kind || "Programme",
