@@ -20,9 +20,17 @@ import {
   useFrigoNegoceStore,
   getChargesForCampaign,
   sumInstallationCharges,
+  DEFAULT_ROOM_META,
+  FRIGO_ROOM_ORDER,
+  FRIGO_ROOM_SPECS,
+  resolveRoomCode,
+  roomCodeToChambre,
   type FrigoChambreId,
   type FrigoPurchaseEntry,
+  type FrigoRoomCode,
 } from "@/lib/frigo-negoce-store";
+import { FrigoBuildingPlan, type RoomSummary } from "./FrigoBuildingPlan";
+import { FrigoRoomDetailModal } from "./FrigoRoomDetailModal";
 
 function parseNum(v: string | number | undefined): number {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
@@ -40,13 +48,20 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
     entries,
     chargesByCampaign,
     exits,
+    roomMeta,
+    roomGrids,
     addEntry,
     updateEntry,
     removeEntry,
     updateCharges,
     addExit,
     removeExit,
+    updateRoomMeta,
+    updateRoomStackCells,
+    resetRoomGrid,
   } = useFrigoNegoceStore();
+
+  const [selectedRoomCode, setSelectedRoomCode] = useState<FrigoRoomCode | null>(null);
 
   const effectiveCampaign = selectedCampaign === "all" ? "2026" : selectedCampaign;
 
@@ -112,9 +127,42 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
     const margeNetteReelleDA = totalVentesNettesDA - coutRevientSortisDA;
     const margeParKgSorti = totalPoidsSortiKg > 0 ? margeNetteReelleDA / totalPoidsSortiKg : 0;
 
+    // Détail par chambre du plan architectural (G1..G5 + CH-01)
+    const roomsByCode = {} as Record<FrigoRoomCode, RoomSummary>;
+    for (const code of FRIGO_ROOM_ORDER) {
+      const spec = FRIGO_ROOM_SPECS[code];
+      const list = campaignEntries.filter((e) => resolveRoomCode(e) === code);
+      const roomExits = campaignExits.filter((x) => resolveRoomCode(x) === code);
+      const cajousEntres = list.reduce((s, e) => s + e.nbCajous, 0);
+      const poidsNetEntreKg = list.reduce((s, e) => s + e.poidsNetKg, 0);
+      const totalPayementDA = list.reduce((s, e) => s + e.totalPayementDA, 0);
+      const cajousSortis = roomExits.reduce((s, x) => s + x.nbCajousSortis, 0);
+      const poidsSortiKg = roomExits.reduce((s, x) => s + x.poidsSortiKg, 0);
+      const cajousRestants = Math.max(0, cajousEntres - cajousSortis);
+      const poidsRestantKg = Math.max(0, poidsNetEntreKg - poidsSortiKg);
+      const fillPct = spec.capacityCajous > 0 ? (cajousRestants / spec.capacityCajous) * 100 : 0;
+      const farmers = Array.from(new Set(list.map((e) => e.fermierFournisseur).filter(Boolean)));
+      roomsByCode[code] = {
+        code,
+        list,
+        cajousEntres,
+        poidsNetEntreKg,
+        totalPayementDA,
+        cajousSortis,
+        poidsSortiKg,
+        cajousRestants,
+        poidsRestantKg,
+        capacityCajous: spec.capacityCajous,
+        fillPct,
+        farmers,
+        meta: roomMeta[code] || DEFAULT_ROOM_META[code],
+      };
+    }
+
     return {
       grande,
       petite,
+      roomsByCode,
       totalCajous,
       totalPoidsNetKg,
       totalCajousSortis,
@@ -132,7 +180,7 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
       margeNetteReelleDA,
       margeParKgSorti,
     };
-  }, [campaignEntries, campaignExits, charges]);
+  }, [campaignEntries, campaignExits, charges, roomMeta]);
 
   // Formulaire Ajout / Modification Achat Fournisseur
   const [entryFormOpen, setEntryFormOpen] = useState(false);
@@ -141,6 +189,7 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
     date: new Date().toISOString().slice(0, 10),
     fermierFournisseur: "",
     chambre: "grande" as FrigoChambreId,
+    roomCode: "G1" as FrigoRoomCode,
     nbCajous: "",
     poidsNetKg: "",
     poidsNetArrondiKg: "",
@@ -150,12 +199,14 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
     notes: "",
   });
 
-  function openNewEntry(chambre: FrigoChambreId = "grande") {
+  function openNewEntry(chambre: FrigoChambreId = "grande", roomCode?: FrigoRoomCode) {
+    const resolvedCode: FrigoRoomCode = roomCode || (chambre === "petite" ? "CH-01" : "G1");
     setEditingEntryId(null);
     setEf({
       date: new Date().toISOString().slice(0, 10),
       fermierFournisseur: "",
-      chambre,
+      chambre: roomCodeToChambre(resolvedCode),
+      roomCode: resolvedCode,
       nbCajous: "",
       poidsNetKg: "",
       poidsNetArrondiKg: "",
@@ -168,11 +219,13 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
   }
 
   function openEditEntry(e: FrigoPurchaseEntry) {
+    const resolvedCode = resolveRoomCode(e);
     setEditingEntryId(e.id);
     setEf({
       date: e.date,
       fermierFournisseur: e.fermierFournisseur,
       chambre: e.chambre,
+      roomCode: resolvedCode,
       nbCajous: String(e.nbCajous),
       poidsNetKg: String(e.poidsNetKg),
       poidsNetArrondiKg: String(e.poidsNetArrondiKg),
@@ -212,7 +265,8 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
       campaign: effectiveCampaign,
       date: ef.date || new Date().toISOString().slice(0, 10),
       fermierFournisseur: fermier,
-      chambre: ef.chambre,
+      chambre: roomCodeToChambre(ef.roomCode),
+      roomCode: ef.roomCode,
       nbCajous: parseNum(ef.nbCajous),
       poidsNetKg: poidsNet,
       poidsNetArrondiKg: poidsArrondi,
@@ -236,6 +290,7 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
   const [xf, setXf] = useState({
     date: new Date().toISOString().slice(0, 10),
     chambre: "grande" as FrigoChambreId,
+    roomCode: "G1" as FrigoRoomCode,
     destination: "mandataire" as "mandataire" | "direct",
     clientOuMandataire: "",
     numeroBordereau: "",
@@ -246,6 +301,15 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
     paymentStatus: "paye" as "paye" | "en_attente",
     notes: "",
   });
+
+  function openNewExitForRoom(roomCode: FrigoRoomCode) {
+    setXf((prev) => ({
+      ...prev,
+      chambre: roomCodeToChambre(roomCode),
+      roomCode,
+    }));
+    setExitFormOpen(true);
+  }
 
   const previewExitBrut = parseNum(xf.poidsSortiKg) * parseNum(xf.prixVenteKg);
   const previewExitNet = Math.max(0, previewExitBrut - parseNum(xf.deductionsDA));
@@ -265,7 +329,8 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
     addExit({
       campaign: effectiveCampaign,
       date: xf.date || new Date().toISOString().slice(0, 10),
-      chambre: xf.chambre,
+      chambre: roomCodeToChambre(xf.roomCode),
+      roomCode: xf.roomCode,
       destination: xf.destination,
       clientOuMandataire:
         xf.clientOuMandataire.trim() ||
@@ -284,6 +349,7 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
     setXf({
       date: new Date().toISOString().slice(0, 10),
       chambre: "grande",
+      roomCode: "G1",
       destination: "mandataire",
       clientOuMandataire: "",
       numeroBordereau: "",
@@ -568,12 +634,18 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
                 {isAr ? "الغرفة" : "Chambre froide"}
               </label>
               <select
-                value={ef.chambre}
-                onChange={(e) => updateEntryField({ chambre: e.target.value as FrigoChambreId })}
+                value={ef.roomCode}
+                onChange={(e) => {
+                  const code = e.target.value as FrigoRoomCode;
+                  updateEntryField({ roomCode: code, chambre: roomCodeToChambre(code) });
+                }}
                 className={inputCls}
               >
-                <option value="grande">{isAr ? "غرفة التبريد الكبيرة" : "Chambre froide Grande"}</option>
-                <option value="petite">{isAr ? "غرفة التبريد الصغيرة" : "Chambre froide Petite"}</option>
+                {FRIGO_ROOM_ORDER.map((code) => (
+                  <option key={code} value={code}>
+                    {isAr ? FRIGO_ROOM_SPECS[code].labelAr : FRIGO_ROOM_SPECS[code].labelFr}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -711,16 +783,19 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
                 {isAr ? "الغرفة المصدر" : "Chambre source"}
               </label>
               <select
-                value={xf.chambre}
-                onChange={(e) => setXf({ ...xf, chambre: e.target.value as FrigoChambreId })}
+                value={xf.roomCode}
+                onChange={(e) => {
+                  const code = e.target.value as FrigoRoomCode;
+                  setXf({ ...xf, roomCode: code, chambre: roomCodeToChambre(code) });
+                }}
                 className={inputCls}
               >
-                <option value="grande">
-                  {isAr ? "غرفة التبريد الكبيرة" : "Chambre froide Grande"} ({formatNumber(stats.grande.poidsRestantKg, 0)} kg)
-                </option>
-                <option value="petite">
-                  {isAr ? "غرفة التبريد الصغيرة" : "Chambre froide Petite"} ({formatNumber(stats.petite.poidsRestantKg, 0)} kg)
-                </option>
+                {FRIGO_ROOM_ORDER.map((code) => (
+                  <option key={code} value={code}>
+                    {isAr ? FRIGO_ROOM_SPECS[code].labelAr : FRIGO_ROOM_SPECS[code].labelFr} (
+                    {formatNumber(stats.roomsByCode[code].poidsRestantKg, 0)} kg)
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -864,6 +939,35 @@ export function ChambreFroideNegoceSection({ selectedCampaign, isAr }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Plan architectural SVG interactif du bâtiment (39 m × 11,12 m) */}
+      <FrigoBuildingPlan
+        roomsByCode={stats.roomsByCode}
+        selectedRoom={selectedRoomCode}
+        onSelectRoom={(code) => setSelectedRoomCode(code)}
+        isAr={isAr}
+      />
+
+      {/* Modale détaillée de la chambre sélectionnée (Contenu + Plan intérieur des cajous) */}
+      {selectedRoomCode && (
+        <FrigoRoomDetailModal
+          room={stats.roomsByCode[selectedRoomCode]}
+          gridOverrides={roomGrids[selectedRoomCode] || {}}
+          onClose={() => setSelectedRoomCode(null)}
+          onUpdateMeta={updateRoomMeta}
+          onUpdateStackCells={updateRoomStackCells}
+          onResetGrid={resetRoomGrid}
+          onAddEntryForRoom={(code) => {
+            setSelectedRoomCode(null);
+            openNewEntry(roomCodeToChambre(code), code);
+          }}
+          onAddExitForRoom={(code) => {
+            setSelectedRoomCode(null);
+            openNewExitForRoom(code);
+          }}
+          isAr={isAr}
+        />
       )}
 
       {/* Les 2 Chambres Froides : Grande & Petite */}

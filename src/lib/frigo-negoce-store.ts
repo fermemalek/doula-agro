@@ -1,6 +1,191 @@
 import { useCallback, useEffect, useState } from "react";
 
 export type FrigoChambreId = "grande" | "petite";
+export type FrigoRoomCode = "G1" | "G2" | "G3" | "G4" | "G5" | "CH-01";
+export type FrigoStackColor = "rouge" | "jaune";
+
+export interface FrigoRoomSpec {
+  code: FrigoRoomCode;
+  chambre: FrigoChambreId;
+  labelFr: string;
+  labelAr: string;
+  dimensions: string;
+  capacityCajous: number;
+  islands: [number, number, number]; // [leftCols, centerCols, rightCols]
+  totalCols: number;
+  totalRows: number;
+}
+
+export const FRIGO_ROOM_SPECS: Record<FrigoRoomCode, FrigoRoomSpec> = {
+  G1: {
+    code: "G1",
+    chambre: "grande",
+    labelFr: "Chambre G1 (Grande Active)",
+    labelAr: "غرفة G1 (الكبيرة النشطة)",
+    dimensions: "5,25 m × 9 m",
+    capacityCajous: 1890,
+    islands: [3, 4, 3],
+    totalCols: 10,
+    totalRows: 15,
+  },
+  G2: {
+    code: "G2",
+    chambre: "grande",
+    labelFr: "Chambre G2 (Grande)",
+    labelAr: "غرفة G2 (كبيرة)",
+    dimensions: "5,25 m × 9 m",
+    capacityCajous: 1890,
+    islands: [3, 4, 3],
+    totalCols: 10,
+    totalRows: 15,
+  },
+  G3: {
+    code: "G3",
+    chambre: "grande",
+    labelFr: "Chambre G3 (Grande)",
+    labelAr: "غرفة G3 (كبيرة)",
+    dimensions: "5,25 m × 9 m",
+    capacityCajous: 1890,
+    islands: [3, 4, 3],
+    totalCols: 10,
+    totalRows: 15,
+  },
+  G4: {
+    code: "G4",
+    chambre: "grande",
+    labelFr: "Chambre G4 (Grande)",
+    labelAr: "غرفة G4 (كبيرة)",
+    dimensions: "5,25 m × 9 m",
+    capacityCajous: 1890,
+    islands: [3, 4, 3],
+    totalCols: 10,
+    totalRows: 15,
+  },
+  G5: {
+    code: "G5",
+    chambre: "grande",
+    labelFr: "Chambre G5 (Grande)",
+    labelAr: "غرفة G5 (كبيرة)",
+    dimensions: "5,25 m × 9 m",
+    capacityCajous: 1890,
+    islands: [3, 4, 3],
+    totalCols: 10,
+    totalRows: 15,
+  },
+  "CH-01": {
+    code: "CH-01",
+    chambre: "petite",
+    labelFr: "Chambre CH-01 (Petite Active)",
+    labelAr: "غرفة CH-01 (الصغيرة النشطة)",
+    dimensions: "Petite Chambre + SAS",
+    capacityCajous: 1323,
+    islands: [2, 3, 2],
+    totalCols: 7,
+    totalRows: 15,
+  },
+};
+
+export const FRIGO_ROOM_ORDER: FrigoRoomCode[] = ["G1", "G2", "G3", "G4", "G5", "CH-01"];
+
+/** Hauteur maximale de gerbage par rangée (0-indexée, du fond vers la porte) selon DISPOSITION CAJOUS3 */
+export function getRowMaxStackHeight(rowIndex: number): number {
+  if (rowIndex < 4) return 14; // Rangées 1–4 (fond)
+  if (rowIndex < 8) return 13; // Rangées 5–8
+  if (rowIndex < 12) return 12; // Rangées 9–12
+  return 11; // Rangées 13–15 (entrée)
+}
+
+/** Couleur par défaut selon l'îlot : ROUGE sur les îlots latéraux, JAUNE sur l'îlot central */
+export function getDefaultStackColor(roomCode: FrigoRoomCode, colIndex: number): FrigoStackColor {
+  const [left, center] = FRIGO_ROOM_SPECS[roomCode].islands;
+  if (colIndex >= left && colIndex < left + center) return "jaune";
+  return "rouge";
+}
+
+export function resolveRoomCode(item: { chambre: FrigoChambreId; roomCode?: FrigoRoomCode }): FrigoRoomCode {
+  if (item.roomCode && FRIGO_ROOM_SPECS[item.roomCode]) return item.roomCode;
+  return item.chambre === "petite" ? "CH-01" : "G1";
+}
+
+export function roomCodeToChambre(code: FrigoRoomCode): FrigoChambreId {
+  return code === "CH-01" ? "petite" : "grande";
+}
+
+export interface FrigoRoomMeta {
+  temperatureC: number;
+  humidityPct: number;
+}
+
+export interface FrigoStackCell {
+  height: number;
+  color: FrigoStackColor;
+  farmer?: string;
+}
+
+export type FrigoRoomGridOverrides = Record<string, FrigoStackCell>; // key: `${row}_${col}`
+
+export const DEFAULT_ROOM_META: Record<FrigoRoomCode, FrigoRoomMeta> = {
+  G1: { temperatureC: 1.5, humidityPct: 90 },
+  G2: { temperatureC: 4.0, humidityPct: 85 },
+  G3: { temperatureC: 4.0, humidityPct: 85 },
+  G4: { temperatureC: 4.0, humidityPct: 85 },
+  G5: { temperatureC: 4.0, humidityPct: 85 },
+  "CH-01": { temperatureC: 1.5, humidityPct: 90 },
+};
+
+/** Génère la disposition initiale des piles dans une chambre à partir des lots actifs */
+export function buildDefaultRoomGrid(
+  roomCode: FrigoRoomCode,
+  entries: FrigoPurchaseEntry[],
+  cajousRestants: number,
+): Record<string, FrigoStackCell> {
+  const spec = FRIGO_ROOM_SPECS[roomCode];
+  const grid: Record<string, FrigoStackCell> = {};
+  const totalEntres = entries.reduce((s, e) => s + e.nbCajous, 0);
+  const ratio = totalEntres > 0 ? Math.min(1, Math.max(0, cajousRestants / totalEntres)) : 0;
+
+  // Construire la file des fermiers avec leur quota de cajous restants
+  const farmerQueue = entries
+    .map((e) => ({
+      farmer: e.fermierFournisseur,
+      remaining: Math.round(e.nbCajous * ratio),
+    }))
+    .filter((f) => f.remaining > 0);
+
+  // Ajuster le léger écart d'arrondi sur le dernier fermier
+  const sumQueued = farmerQueue.reduce((s, f) => s + f.remaining, 0);
+  if (farmerQueue.length > 0 && sumQueued !== Math.round(cajousRestants)) {
+    const diff = Math.round(cajousRestants) - sumQueued;
+    farmerQueue[farmerQueue.length - 1].remaining = Math.max(0, farmerQueue[farmerQueue.length - 1].remaining + diff);
+  }
+
+  let qIdx = 0;
+
+  for (let r = 0; r < spec.totalRows; r++) {
+    const maxH = getRowMaxStackHeight(r);
+    for (let c = 0; c < spec.totalCols; c++) {
+      const color = getDefaultStackColor(roomCode, c);
+      let height = 0;
+      let farmer: string | undefined = undefined;
+
+      while (qIdx < farmerQueue.length && farmerQueue[qIdx].remaining <= 0) {
+        qIdx++;
+      }
+
+      if (qIdx < farmerQueue.length) {
+        const cur = farmerQueue[qIdx];
+        const take = Math.min(maxH, cur.remaining);
+        height = take;
+        farmer = cur.farmer;
+        cur.remaining -= take;
+      }
+
+      grid[`${r}_${c}`] = { height, color, farmer };
+    }
+  }
+
+  return grid;
+}
 
 export interface FrigoPurchaseEntry {
   id: string;
@@ -8,6 +193,7 @@ export interface FrigoPurchaseEntry {
   date: string;
   fermierFournisseur: string;
   chambre: FrigoChambreId;
+  roomCode?: FrigoRoomCode;
   nbCajous: number;
   poidsNetKg: number;
   poidsNetArrondiKg: number;
@@ -29,6 +215,7 @@ export interface FrigoSaleExit {
   campaign: string;
   date: string;
   chambre: FrigoChambreId;
+  roomCode?: FrigoRoomCode;
   destination: "mandataire" | "direct";
   clientOuMandataire: string;
   numeroBordereau?: string;
@@ -46,6 +233,8 @@ export interface FrigoNegoceState {
   entries: FrigoPurchaseEntry[];
   chargesByCampaign: Record<string, FrigoInstallationCharges>;
   exits: FrigoSaleExit[];
+  roomMeta?: Partial<Record<FrigoRoomCode, FrigoRoomMeta>>;
+  roomGrids?: Partial<Record<FrigoRoomCode, FrigoRoomGridOverrides>>;
 }
 
 export const SEED_FLAG_FRIGO_ACHATS_2026 = "doula_seed_frigo_achats_2026";
@@ -136,6 +325,8 @@ let state: FrigoNegoceState = {
   entries: [],
   chargesByCampaign: {},
   exits: [],
+  roomMeta: {},
+  roomGrids: {},
 };
 
 const listeners = new Set<() => void>();
@@ -167,10 +358,12 @@ function loadAndSeed() {
             ? parsed.chargesByCampaign
             : {},
         exits: Array.isArray(parsed?.exits) ? parsed.exits : [],
+        roomMeta: parsed?.roomMeta && typeof parsed.roomMeta === "object" ? parsed.roomMeta : {},
+        roomGrids: parsed?.roomGrids && typeof parsed.roomGrids === "object" ? parsed.roomGrids : {},
       };
     }
   } catch {
-    state = { entries: [], chargesByCampaign: {}, exits: [] };
+    state = { entries: [], chargesByCampaign: {}, exits: [], roomMeta: {}, roomGrids: {} };
   }
 
   // Seed idempotent identifié par `doula_seed_frigo_achats_2026`
@@ -296,15 +489,57 @@ export function useFrigoNegoceStore() {
     persist();
   }, []);
 
+  const updateRoomMeta = useCallback((roomCode: FrigoRoomCode, patch: Partial<FrigoRoomMeta>) => {
+    const current = state.roomMeta?.[roomCode] || DEFAULT_ROOM_META[roomCode];
+    state = {
+      ...state,
+      roomMeta: {
+        ...(state.roomMeta || {}),
+        [roomCode]: { ...current, ...patch },
+      },
+    };
+    persist();
+  }, []);
+
+  const updateRoomStackCells = useCallback(
+    (roomCode: FrigoRoomCode, cellsPatch: Record<string, FrigoStackCell>) => {
+      const current = state.roomGrids?.[roomCode] || {};
+      state = {
+        ...state,
+        roomGrids: {
+          ...(state.roomGrids || {}),
+          [roomCode]: { ...current, ...cellsPatch },
+        },
+      };
+      persist();
+    },
+    [],
+  );
+
+  const resetRoomGrid = useCallback((roomCode: FrigoRoomCode) => {
+    const nextGrids = { ...(state.roomGrids || {}) };
+    delete nextGrids[roomCode];
+    state = {
+      ...state,
+      roomGrids: nextGrids,
+    };
+    persist();
+  }, []);
+
   return {
     entries: state.entries,
     chargesByCampaign: state.chargesByCampaign,
     exits: state.exits,
+    roomMeta: state.roomMeta || {},
+    roomGrids: state.roomGrids || {},
     addEntry,
     updateEntry,
     removeEntry,
     updateCharges,
     addExit,
     removeExit,
+    updateRoomMeta,
+    updateRoomStackCells,
+    resetRoomGrid,
   };
 }
