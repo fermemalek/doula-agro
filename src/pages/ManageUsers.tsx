@@ -31,6 +31,7 @@ import {
 import { toast } from "sonner";
 import { useRole } from "@/lib/role";
 import { useTranslation } from "@/lib/i18n";
+import { getUserAvatar, getUserInitials } from "@/lib/avatars";
 import { buildAuthAlias } from "@/pages/Login";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -668,31 +669,50 @@ export default function ManageUsers() {
               </p>
             ) : (
               <div className="divide-y">
-                {usersList.map((user) => (
+                {usersList.map((user) => {
+                  const userAvatar = getUserAvatar({
+                    fullName: user.fullName,
+                    username: user.username,
+                    role: user.role,
+                  });
+                  return (
                   <div
                     key={user.id}
                     className="py-2.5 first:pt-0 last:pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2 min-w-0"
                   >
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-                        <span className="font-semibold text-sm truncate max-w-full">{user.fullName}</span>
-                        {renderRoleBadge(user.role)}
-                      </div>
-                      <p className="text-xs text-muted-foreground break-all leading-snug">
-                        {isAr ? "اسم المستخدم:" : "Username:"}{" "}
-                        <span dir="ltr" className="font-medium text-foreground break-all">
-                          {user.username}
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      {userAvatar ? (
+                        <img
+                          src={userAvatar}
+                          alt={user.fullName}
+                          className="h-9 w-9 rounded-full object-cover ring-1 ring-border shrink-0 mt-0.5"
+                        />
+                      ) : (
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-xs font-black text-muted-foreground shrink-0 mt-0.5">
+                          {getUserInitials(user.fullName)}
                         </span>
-                        {user.phone && (
-                          <>
-                            {" "}
-                            · {isAr ? "الهاتف:" : "Tél:"}{" "}
-                            <span dir="ltr" className="font-medium text-foreground">
-                              {user.phone}
-                            </span>
-                          </>
-                        )}
-                      </p>
+                      )}
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                          <span className="font-semibold text-sm truncate max-w-full">{user.fullName}</span>
+                          {renderRoleBadge(user.role)}
+                        </div>
+                        <p className="text-xs text-muted-foreground break-all leading-snug">
+                          {isAr ? "اسم المستخدم:" : "Username:"}{" "}
+                          <span dir="ltr" className="font-medium text-foreground break-all">
+                            {user.username}
+                          </span>
+                          {user.phone && (
+                            <>
+                              {" "}
+                              · {isAr ? "الهاتف:" : "Tél:"}{" "}
+                              <span dir="ltr" className="font-medium text-foreground">
+                                {user.phone}
+                              </span>
+                            </>
+                          )}
+                        </p>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
@@ -716,7 +736,8 @@ export default function ManageUsers() {
                       </Button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>

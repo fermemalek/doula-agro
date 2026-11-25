@@ -41,6 +41,7 @@ import { usePrograms, useProgramActions, type ProgramKind } from "@/lib/cloud/pr
 import { useAlerts, useAlertActions, type CloudAlert } from "@/lib/cloud/alerts";
 import { useParcels } from "@/lib/parcel-store";
 import { useRole } from "@/lib/role";
+import { getUserAvatar, getUserInitials } from "@/lib/avatars";
 import { TaskExecutionModal, type ExecutionTarget } from "./TaskExecutionModal";
 import { AlertDetailDialog } from "@/components/AlertDetailDialog";
 import { FertilisationExecutionAssistant } from "./FertilisationExecutionAssistant";
@@ -407,13 +408,33 @@ export function TodayView() {
   return (
     <main className="mx-auto max-w-3xl px-4 pb-28 pt-4">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-lg font-semibold capitalize text-foreground">
-            Bonjour {firstName} <span className="text-muted-foreground">— {dayLabel()}</span>
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            Feuille de route programmée par l'administrateur
-          </p>
+        <div className="flex items-center gap-2.5 min-w-0">
+          {(() => {
+            const execAvatar = getUserAvatar({
+              name: firstName,
+              email: session?.user?.email,
+              fullName: session?.user?.user_metadata?.full_name as string | undefined,
+            });
+            return execAvatar ? (
+              <img
+                src={execAvatar}
+                alt={firstName || "Exécutant"}
+                className="h-10 w-10 rounded-full object-cover ring-2 ring-primary/30 shrink-0"
+              />
+            ) : (
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-xs font-black text-primary shrink-0">
+                {getUserInitials(firstName)}
+              </span>
+            );
+          })()}
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold capitalize text-foreground truncate">
+              Bonjour {firstName} <span className="text-muted-foreground">— {dayLabel()}</span>
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              Feuille de route programmée par l'administrateur
+            </p>
+          </div>
         </div>
         <RoleSwitcher />
       </div>

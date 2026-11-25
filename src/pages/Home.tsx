@@ -6,14 +6,26 @@ import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { TodayView } from "@/components/executant/TodayView";
 import { IngenieurHome } from "@/components/ingenieur/IngenieurHome";
 import { useDisplayRole } from "@/lib/display-role";
+import { useRole } from "@/lib/role";
 import { saveConfig, useConfig } from "@/lib/config-store";
 import { useMyAssignedTasks } from "@/lib/cloud/tasks";
+import { getUserAvatar, getUserInitials } from "@/lib/avatars";
 
 function HomePage() {
   const role = useDisplayRole();
+  const { session } = useRole();
   const cfg = useConfig();
   const currentLang = cfg.lang || "fr";
   const { matchedMemberName } = useMyAssignedTasks();
+  const displayName =
+    matchedMemberName ||
+    (session?.user?.user_metadata?.full_name as string)?.trim() ||
+    (session?.user?.email ? session.user.email.split("@")[0] : "");
+  const adminAvatar = getUserAvatar({
+    name: displayName,
+    email: session?.user?.email,
+    fullName: session?.user?.user_metadata?.full_name as string | undefined,
+  });
 
   // Arabe par défaut pour l'Ingénieur, Français par défaut pour Exécutant (Admin libre de basculer FR/AR)
   useEffect(() => {
@@ -29,10 +41,23 @@ function HomePage() {
     <main className="mx-auto max-w-3xl px-4 pt-4">
       <h1 className="sr-only">Doula Agro — Accueil</h1>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        {matchedMemberName ? (
-          <p className="text-xs font-semibold text-muted-foreground">
-            Connecté : <span className="text-foreground font-bold">{matchedMemberName}</span> (Admin)
-          </p>
+        {displayName ? (
+          <div className="flex items-center gap-2">
+            {adminAvatar ? (
+              <img
+                src={adminAvatar}
+                alt={displayName}
+                className="h-8 w-8 rounded-full object-cover ring-2 ring-primary/30 shrink-0"
+              />
+            ) : (
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-[11px] font-black text-primary shrink-0">
+                {getUserInitials(displayName)}
+              </span>
+            )}
+            <p className="text-xs font-semibold text-muted-foreground">
+              Connecté : <span className="text-foreground font-bold">{displayName}</span> (Admin)
+            </p>
+          </div>
         ) : (
           <span />
         )}

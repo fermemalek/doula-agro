@@ -6,6 +6,7 @@ import { useNavigate } from "@/lib/router-compat";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
 import { useRecommendations, useRecommendationActions, type Recommendation } from "@/lib/cloud/recommendations";
 import { useRole } from "@/lib/role";
+import { getUserAvatar, getUserInitials } from "@/lib/avatars";
 import { RecommendationForm } from "@/components/ingenieur/RecommendationForm";
 import { RecommendationDetailDialog } from "@/components/RecommendationDetailDialog";
 import { useAllModuleRecords } from "@/lib/modules-store";
@@ -164,16 +165,29 @@ export function IngenieurHome() {
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-lg font-bold">{t("eng.title", "Espace ingénieur")}</h1>
-          {accountName && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 py-0.5 ps-1 pe-2.5 text-xs font-bold text-primary">
-              <img
-                src={`${import.meta.env.BASE_URL}zeinab_shawaly_avatar.png`}
-                alt={accountName}
-                className="h-6 w-6 rounded-full object-cover ring-1 ring-primary/30 shrink-0"
-              />
-              <span>{accountName}</span>
-            </span>
-          )}
+          {accountName && (() => {
+            const avatarUrl = getUserAvatar({
+              name: accountName,
+              email: session?.user?.email,
+              role: "ingenieur",
+            });
+            return (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 py-0.5 ps-1 pe-2.5 text-xs font-bold text-primary">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={accountName}
+                    className="h-6 w-6 rounded-full object-cover ring-1 ring-primary/30 shrink-0"
+                  />
+                ) : (
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/20 text-[10px] font-black text-primary shrink-0">
+                    {getUserInitials(accountName)}
+                  </span>
+                )}
+                <span>{accountName}</span>
+              </span>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-3">
           <div className="flex rounded-lg border bg-muted p-0.5 text-xs">
