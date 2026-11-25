@@ -227,7 +227,7 @@ export function IngenieurHome() {
           </p>
         ) : (
           <ul className="space-y-2">
-            {mine.slice(0, 6).map((r) => {
+            {mine.slice(0, 3).map((r) => {
               const isPulv = r.payload?.method === "pulverisation" || (r.payload?.program as any)?.kind === "pulverisation";
               const isPhyto = r.kind === "phytosanitaire";
               const Icon = isPhyto ? FlaskConical : isPulv ? SprayCan : Droplet;
