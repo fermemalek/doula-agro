@@ -41,10 +41,16 @@ export function IngenieurHome() {
     return [...localIrr, ...localFert, ...localPulv, ...localPhy];
   }, [localIrr, localFert, localPulv, localPhy]);
 
-  const mine = useMemo(
-    () => (recos.some((r) => r.created_by === userId) ? recos.filter((r) => r.created_by === userId) : recos),
-    [recos, userId],
-  );
+  const mine = useMemo(() => {
+    const base = recos.some((r) => r.created_by === userId)
+      ? recos.filter((r) => r.created_by === userId)
+      : recos;
+    return [...base].sort((a, b) => {
+      const da = String((a.payload as any)?.date || (a.payload as any)?.program?.date || a.created_at || "");
+      const db = String((b.payload as any)?.date || (b.payload as any)?.program?.date || b.created_at || "");
+      return db.localeCompare(da) || String(b.created_at || "").localeCompare(String(a.created_at || ""));
+    });
+  }, [recos, userId]);
 
   const pendingCount = useMemo(() => {
     return mine.filter((r) => r.status === "envoyee" || !r.status).length;
@@ -106,8 +112,13 @@ export function IngenieurHome() {
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-lg font-bold">{t("eng.title", "Espace ingénieur")}</h1>
           {accountName && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
-              👤 {accountName}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 py-0.5 ps-1 pe-2.5 text-xs font-bold text-primary">
+              <img
+                src={`${import.meta.env.BASE_URL}zeinab_shawaly_avatar.png`}
+                alt={accountName}
+                className="h-6 w-6 rounded-full object-cover ring-1 ring-primary/30 shrink-0"
+              />
+              <span>{accountName}</span>
             </span>
           )}
         </div>

@@ -73,9 +73,17 @@ function ProfilPage() {
       <h1 className="mb-3 text-xl font-bold">{isAr ? "الملف الشخصي" : "Profil"}</h1>
 
       <section className="mb-4 flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-2xs">
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <UserIcon className="h-7 w-7" />
-        </span>
+        {role === "ingenieur" ? (
+          <img
+            src={`${import.meta.env.BASE_URL}zeinab_shawaly_avatar.png`}
+            alt={name || "Zeinab Shawaly"}
+            className="h-14 w-14 rounded-full object-cover ring-2 ring-purple-500/40 shrink-0"
+          />
+        ) : (
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+            <UserIcon className="h-7 w-7" />
+          </span>
+        )}
         <div className="flex-1 min-w-0">
           <p className="truncate font-semibold">{name}</p>
           <p dir="ltr" className="truncate text-xs text-muted-foreground text-start">{email}</p>
