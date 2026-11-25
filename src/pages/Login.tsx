@@ -23,7 +23,7 @@ import {
   resolveAccountRealRole,
   type Role,
 } from "@/lib/role";
-import { getUserAvatar, QUICK_LOGIN_PROFILES } from "@/lib/avatars";
+import { getUserAvatar } from "@/lib/avatars";
 
 const SUPABASE_URL = "https://krmvdahejfczrziobesi.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9GTs8V5G33NYHqEQUPoHzA_Nd4xHgRq";
@@ -272,45 +272,6 @@ function LoginPage() {
           <p className="text-sm text-muted-foreground">
             {mode === "signin" ? "Connexion à votre compte" : "Créer un nouveau compte"}
           </p>
-
-          {/* Raccourcis visuels (pré-remplissent uniquement l'identifiant, le mot de passe reste requis) */}
-          {mode === "signin" && (
-            <div className="pt-1.5 flex items-center justify-center gap-3">
-              {QUICK_LOGIN_PROFILES.map((profile) => {
-                const isSelected = email.trim().toLowerCase() === profile.identifier.toLowerCase();
-                return (
-                  <button
-                    key={profile.id}
-                    type="button"
-                    onClick={() => {
-                      setEmail(profile.identifier);
-                      setErrorMsg(null);
-                    }}
-                    className={`group flex flex-col items-center gap-1 rounded-xl p-1.5 transition cursor-pointer ${
-                      isSelected
-                        ? "bg-primary/10 ring-2 ring-primary/50"
-                        : "hover:bg-muted/70"
-                    }`}
-                    title={`Pré-remplir avec ${profile.label}`}
-                  >
-                    <img
-                      src={profile.avatar}
-                      alt={profile.label}
-                      className={`h-10 w-10 rounded-full object-cover transition ${
-                        isSelected ? "ring-2 ring-primary scale-105" : "ring-1 ring-border group-hover:scale-105"
-                      }`}
-                    />
-                    <span className="text-[10px] font-bold text-foreground leading-none">
-                      {profile.label}
-                    </span>
-                    <span className="text-[9px] text-muted-foreground leading-none">
-                      {profile.roleLabelFr}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </header>
 
         {errorMsg && (
