@@ -460,20 +460,20 @@ export function useRecommendationActions() {
   const update = useMutation({
     mutationFn: async (input: {
       id: string;
-      title: string;
+      title?: string;
       comment?: string | null;
-      parcel_ids: string[];
+      parcel_ids?: string[];
       payload?: Record<string, unknown>;
       photo_urls?: string[];
       status?: RecoStatus;
     }) => {
       const nowIso = new Date().toISOString();
       const patch: Record<string, unknown> = {
-        title: input.title,
-        comment: input.comment ?? null,
-        parcel_ids: input.parcel_ids,
-        payload: input.payload ?? {},
-        photo_urls: input.photo_urls ?? [],
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.comment !== undefined ? { comment: input.comment } : {}),
+        ...(input.parcel_ids !== undefined ? { parcel_ids: input.parcel_ids } : {}),
+        ...(input.payload !== undefined ? { payload: input.payload } : {}),
+        ...(input.photo_urls !== undefined ? { photo_urls: input.photo_urls } : {}),
         ...(input.status ? { status: input.status } : {}),
         updated_at: nowIso,
       };

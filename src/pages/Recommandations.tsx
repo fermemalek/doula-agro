@@ -577,7 +577,7 @@ function RecommandationsPageContent() {
               await supabase.from("module_records").delete().in("id", cloudIdsToDelete);
             }
           }
-        } catch {}
+        } catch { }
 
         await fetchCloudModules();
       }
@@ -926,11 +926,10 @@ function RecommandationsPageContent() {
           <button
             type="button"
             onClick={() => handleStatusChange("all")}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${
-              selectedStatus === "all"
-                ? "bg-foreground text-background shadow-xs font-black"
-                : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 ${selectedStatus === "all"
+              ? "bg-foreground text-background shadow-xs font-black"
+              : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
           >
             <span>{isAr ? "الكل" : "Toutes"}</span>
             <span className="rounded-full bg-background/20 px-1.5 py-0.2 text-[10px] font-black">
@@ -941,11 +940,10 @@ function RecommandationsPageContent() {
           <button
             type="button"
             onClick={() => handleStatusChange("pending")}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 border ${
-              selectedStatus === "pending"
-                ? "bg-blue-600 text-white border-blue-600 shadow-xs font-black"
-                : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/20"
-            }`}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 border ${selectedStatus === "pending"
+              ? "bg-blue-600 text-white border-blue-600 shadow-xs font-black"
+              : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30 hover:bg-blue-500/20"
+              }`}
           >
             <span>{isAr ? "قيد الانتظار" : "En attente"}</span>
             <span className="rounded-full bg-black/10 dark:bg-white/15 px-1.5 py-0.2 text-[10px] font-black">
@@ -956,11 +954,10 @@ function RecommandationsPageContent() {
           <button
             type="button"
             onClick={() => handleStatusChange("accepted")}
-            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 border ${
-              selectedStatus === "accepted"
-                ? "bg-emerald-600 text-white border-emerald-600 shadow-xs font-black"
-                : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
-            }`}
+            className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1 text-xs font-bold transition-all active:scale-95 border ${selectedStatus === "accepted"
+              ? "bg-emerald-600 text-white border-emerald-600 shadow-xs font-black"
+              : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20"
+              }`}
           >
             <span>{isAr ? "مقبولة" : "Acceptées"}</span>
             <span className="rounded-full bg-black/10 dark:bg-white/15 px-1.5 py-0.2 text-[10px] font-black">
@@ -1151,8 +1148,8 @@ function RecommandationsPageContent() {
       {pendingInFiltered.length > 0 && (displayRole === "ingenieur" || displayRole === "admin") && (
         <div
           className={`mb-3 flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border p-3 transition-all ${selectedRecoIds.size > 0
-              ? "bg-primary/10 border-primary/40 shadow-sm"
-              : "bg-muted/30 border-dashed"
+            ? "bg-primary/10 border-primary/40 shadow-sm"
+            : "bg-muted/30 border-dashed"
             }`}
         >
           <div className="flex items-center gap-2">
@@ -1160,8 +1157,8 @@ function RecommandationsPageContent() {
               type="button"
               onClick={handleSelectAllPending}
               className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition active:scale-95 cursor-pointer ${allPendingSelected
-                  ? "bg-primary text-primary-foreground border-primary shadow-xs font-black"
-                  : "bg-background hover:bg-muted text-foreground border-input"
+                ? "bg-primary text-primary-foreground border-primary shadow-xs font-black"
+                : "bg-background hover:bg-muted text-foreground border-input"
                 }`}
             >
               <CheckSquare className="h-4 w-4" />
@@ -1340,8 +1337,8 @@ function RecommandationsPageContent() {
                     >
                       <div
                         className={`h-5 w-5 rounded-lg border-2 flex items-center justify-center transition-all ${selectedRecoIds.has(r.id)
-                            ? "bg-primary border-primary text-primary-foreground shadow-xs"
-                            : "border-muted-foreground/40 hover:border-primary bg-background"
+                          ? "bg-primary border-primary text-primary-foreground shadow-xs"
+                          : "border-muted-foreground/40 hover:border-primary bg-background"
                           }`}
                       >
                         {selectedRecoIds.has(r.id) && <CheckSquare className="h-3.5 w-3.5" />}
@@ -1488,8 +1485,10 @@ function RecommandationsPageContent() {
                                   await update.mutateAsync({
                                     id: r.id,
                                     title: r.title,
+                                    comment: r.comment ?? null,
                                     parcel_ids: r.parcel_ids || [],
                                     payload: nextPayload,
+                                    photo_urls: r.photo_urls || [],
                                   });
                                   toast.success(`Produit substitué par "${eq.productName}" (pensez à vérifier la concentration).`);
                                 } catch {
