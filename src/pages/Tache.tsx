@@ -39,6 +39,11 @@ import {
   useYearsFromDates,
 } from "@/components/programs/ProgramFiltersBar";
 import { ExecutantWorkload } from "@/components/home/ExecutantWorkload";
+import {
+  useTeamMembersStore,
+  getTeamRoleOrder,
+  type TeamMember,
+} from "@/lib/team-members-store";
 
 const PRIORITY_LABEL: Record<TaskPriority, string> = {
   basse: "Basse",
@@ -60,11 +65,39 @@ const KIND_LABEL: Record<TaskKind, string> = {
 function TachePage() {
   const { data: rawTasks = [] } = useTasks();
   const { data: executants = [] } = useExecutants();
+  const { members: teamMembers } = useTeamMembersStore();
   const { myTasks, matchedIds, matchedMemberName } = useMyAssignedTasks();
   const parcels = useParcels();
   const { create, markDone, reject, remove, update } = useTaskActions();
   const { isAdmin } = useRole();
   const location = useLocation();
+
+  // Relier chaque membre de l'équipe réelle (7+ personnes) à son éventuel compte Supabase
+  const teamRoster = useMemo(() => {
+    const norm = (s: string) =>
+      s
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+    const accountByNormName = new Map<string, (typeof executants)[number]>();
+    for (const ex of executants) {
+      const k = norm(ex.name);
+      if (!accountByNormName.has(k)) accountByNormName.set(k, ex);
+    }
+    return [...teamMembers]
+      .sort(
+        (a, b) =>
+          getTeamRoleOrder(a.role) - getTeamRoleOrder(b.role) || a.name.localeCompare(b.name),
+      )
+      .map((m: TeamMember) => {
+        const acc = accountByNormName.get(norm(m.name));
+        return {
+          member: m,
+          accountId: acc?.id ?? null,
+        };
+      });
+  }, [teamMembers, executants]);
 
   // Filtrer les tâches orphelines (assignées à un compte ingénieur/supprimé) et éviter les doublons
   const validExecIds = useMemo(
@@ -1011,30 +1044,79 @@ function TachePage() {
                   `(${assignedToIds.length + selectedExternalWorkers.length})`}
               </Label>
 
-              {/* 1. Membres ayant un compte dans l'application */}
+              {/* 1. Tous les membres de l'équipe (Superviseurs, Exécutants, Manœuvres) */}
               <div className="rounded-md border bg-background p-2.5 space-y-1.5">
-                <p className="text-[11px] font-semibold text-muted-foreground">
-                  👤 Comptes de l'application (Administrateur / Exécutant) :
-                </p>
-                {executants.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Aucun compte disponible.</p>
-                )}
-                <div className="max-h-36 space-y-1 overflow-auto">
-                  {executants.map((e) => (
-                    <label
-                      key={e.id}
-                      className="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted"
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold text-muted-foreground">
+                    👥 Équipe complète ({teamRoster.length} personne(s)) :
+                  </p>
+                  {teamRoster.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allSelected = teamRoster.every((r) =>
+                          r.accountId
+                            ? assignedToIds.includes(r.accountId)
+                            : selectedExternalWorkers.includes(r.member.name),
+                        );
+                        if (allSelected) {
+                          setAssignedToIds([]);
+                          setSelectedExternalWorkers([]);
+                        } else {
+                          setAssignedToIds(
+                            teamRoster.map((r) => r.accountId).filter((id): id is string => Boolean(id)),
+                          );
+                          setSelectedExternalWorkers(
+                            teamRoster.filter((r) => !r.accountId).map((r) => r.member.name),
+                          );
+                        }
+                      }}
+                      className="text-[10px] font-bold text-primary hover:underline cursor-pointer"
                     >
-                      <input
-                        type="checkbox"
-                        checked={assignedToIds.includes(e.id)}
-                        onChange={() => toggleAssign(e.id)}
-                      />
-                      <span className="truncate font-medium">
-                        {e.name} <span className="text-xs text-muted-foreground">({e.role})</span>
-                      </span>
-                    </label>
-                  ))}
+                      {teamRoster.every((r) =>
+                        r.accountId
+                          ? assignedToIds.includes(r.accountId)
+                          : selectedExternalWorkers.includes(r.member.name),
+                      )
+                        ? "Tout désélectionner"
+                        : "Tout sélectionner"}
+                    </button>
+                  )}
+                </div>
+                {teamRoster.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Aucun membre disponible.</p>
+                )}
+                <div className="max-h-48 space-y-1 overflow-auto">
+                  {teamRoster.map(({ member, accountId }) => {
+                    const checked = accountId
+                      ? assignedToIds.includes(accountId)
+                      : selectedExternalWorkers.includes(member.name);
+                    const onToggle = () => {
+                      if (accountId) toggleAssign(accountId);
+                      else toggleExternalWorker(member.name);
+                    };
+                    return (
+                      <label
+                        key={member.id}
+                        className={`flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-sm transition ${
+                          checked ? "bg-primary/10" : "hover:bg-muted"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={onToggle}
+                            className="accent-primary"
+                          />
+                          <span className="truncate font-medium">{member.name}</span>
+                        </span>
+                        <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-bold text-muted-foreground">
+                          {member.role}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1419,37 +1501,64 @@ function TachePage() {
               </div>
 
               <div className="space-y-1">
-                <Label className="text-xs font-semibold">Assigné à (Compte application)</Label>
+                <Label className="text-xs font-semibold">Assigné à (Principal)</Label>
                 <select
                   disabled={!isAdmin}
                   className="w-full rounded-md border bg-background px-2.5 py-2 text-sm disabled:opacity-70"
                   value={editAssignedTo}
                   onChange={(e) => setEditAssignedTo(e.target.value)}
                 >
-                  <option value="">— Aucun compte application —</option>
-                  {executants.map((ex) => (
-                    <option key={ex.id} value={ex.id}>
-                      {ex.name} ({ex.role})
-                    </option>
-                  ))}
+                  <option value="">— Aucun compte principal —</option>
+                  {teamRoster
+                    .filter((r) => Boolean(r.accountId))
+                    .map(({ member, accountId }) => (
+                      <option key={member.id} value={accountId!}>
+                        {member.name} ({member.role})
+                      </option>
+                    ))}
                 </select>
               </div>
 
               <div className="col-span-2 rounded-md border border-dashed border-primary/40 bg-primary/[0.02] p-2.5 space-y-2">
                 <Label className="text-xs font-semibold flex items-center gap-1.5">
-                  👷 Autres exécutants / ouvriers (sans accès à l'application)
+                  👥 Tous les membres de l'équipe & autres exécutants
                 </Label>
-                {savedWorkers.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {savedWorkers.map((workerName) => {
+                <div className="flex flex-wrap gap-1.5">
+                  {teamRoster.map(({ member }) => {
+                    const active = editExternalWorkers.includes(member.name);
+                    return (
+                      <label
+                        key={member.id}
+                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                          active
+                            ? "border-primary bg-primary text-primary-foreground shadow-xs"
+                            : "border-border bg-background text-foreground hover:bg-muted"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={!isAdmin}
+                          checked={active}
+                          onChange={() => toggleEditExternalWorker(member.name)}
+                          className="h-3.5 w-3.5 accent-primary"
+                        />
+                        <span>{member.name}</span>
+                        <span className="text-[10px] opacity-75">({member.role})</span>
+                      </label>
+                    );
+                  })}
+                  {savedWorkers
+                    .filter((w) => !teamRoster.some((r) => r.member.name.toLowerCase() === w.toLowerCase()))
+                    .map((workerName) => {
                       const active = editExternalWorkers.includes(workerName);
                       return (
                         <div
                           key={workerName}
-                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${active
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                            active
                               ? "border-primary bg-primary text-primary-foreground shadow-xs"
                               : "border-border bg-background text-foreground hover:bg-muted"
-                            }`}
+                          }`}
                         >
                           <label className="flex cursor-pointer items-center gap-1.5">
                             <input
@@ -1466,8 +1575,9 @@ function TachePage() {
                               type="button"
                               onClick={() => removeSavedWorker(workerName)}
                               title="Retirer de la liste mémorisée"
-                              className={`ml-0.5 rounded-full p-0.5 hover:bg-black/10 ${active ? "text-primary-foreground/80" : "text-muted-foreground"
-                                }`}
+                              className={`ml-0.5 rounded-full p-0.5 hover:bg-black/10 ${
+                                active ? "text-primary-foreground/80" : "text-muted-foreground"
+                              }`}
                             >
                               <X className="h-3 w-3" />
                             </button>
@@ -1475,12 +1585,7 @@ function TachePage() {
                         </div>
                       );
                     })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Aucun exécutant externe sélectionné.
-                  </p>
-                )}
+                </div>
 
                 {isAdmin && (
                   <div className="flex gap-2">
