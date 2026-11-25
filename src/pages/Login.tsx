@@ -20,6 +20,7 @@ import {
   applyDefaultLangForRole,
   clearCachedRoles,
   inferFallbackRoleFromUser,
+  resolveAccountRealRole,
   type Role,
 } from "@/lib/role";
 
@@ -222,9 +223,7 @@ function LoginPage() {
             .select("role")
             .eq("user_id", user.id);
           const roles = (roleRows ?? []).map((r) => r.role as Role);
-          if (roles.includes("admin")) realRole = "admin";
-          else if (roles.includes("ingenieur")) realRole = "ingenieur";
-          else if (roles.includes("executant")) realRole = "executant";
+          realRole = resolveAccountRealRole(user, roles);
           localStorage.setItem("doula-active-role", realRole);
           localStorage.setItem(`doula-role:${user.id}`, realRole);
           localStorage.setItem("doula-last-uid", user.id);

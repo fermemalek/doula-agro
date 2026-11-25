@@ -35,6 +35,29 @@ export function applyDefaultLangForRole(r: Role) {
   }
 }
 
+export function isZeinabAccount(user?: { email?: string | null; user_metadata?: Record<string, any> } | null): boolean {
+  const email = (user?.email || "").trim().toLowerCase();
+  const fullName = String(user?.user_metadata?.full_name || "").trim().toLowerCase();
+  const combined = `${email} ${fullName}`;
+  return combined.includes("zeinab");
+}
+
+export function resolveAccountRealRole(
+  user?: { email?: string | null; user_metadata?: Record<string, any> } | null,
+  dbRoles?: Role[],
+): Role {
+  // Le compte Zeinab est toujours Ingénieur par défaut à la connexion (langue AR),
+  // même si un test RoleSwitcher précédent a écrit une ligne "admin" dans user_roles.
+  if (isZeinabAccount(user)) {
+    return "ingenieur";
+  }
+  const roles = dbRoles ?? [];
+  if (roles.includes("admin")) return "admin";
+  if (roles.includes("ingenieur")) return "ingenieur";
+  if (roles.includes("executant")) return "executant";
+  return inferFallbackRoleFromUser(user);
+}
+
 export function inferFallbackRoleFromUser(user?: { email?: string | null; user_metadata?: Record<string, any> } | null): Role {
   const email = (user?.email || "").trim().toLowerCase();
   const fullName = String(user?.user_metadata?.full_name || "").trim().toLowerCase();
@@ -191,11 +214,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
 
       const roles = (data ?? []).map((d) => d.role as Role);
-      let r: Role;
-      if (roles.includes("admin")) r = "admin";
-      else if (roles.includes("ingenieur")) r = "ingenieur";
-      else if (roles.includes("executant")) r = "executant";
-      else r = inferFallbackRoleFromUser(opts?.user);
+      const r = resolveAccountRealRole(opts?.user, roles);
 
       setRole(r);
       writeCachedRole(uid, r);
@@ -219,14 +238,7 @@ export function RoleProvider({ children }: { children: ReactNode }) {
   const switchRole = (newRole: Role) => {
     setRole(newRole);
     writeCachedRole(session?.user?.id, newRole);
-    // Tenter en arrière-plan d'enregistrer le rôle dans la base si admin
-    if (session?.user?.id && newRole === "admin") {
-      Promise.resolve(
-        supabase
-          .from("user_roles")
-          .upsert({ user_id: session.user.id, role: "admin" }, { onConflict: "user_id,role" })
-      ).catch(() => {});
-    }
+    // RoleSwitcher est un basculement temporaire de session : ne jamais écraser user_roles dans Supabase
   };
 
   const signOut = async () => {
