@@ -22,9 +22,12 @@ export interface MandataireBordereau {
 }
 
 export const APPLE_VARIETY_OPTIONS = [
-  "G · Golden",
-  "S · Granny Smith",
+  "Royal Gala",
   "Gala One",
+  "Red Delicious (El Kabda / الكبدة)",
+  "Star Crimson",
+  "Golden",
+  "Granny Smith",
 ];
 
 export const CALIBRE_OPTIONS: string[] = [

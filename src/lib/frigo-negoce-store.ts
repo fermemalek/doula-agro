@@ -2,7 +2,117 @@ import { useCallback, useEffect, useState } from "react";
 
 export type FrigoChambreId = "grande" | "petite";
 export type FrigoRoomCode = "G1" | "G2" | "G3" | "G4" | "G5" | "CH-01";
-export type FrigoStackColor = "rouge" | "jaune";
+export type FrigoStackColor = "rouge" | "jaune" | "vert" | "rouge_fonce" | "bordeaux";
+
+export type AppleVarietyId =
+  | "royal_gala"
+  | "gala_one"
+  | "red_delicious_kabda"
+  | "star_crimson"
+  | "golden"
+  | "granny_smith";
+
+export interface AppleVarietySpec {
+  id: AppleVarietyId;
+  label: string;
+  shortLabel: string;
+  labelAr: string;
+  color: FrigoStackColor;
+  fullCls: string;
+  partialCls: string;
+  badgeCls: string;
+  dotCls: string;
+}
+
+export const APPLE_VARIETIES: AppleVarietySpec[] = [
+  {
+    id: "royal_gala",
+    label: "Royal Gala",
+    shortLabel: "R.Gala",
+    labelAr: "رويال غالا (Royal Gala)",
+    color: "rouge",
+    fullCls: "border-rose-700 bg-rose-600 text-white shadow-2xs",
+    partialCls: "border-rose-500 bg-rose-500/55 text-white",
+    badgeCls: "bg-rose-500/15 border-rose-500/30 text-rose-800 dark:text-rose-200",
+    dotCls: "bg-rose-600",
+  },
+  {
+    id: "gala_one",
+    label: "Gala One",
+    shortLabel: "G.One",
+    labelAr: "غالا وان (Gala One)",
+    color: "rouge",
+    fullCls: "border-red-600 bg-red-500 text-white shadow-2xs",
+    partialCls: "border-red-400 bg-red-400/60 text-white",
+    badgeCls: "bg-red-500/15 border-red-500/30 text-red-800 dark:text-red-200",
+    dotCls: "bg-red-500",
+  },
+  {
+    id: "red_delicious_kabda",
+    label: "Red Delicious (El Kabda / الكبدة)",
+    shortLabel: "Kabda",
+    labelAr: "ريد ديليشس (الكبدة)",
+    color: "rouge_fonce",
+    fullCls: "border-red-950 bg-red-800 text-white shadow-2xs",
+    partialCls: "border-red-800 bg-red-800/60 text-white",
+    badgeCls: "bg-red-900/15 border-red-900/35 text-red-900 dark:text-red-200",
+    dotCls: "bg-red-800",
+  },
+  {
+    id: "star_crimson",
+    label: "Star Crimson",
+    shortLabel: "StarCr",
+    labelAr: "ستار كريمسون (Star Crimson)",
+    color: "bordeaux",
+    fullCls: "border-rose-950 bg-rose-900 text-white shadow-2xs",
+    partialCls: "border-rose-800 bg-rose-900/60 text-white",
+    badgeCls: "bg-rose-950/15 border-rose-900/35 text-rose-950 dark:text-rose-200",
+    dotCls: "bg-rose-900",
+  },
+  {
+    id: "golden",
+    label: "Golden",
+    shortLabel: "Golden",
+    labelAr: "غولدن (Golden)",
+    color: "jaune",
+    fullCls: "border-amber-600 bg-amber-400 text-amber-950 shadow-2xs",
+    partialCls: "border-amber-500 bg-amber-300/65 text-amber-950",
+    badgeCls: "bg-amber-400/20 border-amber-500/40 text-amber-900 dark:text-amber-200",
+    dotCls: "bg-amber-400 border border-amber-600",
+  },
+  {
+    id: "granny_smith",
+    label: "Granny Smith",
+    shortLabel: "Granny",
+    labelAr: "غراني سميث (Granny Smith)",
+    color: "vert",
+    fullCls: "border-emerald-700 bg-emerald-600 text-white shadow-2xs",
+    partialCls: "border-emerald-500 bg-emerald-500/60 text-white",
+    badgeCls: "bg-emerald-500/15 border-emerald-500/30 text-emerald-800 dark:text-emerald-200",
+    dotCls: "bg-emerald-600",
+  },
+];
+
+export const APPLE_VARIETY_BY_ID: Record<AppleVarietyId, AppleVarietySpec> = Object.fromEntries(
+  APPLE_VARIETIES.map((v) => [v.id, v]),
+) as Record<AppleVarietyId, AppleVarietySpec>;
+
+export function getDefaultStackVariety(roomCode: FrigoRoomCode, colIndex: number): AppleVarietyId {
+  const [left, center] = FRIGO_ROOM_SPECS[roomCode].islands;
+  if (colIndex >= left && colIndex < left + center) return "golden";
+  return "royal_gala";
+}
+
+export function resolveCellVarietySpec(cell: FrigoStackCell): AppleVarietySpec {
+  if (cell.variety && cell.variety in APPLE_VARIETY_BY_ID) {
+    return APPLE_VARIETY_BY_ID[cell.variety as AppleVarietyId];
+  }
+  if (cell.color === "jaune") return APPLE_VARIETY_BY_ID.golden;
+  if (cell.color === "vert") return APPLE_VARIETY_BY_ID.granny_smith;
+  if (cell.color === "rouge_fonce") return APPLE_VARIETY_BY_ID.red_delicious_kabda;
+  if (cell.color === "bordeaux") return APPLE_VARIETY_BY_ID.star_crimson;
+  return APPLE_VARIETY_BY_ID.royal_gala;
+}
 
 export interface FrigoRoomSpec {
   code: FrigoRoomCode;
@@ -119,6 +229,7 @@ export interface FrigoRoomMeta {
 export interface FrigoStackCell {
   height: number;
   color: FrigoStackColor;
+  variety?: AppleVarietyId | string;
   farmer?: string;
 }
 
@@ -164,7 +275,8 @@ export function buildDefaultRoomGrid(
   for (let r = 0; r < spec.totalRows; r++) {
     const maxH = getRowMaxStackHeight(r);
     for (let c = 0; c < spec.totalCols; c++) {
-      const color = getDefaultStackColor(roomCode, c);
+      const variety = getDefaultStackVariety(roomCode, c);
+      const color = APPLE_VARIETY_BY_ID[variety].color;
       let height = 0;
       let farmer: string | undefined = undefined;
 
@@ -180,7 +292,7 @@ export function buildDefaultRoomGrid(
         cur.remaining -= take;
       }
 
-      grid[`${r}_${c}`] = { height, color, farmer };
+      grid[`${r}_${c}`] = { height, color, variety, farmer };
     }
   }
 

@@ -10,19 +10,24 @@ import {
   RotateCcw,
   Check,
   PaintBucket,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDA, formatNumber } from "@/lib/format";
 import {
+  APPLE_VARIETIES,
+  APPLE_VARIETY_BY_ID,
   buildDefaultRoomGrid,
   FRIGO_ROOM_SPECS,
-  getDefaultStackColor,
+  getDefaultStackVariety,
   getRowMaxStackHeight,
+  resolveCellVarietySpec,
+  type AppleVarietyId,
   type FrigoRoomCode,
   type FrigoRoomGridOverrides,
   type FrigoRoomMeta,
   type FrigoStackCell,
-  type FrigoStackColor,
 } from "@/lib/frigo-negoce-store";
 import type { RoomSummary } from "./FrigoBuildingPlan";
 
@@ -53,9 +58,14 @@ export function FrigoRoomDetailModal({
 }: Props) {
   const spec = FRIGO_ROOM_SPECS[room.code];
   const [activeTab, setActiveTab] = useState<"content" | "plan">("plan");
-  const [selectedCellKey, setSelectedCellKey] = useState<string | null>(null);
+
+  // Sélection simple ou multiple
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+
+  // Pinceau d'affectation rapide (îlot entier)
   const [brushFarmer, setBrushFarmer] = useState<string>(room.farmers[0] || KNOWN_FARMERS[0]);
-  const [brushColor, setBrushColor] = useState<FrigoStackColor>("rouge");
+  const [brushVariety, setBrushVariety] = useState<AppleVarietyId>("royal_gala");
 
   // Liste complète des fermiers disponibles (ceux de la chambre + les 5 connus)
   const farmerOptions = useMemo(() => {
@@ -69,54 +79,118 @@ export function FrigoRoomDetailModal({
     return { ...base, ...gridOverrides };
   }, [room.code, room.list, room.cajousRestants, gridOverrides]);
 
-  // Statistiques temps réel du plan intérieur
+  const getCell = (r: number, c: number): FrigoStackCell => {
+    const existing = mergedGrid[`${r}_${c}`];
+    if (existing) return existing;
+    const v = getDefaultStackVariety(room.code, c);
+    return { height: 0, variety: v, color: APPLE_VARIETY_BY_ID[v].color };
+  };
+
+  // Statistiques temps réel du plan intérieur (par variété, par rangée, par fermier)
   const gridStats = useMemo(() => {
     let totalPlanCajous = 0;
     let fullPiles = 0;
     let partialPiles = 0;
     let emptyPiles = 0;
-    let rougeCajous = 0;
-    let jauneCajous = 0;
+    const byVariety: Record<string, number> = {};
     const byFarmer: Record<string, number> = {};
+    const rowSums: number[] = [];
 
     for (let r = 0; r < spec.totalRows; r++) {
       const maxH = getRowMaxStackHeight(r);
+      let rowTotal = 0;
       for (let c = 0; c < spec.totalCols; c++) {
-        const cell = mergedGrid[`${r}_${c}`] || {
-          height: 0,
-          color: getDefaultStackColor(room.code, c),
-        };
+        const cell = getCell(r, c);
         totalPlanCajous += cell.height;
+        rowTotal += cell.height;
         if (cell.height <= 0) emptyPiles++;
         else if (cell.height >= maxH) fullPiles++;
         else partialPiles++;
 
-        if (cell.color === "jaune") jauneCajous += cell.height;
-        else rougeCajous += cell.height;
-
-        if (cell.height > 0 && cell.farmer) {
-          byFarmer[cell.farmer] = (byFarmer[cell.farmer] || 0) + cell.height;
+        if (cell.height > 0) {
+          const vSpec = resolveCellVarietySpec(cell);
+          byVariety[vSpec.id] = (byVariety[vSpec.id] || 0) + cell.height;
+          if (cell.farmer) {
+            byFarmer[cell.farmer] = (byFarmer[cell.farmer] || 0) + cell.height;
+          }
         }
       }
+      rowSums.push(rowTotal);
     }
-    return { totalPlanCajous, fullPiles, partialPiles, emptyPiles, rougeCajous, jauneCajous, byFarmer };
+    return { totalPlanCajous, fullPiles, partialPiles, emptyPiles, byVariety, byFarmer, rowSums };
   }, [mergedGrid, room.code, spec.totalCols, spec.totalRows]);
+
+  // Informations sur la sélection active (1 ou plusieurs cases)
+  const selectionInfo = useMemo(() => {
+    const items = selectedKeys
+      .map((key) => {
+        const [rStr, cStr] = key.split("_");
+        const r = Number(rStr);
+        const c = Number(cStr);
+        if (!Number.isFinite(r) || !Number.isFinite(c)) return null;
+        return { key, r, c, maxH: getRowMaxStackHeight(r), cell: getCell(r, c) };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+
+    const totalCajous = items.reduce((s, it) => s + it.cell.height, 0);
+    const single = items.length === 1 ? items[0] : null;
+    const commonVariety =
+      items.length > 0
+        ? items.every((it) => resolveCellVarietySpec(it.cell).id === resolveCellVarietySpec(items[0].cell).id)
+          ? resolveCellVarietySpec(items[0].cell).id
+          : ""
+        : "";
+    const commonFarmer =
+      items.length > 0
+        ? items.every((it) => (it.cell.farmer || "") === (items[0].cell.farmer || ""))
+          ? items[0].cell.farmer || ""
+          : "__mixed__"
+        : "";
+
+    return { items, count: items.length, totalCajous, single, commonVariety, commonFarmer };
+  }, [selectedKeys, mergedGrid, room.code]);
+
+  // Clic sur une case de la grille
+  function handleCellClick(key: string, e: React.MouseEvent) {
+    const useMulti = multiSelectMode || e.ctrlKey || e.metaKey || e.shiftKey;
+    if (useMulti) {
+      setSelectedKeys((prev) =>
+        prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+      );
+    } else {
+      setSelectedKeys((prev) => (prev.length === 1 && prev[0] === key ? [] : [key]));
+    }
+  }
+
+  // Appliquer une modification à TOUTE la sélection (1 ou N cases)
+  function applyToSelection(
+    updater: (item: { key: string; r: number; c: number; maxH: number; cell: FrigoStackCell }) => FrigoStackCell,
+  ) {
+    if (selectionInfo.items.length === 0) return;
+    const patch: Record<string, FrigoStackCell> = {};
+    for (const item of selectionInfo.items) {
+      patch[item.key] = updater(item);
+    }
+    onUpdateStackCells(room.code, patch);
+  }
 
   // Affecter un îlot entier (0 = Gauche, 1 = Centre, 2 = Droit)
   function assignIsland(islandIdx: 0 | 1 | 2) {
     const [left, center] = spec.islands;
     const startCol = islandIdx === 0 ? 0 : islandIdx === 1 ? left : left + center;
     const endCol = islandIdx === 0 ? left : islandIdx === 1 ? left + center : spec.totalCols;
+    const vSpec = APPLE_VARIETY_BY_ID[brushVariety];
 
     const patch: Record<string, FrigoStackCell> = {};
     for (let r = 0; r < spec.totalRows; r++) {
       const maxH = getRowMaxStackHeight(r);
       for (let c = startCol; c < endCol; c++) {
         const key = `${r}_${c}`;
-        const cur = mergedGrid[key];
+        const cur = getCell(r, c);
         patch[key] = {
-          height: cur && cur.height > 0 ? cur.height : maxH,
-          color: brushColor,
+          height: cur.height > 0 ? cur.height : maxH,
+          variety: vSpec.id,
+          color: vSpec.color,
           farmer: brushFarmer || undefined,
         };
       }
@@ -124,42 +198,13 @@ export function FrigoRoomDetailModal({
     onUpdateStackCells(room.code, patch);
     toast.success(
       isAr
-        ? `تم تخصيص الجزيرة للمزارع ${brushFarmer}`
-        : `Îlot affecté à ${brushFarmer} (${brushColor === "rouge" ? "ROUGE" : "JAUNE"})`,
+        ? `تم تخصيص الجزيرة (${vSpec.label} · ${brushFarmer})`
+        : `Îlot affecté : ${vSpec.label} · ${brushFarmer}`,
     );
   }
 
-  // Cellule sélectionnée pour édition fine
-  const selectedCellInfo = useMemo(() => {
-    if (!selectedCellKey) return null;
-    const [rStr, cStr] = selectedCellKey.split("_");
-    const r = Number(rStr);
-    const c = Number(cStr);
-    if (!Number.isFinite(r) || !Number.isFinite(c)) return null;
-    const maxH = getRowMaxStackHeight(r);
-    const cell = mergedGrid[selectedCellKey] || {
-      height: 0,
-      color: getDefaultStackColor(room.code, c),
-    };
-    return { key: selectedCellKey, r, c, maxH, cell };
-  }, [selectedCellKey, mergedGrid, room.code]);
-
-  const updateSelectedCell = (patch: Partial<FrigoStackCell>) => {
-    if (!selectedCellInfo) return;
-    const nextHeight =
-      patch.height !== undefined
-        ? Math.max(0, Math.min(selectedCellInfo.maxH, Math.round(patch.height)))
-        : selectedCellInfo.cell.height;
-    onUpdateStackCells(room.code, {
-      [selectedCellInfo.key]: {
-        ...selectedCellInfo.cell,
-        ...patch,
-        height: nextHeight,
-      },
-    });
-  };
-
   const [leftCols, centerCols] = spec.islands;
+  const selectedKeySet = useMemo(() => new Set(selectedKeys), [selectedKeys]);
 
   return (
     <div
@@ -376,42 +421,71 @@ export function FrigoRoomDetailModal({
           ) : (
             /* ==================== ONGLET B : PLAN INTÉRIEUR DES CAJOUS (DISPOSITION CAJOUS3) ==================== */
             <div className="space-y-3">
-              {/* Résumé rapide du plan intérieur + Outil d'affectation d'îlot */}
+              {/* Résumé par variété présente + Mode sélection multiple + Reset */}
               <div className="rounded-xl border bg-muted/20 p-3 space-y-2.5">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <span dir="ltr" className="rounded-lg bg-card border px-2 py-1 font-black">
                       {isAr ? "مجموع المخطط :" : "Total plan :"} {formatNumber(gridStats.totalPlanCajous, 0)} /{" "}
                       {formatNumber(spec.capacityCajous, 0)} c.
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-lg bg-rose-500/15 border border-rose-500/30 px-2 py-1 font-bold text-rose-800 dark:text-rose-200">
-                      <span className="h-2.5 w-2.5 rounded-xs bg-rose-600" />
-                      {isAr ? "أحمر (جانبي) :" : "ROUGE :"} <strong dir="ltr">{formatNumber(gridStats.rougeCajous, 0)}</strong>
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-lg bg-amber-400/20 border border-amber-500/40 px-2 py-1 font-bold text-amber-900 dark:text-amber-200">
-                      <span className="h-2.5 w-2.5 rounded-xs bg-amber-400 border border-amber-600" />
-                      {isAr ? "أصفر (وسط) :" : "JAUNE :"} <strong dir="ltr">{formatNumber(gridStats.jauneCajous, 0)}</strong>
-                    </span>
+                    {/* Totaux par variété présente */}
+                    {APPLE_VARIETIES.filter((v) => (gridStats.byVariety[v.id] || 0) > 0).map((v) => (
+                      <span
+                        key={v.id}
+                        className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 font-bold ${v.badgeCls}`}
+                      >
+                        <span className={`h-2.5 w-2.5 rounded-xs ${v.dotCls}`} />
+                        <span>{v.shortLabel} :</span>
+                        <strong dir="ltr">{formatNumber(gridStats.byVariety[v.id], 0)}</strong>
+                      </span>
+                    ))}
                     <span dir="ltr" className="text-[11px] text-muted-foreground font-semibold">
                       {gridStats.fullPiles} {isAr ? "كاملة" : "pleines"} · {gridStats.partialPiles}{" "}
                       {isAr ? "جزئية" : "partielles"} · {gridStats.emptyPiles} {isAr ? "فارغة" : "vides"}
                     </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onResetGrid(room.code);
-                      setSelectedCellKey(null);
-                      toast.success(isAr ? "تمت إعادة التوزيع حسب الدفعات" : "Plan réinitialisé selon les lots.");
-                    }}
-                    className="inline-flex items-center gap-1 rounded-lg border bg-card hover:bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground cursor-pointer"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    <span>{isAr ? "إعادة التوزيع التلقائي" : "Auto-remplir depuis lots"}</span>
-                  </button>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* Bouton Toggle Sélection multiple */}
+                    <button
+                      type="button"
+                      onClick={() => setMultiSelectMode((v) => !v)}
+                      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-black transition cursor-pointer ${
+                        multiSelectMode
+                          ? "border-sky-600 bg-sky-600 text-white shadow-xs"
+                          : "bg-card hover:bg-muted text-foreground"
+                      }`}
+                    >
+                      {multiSelectMode ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+                      <span>{isAr ? "تحديد متعدد" : "Sélection multiple"}</span>
+                    </button>
+                    {selectedKeys.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedKeys([])}
+                        className="inline-flex items-center gap-1 rounded-lg border border-rose-400/50 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:text-rose-300 cursor-pointer"
+                      >
+                        <X className="h-3 w-3" />
+                        <span>{isAr ? "إلغاء التحديد" : "Tout désélectionner"}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onResetGrid(room.code);
+                        setSelectedKeys([]);
+                        toast.success(isAr ? "تمت إعادة التوزيع حسب الدفعات" : "Plan réinitialisé selon les lots.");
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border bg-card hover:bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground cursor-pointer"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      <span>{isAr ? "إعادة التوزيع التلقائي" : "Auto-remplir depuis lots"}</span>
+                    </button>
+                  </div>
                 </div>
 
-                {/* Barre d'affectation rapide par îlot */}
+                {/* Barre d'affectation rapide par îlot (avec sélecteur de variété propre) */}
                 <div className="flex flex-wrap items-center gap-2 border-t pt-2 text-xs">
                   <span className="text-[11px] font-black text-muted-foreground flex items-center gap-1">
                     <PaintBucket className="h-3.5 w-3.5 text-sky-600" />
@@ -428,26 +502,17 @@ export function FrigoRoomDetailModal({
                       </option>
                     ))}
                   </select>
-                  <div className="inline-flex rounded-lg border overflow-hidden text-[11px] font-black">
-                    <button
-                      type="button"
-                      onClick={() => setBrushColor("rouge")}
-                      className={`px-2 py-1 cursor-pointer ${
-                        brushColor === "rouge" ? "bg-rose-600 text-white" : "bg-background text-rose-700"
-                      }`}
-                    >
-                      ROUGE
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setBrushColor("jaune")}
-                      className={`px-2 py-1 cursor-pointer ${
-                        brushColor === "jaune" ? "bg-amber-400 text-amber-950" : "bg-background text-amber-800"
-                      }`}
-                    >
-                      JAUNE
-                    </button>
-                  </div>
+                  <select
+                    value={brushVariety}
+                    onChange={(e) => setBrushVariety(e.target.value as AppleVarietyId)}
+                    className="rounded-lg border bg-background px-2 py-1 text-xs font-bold"
+                  >
+                    {APPLE_VARIETIES.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {isAr ? v.labelAr : v.label}
+                      </option>
+                    ))}
+                  </select>
                   <div className="flex flex-wrap gap-1.5">
                     <button
                       type="button"
@@ -489,88 +554,131 @@ export function FrigoRoomDetailModal({
                 )}
               </div>
 
-              {/* Éditeur de pile sélectionnée */}
-              {selectedCellInfo && (
-                <div className="rounded-xl border-2 border-sky-500/50 bg-sky-500/[0.06] p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+              {/* Barre d'action pour la sélection (1 ou N cases sélectionnées) */}
+              {selectionInfo.count > 0 && (
+                <div className="rounded-xl border-2 border-sky-500/50 bg-sky-500/[0.08] p-3 flex flex-wrap items-center justify-between gap-2.5 text-xs">
                   <div className="space-y-0.5">
-                    <p className="font-black text-foreground">
-                      {isAr
-                        ? `العمود ${selectedCellInfo.c + 1} · الصف ${selectedCellInfo.r + 1} (الحد الأقصى ×${selectedCellInfo.maxH})`
-                        : `Pile Rangée ${selectedCellInfo.r + 1} · Colonne ${selectedCellInfo.c + 1} (max ×${selectedCellInfo.maxH})`}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-lg bg-sky-600 text-white px-2 py-0.5 text-[11px] font-black">
+                        {selectionInfo.count}{" "}
+                        {isAr
+                          ? "خانات محددة"
+                          : selectionInfo.count > 1
+                            ? "cases sélectionnées"
+                            : "case sélectionnée"}
+                      </span>
+                      <span
+                        dir="ltr"
+                        className="rounded-lg bg-emerald-600/15 border border-emerald-600/30 text-emerald-800 dark:text-emerald-200 px-2 py-0.5 text-[11px] font-black"
+                      >
+                        {formatNumber(selectionInfo.totalCajous, 0)} {isAr ? "صندوق" : "cajous"}
+                      </span>
+                      {selectionInfo.single && (
+                        <span className="font-bold text-muted-foreground">
+                          R{selectionInfo.single.r + 1} · C{selectionInfo.single.c + 1} (max ×{selectionInfo.single.maxH})
+                        </span>
+                      )}
+                    </div>
                     <p className="text-[11px] text-muted-foreground">
-                      {isAr ? "اضبط الارتفاع الفعلي أو خصص المزارع واللون." : "Ajustez la hauteur réelle, le fermier ou la couleur."}
+                      {isAr
+                        ? "طبّق الصنف، المزارع أو الارتفاع دفعة واحدة على كل الخانات المحددة (أو Ctrl+Click لإضافة خانات)."
+                        : "Appliquez variété, fermier ou hauteur en un clic sur toute la sélection (Ctrl/Shift + clic pour ajouter)."}
                     </p>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
-                    {/* Hauteur */}
+                    {/* Hauteur (appliquée à toute la sélection) */}
                     <div className="inline-flex items-center gap-1 rounded-lg border bg-background p-1">
                       <button
                         type="button"
-                        onClick={() => updateSelectedCell({ height: 0 })}
+                        onClick={() =>
+                          applyToSelection(({ cell }) => ({ ...cell, height: 0 }))
+                        }
                         className="rounded px-2 py-0.5 text-[10px] font-black bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 cursor-pointer"
                       >
-                        0 ({isAr ? "فارغ" : "Vider"})
+                        0 ({isAr ? "تفريغ" : "Vider"})
                       </button>
                       <button
                         type="button"
-                        onClick={() => updateSelectedCell({ height: selectedCellInfo.cell.height - 1 })}
+                        onClick={() =>
+                          applyToSelection(({ cell }) => ({
+                            ...cell,
+                            height: Math.max(0, cell.height - 1),
+                          }))
+                        }
                         className="rounded px-2 py-0.5 font-black border hover:bg-muted cursor-pointer"
                       >
-                        −
+                        −1
                       </button>
-                      <span dir="ltr" className="w-8 text-center font-black text-sm">
-                        ×{selectedCellInfo.cell.height}
-                      </span>
+                      {selectionInfo.single && (
+                        <span dir="ltr" className="w-8 text-center font-black text-sm">
+                          ×{selectionInfo.single.cell.height}
+                        </span>
+                      )}
                       <button
                         type="button"
-                        onClick={() => updateSelectedCell({ height: selectedCellInfo.cell.height + 1 })}
+                        onClick={() =>
+                          applyToSelection(({ maxH, cell }) => ({
+                            ...cell,
+                            height: Math.min(maxH, cell.height + 1),
+                          }))
+                        }
                         className="rounded px-2 py-0.5 font-black border hover:bg-muted cursor-pointer"
                       >
-                        +
+                        +1
                       </button>
                       <button
                         type="button"
-                        onClick={() => updateSelectedCell({ height: selectedCellInfo.maxH })}
+                        onClick={() =>
+                          applyToSelection(({ maxH, cell }) => ({ ...cell, height: maxH }))
+                        }
                         className="rounded px-2 py-0.5 text-[10px] font-black bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer"
                       >
-                        Max (×{selectedCellInfo.maxH})
+                        {selectionInfo.single ? `Max (×${selectionInfo.single.maxH})` : "Max"}
                       </button>
                     </div>
 
-                    {/* Couleur */}
-                    <div className="inline-flex rounded-lg border overflow-hidden text-[11px] font-black">
-                      <button
-                        type="button"
-                        onClick={() => updateSelectedCell({ color: "rouge" })}
-                        className={`px-2 py-1 cursor-pointer ${
-                          selectedCellInfo.cell.color === "rouge"
-                            ? "bg-rose-600 text-white"
-                            : "bg-background text-rose-700"
-                        }`}
-                      >
-                        ROUGE
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateSelectedCell({ color: "jaune" })}
-                        className={`px-2 py-1 cursor-pointer ${
-                          selectedCellInfo.cell.color === "jaune"
-                            ? "bg-amber-400 text-amber-950"
-                            : "bg-background text-amber-800"
-                        }`}
-                      >
-                        JAUNE
-                      </button>
-                    </div>
+                    {/* Sélecteur de Variété de Pommier (pilote la couleur) */}
+                    <select
+                      value={selectionInfo.commonVariety}
+                      onChange={(e) => {
+                        const vId = e.target.value as AppleVarietyId;
+                        if (!vId || !(vId in APPLE_VARIETY_BY_ID)) return;
+                        const vSpec = APPLE_VARIETY_BY_ID[vId];
+                        applyToSelection(({ cell }) => ({
+                          ...cell,
+                          variety: vSpec.id,
+                          color: vSpec.color,
+                        }));
+                      }}
+                      className="rounded-lg border bg-background px-2 py-1 text-xs font-bold"
+                    >
+                      {!selectionInfo.commonVariety && (
+                        <option value="">{isAr ? "— تغيير الصنف —" : "— Changer variété —"}</option>
+                      )}
+                      {APPLE_VARIETIES.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {isAr ? v.labelAr : v.label}
+                        </option>
+                      ))}
+                    </select>
 
                     {/* Fermier */}
                     <select
-                      value={selectedCellInfo.cell.farmer || ""}
-                      onChange={(e) => updateSelectedCell({ farmer: e.target.value || undefined })}
+                      value={selectionInfo.commonFarmer === "__mixed__" ? "__mixed__" : selectionInfo.commonFarmer}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "__mixed__") return;
+                        applyToSelection(({ cell }) => ({
+                          ...cell,
+                          farmer: val || undefined,
+                        }));
+                      }}
                       className="rounded-lg border bg-background px-2 py-1 text-xs font-bold"
                     >
+                      {selectionInfo.commonFarmer === "__mixed__" && (
+                        <option value="__mixed__">{isAr ? "— مزارعون مختلفون —" : "— Fermiers multiples —"}</option>
+                      )}
                       <option value="">{isAr ? "— بدون مزارع —" : "— Aucun fermier —"}</option>
                       {farmerOptions.map((f) => (
                         <option key={f} value={f}>
@@ -581,7 +689,7 @@ export function FrigoRoomDetailModal({
 
                     <button
                       type="button"
-                      onClick={() => setSelectedCellKey(null)}
+                      onClick={() => setSelectedKeys([])}
                       className="inline-flex items-center gap-1 rounded-lg bg-sky-600 text-white px-2.5 py-1 text-[11px] font-black cursor-pointer"
                     >
                       <Check className="h-3.5 w-3.5" />
@@ -593,7 +701,7 @@ export function FrigoRoomDetailModal({
 
               {/* Grille exacte DISPOSITION CAJOUS3 (scroll horizontal propre sur mobile) */}
               <div className="overflow-x-auto rounded-xl border bg-slate-50/70 dark:bg-slate-900/40 p-3">
-                <div className={spec.totalCols === 10 ? "min-w-[650px]" : "min-w-[500px]"} dir="ltr">
+                <div className={spec.totalCols === 10 ? "min-w-[660px]" : "min-w-[510px]"} dir="ltr">
                   {/* Bandeau MUR DU FOND */}
                   <div className="mb-2 rounded-lg bg-slate-800 text-white text-center py-1 text-[10px] font-black tracking-widest uppercase">
                     {isAr ? "جدار خلف الغرفة (الأكثر ارتفاعاً ×14)" : "MUR DU FOND — ÉVAPORATEURS (Hauteurs max ×14 → ×11)"}
@@ -605,32 +713,32 @@ export function FrigoRoomDetailModal({
                     style={{
                       gridTemplateColumns:
                         spec.totalCols === 10
-                          ? "76px repeat(3, minmax(0, 1fr)) 18px repeat(4, minmax(0, 1fr)) 18px repeat(3, minmax(0, 1fr))"
-                          : "76px repeat(2, minmax(0, 1fr)) 20px repeat(3, minmax(0, 1fr)) 20px repeat(2, minmax(0, 1fr))",
+                          ? "84px repeat(3, minmax(0, 1fr)) 18px repeat(4, minmax(0, 1fr)) 18px repeat(3, minmax(0, 1fr))"
+                          : "84px repeat(2, minmax(0, 1fr)) 20px repeat(3, minmax(0, 1fr)) 20px repeat(2, minmax(0, 1fr))",
                     }}
                   >
                     <div className="text-muted-foreground text-[9px] uppercase">
-                      {isAr ? "الصف / الحد" : "Rangée / Max"}
+                      {isAr ? "الصف / المجموع" : "Rangée / Total"}
                     </div>
                     <div
-                      className="rounded bg-rose-600/15 text-rose-800 dark:text-rose-200 py-0.5"
+                      className="rounded bg-slate-200/80 dark:bg-slate-800 text-foreground py-0.5"
                       style={{ gridColumn: `span ${spec.islands[0]} / span ${spec.islands[0]}` }}
                     >
-                      ROUGE ({spec.islands[0]} col.)
-                    </div>
-                    <div className="text-[8px] text-muted-foreground rotate-0">Allée</div>
-                    <div
-                      className="rounded bg-amber-400/25 text-amber-900 dark:text-amber-200 py-0.5"
-                      style={{ gridColumn: `span ${spec.islands[1]} / span ${spec.islands[1]}` }}
-                    >
-                      JAUNE ({spec.islands[1]} col.)
+                      {isAr ? `الجزيرة اليسرى (${spec.islands[0]})` : `Îlot Gauche (${spec.islands[0]} col.)`}
                     </div>
                     <div className="text-[8px] text-muted-foreground">Allée</div>
                     <div
-                      className="rounded bg-rose-600/15 text-rose-800 dark:text-rose-200 py-0.5"
+                      className="rounded bg-slate-200/80 dark:bg-slate-800 text-foreground py-0.5"
+                      style={{ gridColumn: `span ${spec.islands[1]} / span ${spec.islands[1]}` }}
+                    >
+                      {isAr ? `الجزيرة الوسطى (${spec.islands[1]})` : `Îlot Centre (${spec.islands[1]} col.)`}
+                    </div>
+                    <div className="text-[8px] text-muted-foreground">Allée</div>
+                    <div
+                      className="rounded bg-slate-200/80 dark:bg-slate-800 text-foreground py-0.5"
                       style={{ gridColumn: `span ${spec.islands[2]} / span ${spec.islands[2]}` }}
                     >
-                      ROUGE ({spec.islands[2]} col.)
+                      {isAr ? `الجزيرة اليمنى (${spec.islands[2]})` : `Îlot Droit (${spec.islands[2]} col.)`}
                     </div>
                   </div>
 
@@ -638,6 +746,7 @@ export function FrigoRoomDetailModal({
                   <div className="space-y-1">
                     {Array.from({ length: spec.totalRows }, (_, r) => {
                       const maxH = getRowMaxStackHeight(r);
+                      const rowSum = gridStats.rowSums[r] || 0;
                       const isZoneStart = r === 0 || r === 4 || r === 8 || r === 12;
 
                       return (
@@ -647,26 +756,31 @@ export function FrigoRoomDetailModal({
                           style={{
                             gridTemplateColumns:
                               spec.totalCols === 10
-                                ? "76px repeat(3, minmax(0, 1fr)) 18px repeat(4, minmax(0, 1fr)) 18px repeat(3, minmax(0, 1fr))"
-                                : "76px repeat(2, minmax(0, 1fr)) 20px repeat(3, minmax(0, 1fr)) 20px repeat(2, minmax(0, 1fr))",
+                                ? "84px repeat(3, minmax(0, 1fr)) 18px repeat(4, minmax(0, 1fr)) 18px repeat(3, minmax(0, 1fr))"
+                                : "84px repeat(2, minmax(0, 1fr)) 20px repeat(3, minmax(0, 1fr)) 20px repeat(2, minmax(0, 1fr))",
                           }}
                         >
-                          {/* Étiquette de rangée + hauteur max */}
+                          {/* Étiquette de rangée + SOMME RÉELLE de la rangée */}
                           <div className="flex items-center justify-between pr-1.5 text-[10px] font-bold text-muted-foreground">
                             <span>R{r + 1}</span>
-                            <span className="rounded bg-slate-200/80 dark:bg-slate-800 px-1 py-0.5 text-[9px] font-black text-foreground">
-                              ×{maxH}
+                            <span
+                              title={`Somme rangée R${r + 1} (max ${maxH * spec.totalCols} c.)`}
+                              className={`rounded px-1.5 py-0.5 text-[9.5px] font-black ${
+                                rowSum > 0
+                                  ? "bg-sky-500/15 text-sky-900 dark:text-sky-200"
+                                  : "bg-slate-200/70 dark:bg-slate-800 text-muted-foreground"
+                              }`}
+                            >
+                              {formatNumber(rowSum, 0)} c.
                             </span>
                           </div>
 
                           {/* Colonnes avec les 2 allées */}
                           {Array.from({ length: spec.totalCols }, (_, c) => {
                             const key = `${r}_${c}`;
-                            const cell = mergedGrid[key] || {
-                              height: 0,
-                              color: getDefaultStackColor(room.code, c),
-                            };
-                            const isSelected = selectedCellKey === key;
+                            const cell = getCell(r, c);
+                            const vSpec = resolveCellVarietySpec(cell);
+                            const isSelected = selectedKeySet.has(key);
                             const isEmpty = cell.height <= 0;
                             const isPartial = cell.height > 0 && cell.height < maxH;
                             const shortFarmer = cell.farmer ? cell.farmer.slice(0, 4) : "";
@@ -675,20 +789,18 @@ export function FrigoRoomDetailModal({
                               <button
                                 key={key}
                                 type="button"
-                                onClick={() => setSelectedCellKey(key)}
-                                title={`R${r + 1} C${c + 1} · ${cell.height}/${maxH} cajous${cell.farmer ? ` · ${cell.farmer}` : ""}`}
-                                className={`h-8 rounded-md border text-[10px] leading-tight flex flex-col items-center justify-center transition cursor-pointer ${
-                                  isSelected ? "ring-2 ring-sky-500 scale-[1.03] z-10" : ""
+                                onClick={(e) => handleCellClick(key, e)}
+                                title={`R${r + 1} C${c + 1} · ${cell.height}/${maxH} cajous · ${vSpec.label}${cell.farmer ? ` · ${cell.farmer}` : ""}`}
+                                className={`h-8 rounded-md border text-[10px] leading-tight flex flex-col items-center justify-center transition cursor-pointer relative ${
+                                  isSelected
+                                    ? "ring-2 ring-sky-500 ring-offset-1 scale-[1.03] z-10"
+                                    : ""
                                 } ${
                                   isEmpty
                                     ? "border-dashed border-slate-300 dark:border-slate-700 bg-white/70 dark:bg-slate-900/50 text-slate-400"
-                                    : cell.color === "jaune"
-                                      ? isPartial
-                                        ? "border-amber-500 bg-amber-300/60 text-amber-950"
-                                        : "border-amber-600 bg-amber-400 text-amber-950 shadow-2xs"
-                                      : isPartial
-                                        ? "border-rose-500 bg-rose-500/55 text-white"
-                                        : "border-rose-700 bg-rose-600 text-white shadow-2xs"
+                                    : isPartial
+                                      ? vSpec.partialCls
+                                      : vSpec.fullCls
                                 }`}
                               >
                                 <span className="font-black">
