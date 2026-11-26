@@ -58,6 +58,7 @@ export function ParcelWheel() {
   const { data: adminIds = new Set() } = useAdminIds();
   const { userId } = useRole();
   const cfg = useConfig();
+  const isAr = (cfg.lang || "fr") === "ar";
   const role = useDisplayRole();
   const uiExecutant = cfg.configured && cfg.role === "executant";
   const openAlerts = alerts.filter(
@@ -377,15 +378,15 @@ export function ParcelWheel() {
               style={{
                 fontSize: 12,
                 fontWeight: 800,
-                letterSpacing: 4,
+                letterSpacing: isAr ? 0 : 4,
                 fill: "oklch(1 0 0)",
               }}
             >
               <textPath href="#brise-text-path" startOffset="25%" textAnchor="middle">
-                {brise.name}
+                {isAr ? "كازوارينا مصدّات الرياح" : brise.name}
               </textPath>
               <textPath href="#brise-text-path-bottom" startOffset="25%" textAnchor="middle">
-                {brise.name}
+                {isAr ? "كازوارينا مصدّات الرياح" : brise.name}
               </textPath>
             </text>
           </g>
@@ -565,16 +566,16 @@ export function ParcelWheel() {
                     dominantBaseline="middle"
                     className="pointer-events-none select-none"
                     style={{
-                      fontSize: 9,
+                      fontSize: isAr ? 11 : 9,
                       fontWeight: 800,
-                      letterSpacing: 1.5,
+                      letterSpacing: isAr ? 0 : 1.5,
                       fill: "oklch(0.97 0.05 95)",
                       paintOrder: "stroke",
                       stroke: "oklch(0 0 0 / 0.5)",
                       strokeWidth: 0.8,
                     }}
                   >
-                    EXÉCUTANT
+                    {isAr ? "المنفذ" : "EXÉCUTANT"}
                   </text>
                 </g>
               </g>
@@ -647,16 +648,16 @@ export function ParcelWheel() {
                     dominantBaseline="middle"
                     className="pointer-events-none select-none"
                     style={{
-                      fontSize: 8,
+                      fontSize: isAr ? 10 : 8,
                       fontWeight: 800,
-                      letterSpacing: 1.2,
+                      letterSpacing: isAr ? 0 : 1.2,
                       fill: "oklch(0.97 0.05 95)",
                       paintOrder: "stroke",
                       stroke: "oklch(0 0 0 / 0.5)",
                       strokeWidth: 0.8,
                     }}
                   >
-                    EXÉC.
+                    {isAr ? "المنفذ" : "EXÉC."}
                   </text>
                 </g>
                 {/* Right half-bubble - engineer recommendations */}
@@ -706,16 +707,16 @@ export function ParcelWheel() {
                     dominantBaseline="middle"
                     className="pointer-events-none select-none"
                     style={{
-                      fontSize: 8,
+                      fontSize: isAr ? 10 : 8,
                       fontWeight: 800,
-                      letterSpacing: 1.2,
+                      letterSpacing: isAr ? 0 : 1.2,
                       fill: hasRecos ? "oklch(0.85 0.19 90)" : "oklch(0.98 0.05 260)",
                       paintOrder: "stroke",
                       stroke: "oklch(0 0 0 / 0.5)",
                       strokeWidth: 0.8,
                     }}
                   >
-                    INGÉ.
+                    {isAr ? "المهندس" : "INGÉ."}
                   </text>
                 </g>
               </g>

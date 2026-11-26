@@ -2,6 +2,7 @@ import { useNavigate } from "@/lib/router-compat";
 import { useState } from "react";
 import { useDisplayRole } from "@/lib/display-role";
 import { useRole, type Role } from "@/lib/role";
+import { useTranslation } from "@/lib/i18n";
 import { Shield, HardHat, FlaskConical, Settings, LogOut, ChevronDown, Check, Users } from "lucide-react";
 import {
   Dialog,
@@ -15,6 +16,8 @@ import { toast } from "sonner";
 export function RoleSwitcher() {
   const role = useDisplayRole();
   const { signOut, switchRole } = useRole();
+  const { lang } = useTranslation();
+  const isAr = lang === "ar";
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
 
@@ -25,12 +28,22 @@ export function RoleSwitcher() {
 
   const handleSelectRole = (newRole: Role) => {
     switchRole(newRole);
-    const roleLabels: Record<Role, string> = {
-      admin: "Administrateur (Accès complet)",
-      ingenieur: "Ingénieur Agronome",
-      executant: "Exécutant Terrain",
-    };
-    toast.success(`Mode actif : ${roleLabels[newRole]}`);
+    const roleLabels: Record<Role, string> = isAr
+      ? {
+          admin: "المدير (وصول كامل)",
+          ingenieur: "المهندس الزراعي",
+          executant: "المنفذ الميداني",
+        }
+      : {
+          admin: "Administrateur (Accès complet)",
+          ingenieur: "Ingénieur Agronome",
+          executant: "Exécutant Terrain",
+        };
+    toast.success(
+      isAr
+        ? `الوضع النشط: ${roleLabels[newRole]}`
+        : `Mode actif : ${roleLabels[newRole]}`,
+    );
     setOpen(false);
   };
 
@@ -40,7 +53,7 @@ export function RoleSwitcher() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          title="Changer de profil actif"
+          title={isAr ? "تغيير الدور النشط" : "Changer de profil actif"}
           className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all shadow-2xs border cursor-pointer ${
             role === "admin"
               ? "bg-slate-900 text-white border-slate-700 dark:bg-slate-100 dark:text-slate-900"
@@ -52,26 +65,26 @@ export function RoleSwitcher() {
           {role === "admin" ? (
             <>
               <Shield className="h-3.5 w-3.5" />
-              <span>Admin</span>
+              <span>{isAr ? "المدير" : "Admin"}</span>
             </>
           ) : role === "ingenieur" ? (
             <>
               <FlaskConical className="h-3.5 w-3.5" />
-              <span>Ingénieur</span>
+              <span>{isAr ? "المهندس" : "Ingénieur"}</span>
             </>
           ) : (
             <>
               <HardHat className="h-3.5 w-3.5" />
-              <span>Exécutant</span>
+              <span>{isAr ? "المنفذ" : "Exécutant"}</span>
             </>
           )}
-          <ChevronDown className="h-3 w-3 opacity-70 ml-0.5" />
+          <ChevronDown className="h-3 w-3 opacity-70 ms-0.5" />
         </button>
 
         <button
           type="button"
           onClick={() => navigate({ to: "/configuration" })}
-          title="Configuration"
+          title={isAr ? "الإعدادات" : "Configuration"}
           className="rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
         >
           <Settings className="h-4 w-4" />
@@ -80,7 +93,7 @@ export function RoleSwitcher() {
         <button
           type="button"
           onClick={handleLogout}
-          title="Se déconnecter"
+          title={isAr ? "تسجيل الخروج" : "Se déconnecter"}
           className="rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
         >
           <LogOut className="h-4 w-4" />
@@ -88,11 +101,15 @@ export function RoleSwitcher() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-sm rounded-2xl p-5">
-          <DialogHeader className="text-left space-y-1">
-            <DialogTitle className="text-base font-bold">Changer de profil actif</DialogTitle>
+        <DialogContent dir={isAr ? "rtl" : "ltr"} className="max-w-sm rounded-2xl p-5">
+          <DialogHeader className="text-start space-y-1">
+            <DialogTitle className="text-base font-bold">
+              {isAr ? "تغيير الدور النشط" : "Changer de profil actif"}
+            </DialogTitle>
             <DialogDescription className="text-xs">
-              Sélectionnez le mode de travail souhaité. Vous pouvez basculer à tout moment.
+              {isAr
+                ? "اختر وضع العمل المطلوب. يمكنك التبديل في أي وقت."
+                : "Sélectionnez le mode de travail souhaité. Vous pouvez basculer à tout moment."}
             </DialogDescription>
           </DialogHeader>
 
@@ -100,7 +117,7 @@ export function RoleSwitcher() {
             <button
               type="button"
               onClick={() => handleSelectRole("admin")}
-              className={`w-full flex items-center justify-between p-3 rounded-xl border-2 text-left transition-all active:scale-95 cursor-pointer ${
+              className={`w-full flex items-center justify-between p-3 rounded-xl border-2 text-start transition-all active:scale-95 cursor-pointer ${
                 role === "admin"
                   ? "border-primary bg-primary/10 shadow-xs ring-2 ring-primary/20"
                   : "border-border hover:border-primary/40 bg-card"
@@ -111,8 +128,10 @@ export function RoleSwitcher() {
                   <Shield className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="font-bold text-xs">Administrateur</p>
-                  <p className="text-[11px] text-muted-foreground">Accès complet, gestion & validation</p>
+                  <p className="font-bold text-xs">{isAr ? "المدير" : "Administrateur"}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {isAr ? "وصول كامل، إدارة والمصادقة" : "Accès complet, gestion & validation"}
+                  </p>
                 </div>
               </div>
               {role === "admin" && <Check className="h-4 w-4 text-primary shrink-0" />}
@@ -121,7 +140,7 @@ export function RoleSwitcher() {
             <button
               type="button"
               onClick={() => handleSelectRole("ingenieur")}
-              className={`w-full flex items-center justify-between p-3 rounded-xl border-2 text-left transition-all active:scale-95 cursor-pointer ${
+              className={`w-full flex items-center justify-between p-3 rounded-xl border-2 text-start transition-all active:scale-95 cursor-pointer ${
                 role === "ingenieur"
                   ? "border-purple-600 bg-purple-500/10 shadow-xs ring-2 ring-purple-600/20"
                   : "border-border hover:border-purple-400 bg-card"
@@ -132,8 +151,10 @@ export function RoleSwitcher() {
                   <FlaskConical className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="font-bold text-xs">Ingénieur Agronome</p>
-                  <p className="text-[11px] text-muted-foreground">Prescriptions agronomiques & météo</p>
+                  <p className="font-bold text-xs">{isAr ? "المهندس الزراعي" : "Ingénieur Agronome"}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {isAr ? "التوصيات الزراعية والأرصاد الجوية" : "Prescriptions agronomiques & météo"}
+                  </p>
                 </div>
               </div>
               {role === "ingenieur" && <Check className="h-4 w-4 text-purple-600 shrink-0" />}
@@ -142,7 +163,7 @@ export function RoleSwitcher() {
             <button
               type="button"
               onClick={() => handleSelectRole("executant")}
-              className={`w-full flex items-center justify-between p-3 rounded-xl border-2 text-left transition-all active:scale-95 cursor-pointer ${
+              className={`w-full flex items-center justify-between p-3 rounded-xl border-2 text-start transition-all active:scale-95 cursor-pointer ${
                 role === "executant"
                   ? "border-amber-600 bg-amber-500/10 shadow-xs ring-2 ring-amber-600/20"
                   : "border-border hover:border-amber-400 bg-card"
@@ -153,8 +174,10 @@ export function RoleSwitcher() {
                   <HardHat className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="font-bold text-xs">Exécutant Terrain</p>
-                  <p className="text-[11px] text-muted-foreground">Exécution des tâches & arrosage</p>
+                  <p className="font-bold text-xs">{isAr ? "المنفذ الميداني" : "Exécutant Terrain"}</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {isAr ? "تنفيذ المهام وبرنامج الري" : "Exécution des tâches & arrosage"}
+                  </p>
                 </div>
               </div>
               {role === "executant" && <Check className="h-4 w-4 text-amber-600 shrink-0" />}
@@ -171,7 +194,7 @@ export function RoleSwitcher() {
               className="text-xs font-bold text-primary hover:underline flex items-center gap-1 cursor-pointer"
             >
               <Users className="h-3.5 w-3.5" />
-              <span>Gérer les comptes utilisateurs</span>
+              <span>{isAr ? "إدارة حسابات المستخدمين" : "Gérer les comptes utilisateurs"}</span>
             </button>
             <button
               type="button"
@@ -182,7 +205,7 @@ export function RoleSwitcher() {
               className="text-xs text-muted-foreground hover:underline flex items-center gap-1 cursor-pointer"
             >
               <Settings className="h-3.5 w-3.5" />
-              <span>Paramètres</span>
+              <span>{isAr ? "الإعدادات" : "Paramètres"}</span>
             </button>
           </div>
         </DialogContent>

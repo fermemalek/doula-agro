@@ -10,8 +10,11 @@ import {
   type OutboxStats,
 } from "@/lib/offline/sync-engine";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n";
 
 export function OfflineBadge({ className }: { className?: string }) {
+  const { lang } = useTranslation();
+  const isAr = lang === "ar";
   const networkStatus = useNetworkStatus();
   const [liveOnline, setLiveOnline] = useState<boolean>(
     () => getNetworkStatus() === "online"
@@ -68,12 +71,16 @@ export function OfflineBadge({ className }: { className?: string }) {
         )}
         title={
           lastSyncLabel
-            ? `En ligne — dernière synchronisation réussie à ${lastSyncLabel}`
-            : "En ligne — toutes les données sont synchronisées"
+            ? isAr
+              ? `متصل — آخر مزامنة ناجحة الساعة ${lastSyncLabel}`
+              : `En ligne — dernière synchronisation réussie à ${lastSyncLabel}`
+            : isAr
+              ? "متصل — جميع البيانات متزامنة"
+              : "En ligne — toutes les données sont synchronisées"
         }
       >
         <Wifi className="h-3 w-3" />
-        En ligne
+        {isAr ? "متصل" : "En ligne"}
       </span>
     );
   }
@@ -87,10 +94,15 @@ export function OfflineBadge({ className }: { className?: string }) {
           "inline-flex items-center gap-1 rounded-full bg-orange-500/15 px-2 py-0.5 text-[11px] font-medium text-orange-700 dark:text-orange-400",
           className,
         )}
-        title="Hors ligne — vos actions seront envoyées au retour du réseau"
+        title={
+          isAr
+            ? "غير متصل — سيتم إرسال عملياتك عند عودة الشبكة"
+            : "Hors ligne — vos actions seront envoyées au retour du réseau"
+        }
       >
         <WifiOff className="h-3 w-3" />
-        Hors ligne{totalPending > 0 ? ` (${totalPending})` : ""}
+        {isAr ? "غير متصل" : "Hors ligne"}
+        {totalPending > 0 ? ` (${totalPending})` : ""}
       </button>
     );
   }
@@ -105,10 +117,16 @@ export function OfflineBadge({ className }: { className?: string }) {
         hasErrors && "bg-red-500/15 text-red-700 dark:text-red-400",
         className,
       )}
-      title={hasErrors ? "Erreurs de synchronisation — touchez pour réessayer" : "Synchronisation en cours…"}
+      title={
+        hasErrors
+          ? isAr ? "أخطاء في المزامنة — انقر لإعادة المحاولة" : "Erreurs de synchronisation — touchez pour réessayer"
+          : isAr ? "جارٍ المزامنة…" : "Synchronisation en cours…"
+      }
     >
       {hasErrors ? <CloudOff className="h-3 w-3" /> : <RefreshCw className="h-3 w-3 animate-spin" />}
-      {hasErrors ? `${stats.error} erreur${stats.error > 1 ? "s" : ""}` : `Synchro… (${totalPending})`}
+      {hasErrors
+        ? isAr ? `${stats.error} خطأ` : `${stats.error} erreur${stats.error > 1 ? "s" : ""}`
+        : isAr ? `مزامنة… (${totalPending})` : `Synchro… (${totalPending})`}
     </button>
   );
 }

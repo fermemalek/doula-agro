@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Droplet } from "lucide-react";
 import { useAllModuleRecords } from "@/lib/modules-store";
 import { useParcels } from "@/lib/parcel-store";
+import { useTranslation } from "@/lib/i18n";
 
 const DAY_KEYS = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
 const MONTHS = [
@@ -66,6 +67,8 @@ function findTodayProgram(records: IrrigRec[]): { startAt: Date; duration: strin
 }
 
 export function NextIrrigationBlock() {
+  const { lang } = useTranslation();
+  const isAr = lang === "ar";
   const records = useAllModuleRecords<IrrigRec>("irrigation");
   const parcels = useParcels();
   const program = useMemo(() => findTodayProgram(records as IrrigRec[]), [records]);
@@ -81,11 +84,17 @@ export function NextIrrigationBlock() {
 
   if (!program) {
     return (
-      <div className="rounded-2xl bg-irrigation-blue p-4 text-irrigation-blue-foreground shadow-sm">
+      <div
+        dir={isAr ? "rtl" : "ltr"}
+        className="rounded-2xl bg-irrigation-blue p-4 text-irrigation-blue-foreground shadow-sm"
+      >
         <div className="flex items-center gap-2 text-sm font-medium opacity-90">
-          <Droplet className="h-4 w-4" /> Arrosage du jour
+          <Droplet className="h-4 w-4" />
+          <span>{isAr ? "برنامج الري اليومي" : "Arrosage du jour"}</span>
         </div>
-        <p className="mt-3 text-sm opacity-95">Pas de programme pour cette journée.</p>
+        <p className="mt-3 text-sm opacity-95">
+          {isAr ? "لا يوجد برنامج لهذا اليوم." : "Pas de programme pour cette journée."}
+        </p>
       </div>
     );
   }
@@ -94,19 +103,38 @@ export function NextIrrigationBlock() {
   const inProgress = remaining < 0;
 
   return (
-    <div className="rounded-2xl bg-irrigation-blue p-4 text-irrigation-blue-foreground shadow-sm">
+    <div
+      dir={isAr ? "rtl" : "ltr"}
+      className="rounded-2xl bg-irrigation-blue p-4 text-irrigation-blue-foreground shadow-sm"
+    >
       <div className="flex items-center gap-2 text-sm font-medium opacity-90">
-        <Droplet className="h-4 w-4" /> {inProgress ? "Arrosage en cours" : "Prochain arrosage"}
+        <Droplet className="h-4 w-4" />
+        <span>
+          {inProgress
+            ? isAr ? "الري جارٍ حالياً" : "Arrosage en cours"
+            : isAr ? "الري القادم" : "Prochain arrosage"}
+        </span>
       </div>
       <div className="mt-3 space-y-1.5" suppressHydrationWarning>
-        <div className="text-xs opacity-80">Parcelle</div>
+        <div className="text-xs opacity-80">{isAr ? "القطعة" : "Parcelle"}</div>
         <div className="text-lg font-semibold leading-tight">{parcelName}</div>
-        <div className="font-mono text-2xl font-bold tabular-nums tracking-tight">
+        <div dir="ltr" className="font-mono text-2xl font-bold tabular-nums tracking-tight">
           {inProgress ? "00:00:00" : formatCountdown(remaining)}
         </div>
         <div className="flex justify-between text-xs opacity-90">
-          <span>Début {program.startAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span>
-          <span>Durée {program.duration}{program.duration && !/min|h/.test(program.duration) ? " min" : ""}</span>
+          <span>
+            {isAr ? "البداية" : "Début"}{" "}
+            <span dir="ltr">
+              {program.startAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          </span>
+          <span>
+            {isAr ? "المدة" : "Durée"}{" "}
+            <span dir="ltr">
+              {program.duration}
+              {program.duration && !/min|h/.test(program.duration) ? (isAr ? " د" : " min") : ""}
+            </span>
+          </span>
         </div>
       </div>
     </div>

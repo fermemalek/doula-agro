@@ -16,6 +16,7 @@ function HomePage() {
   const { session } = useRole();
   const cfg = useConfig();
   const currentLang = cfg.lang || "fr";
+  const isAr = currentLang === "ar";
   const { matchedMemberName } = useMyAssignedTasks();
   const displayName =
     matchedMemberName ||
@@ -38,8 +39,8 @@ function HomePage() {
 
   // Admin homepage dashboard to view parcels and manage programs!
   return (
-    <main className="mx-auto max-w-3xl px-4 pt-4">
-      <h1 className="sr-only">Doula Agro — Accueil</h1>
+    <main className="mx-auto max-w-3xl px-4 pt-4" dir={isAr ? "rtl" : "ltr"}>
+      <h1 className="sr-only">{isAr ? "مزرعة عبد المالك — الرئيسية" : "Doula Agro — Accueil"}</h1>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         {displayName ? (
           <div className="flex items-center gap-2">
@@ -55,7 +56,9 @@ function HomePage() {
               </span>
             )}
             <p className="text-xs font-semibold text-muted-foreground">
-              Connecté : <span className="text-foreground font-bold">{displayName}</span> (Admin)
+              {isAr ? "متصل :" : "Connecté :"}{" "}
+              <span className="text-foreground font-bold">{displayName}</span>{" "}
+              ({isAr ? "المدير" : "Admin"})
             </p>
           </div>
         ) : (
