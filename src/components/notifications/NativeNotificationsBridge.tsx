@@ -1,10 +1,12 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useReminders } from "@/lib/reminders-store";
 import { useRole } from "@/lib/role";
 import { useTranslation } from "@/lib/i18n";
 import {
+  getCriticalPermissionsStatus,
   initUrgentNotifications,
+  isNativeAndroid,
   isNativePlatform,
   syncScheduledRemindersToNative,
   notifyUrgentRecommendation,
@@ -17,8 +19,18 @@ import {
   COOLDOWN_MS,
   checkAndTriggerLocalWeatherAlert,
 } from "@/lib/weather-alerts-store";
+import { CriticalNotificationsCard } from "@/components/notifications/CriticalNotificationsCard";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 const WIND_ALERT_KEY = "doula-last-wind-critical-alert";
+const PROMPT_DISMISSED_KEY = "doula-notif-prompt-dismissed";
 
 /**
  * Pont global invisible qui :
@@ -33,6 +45,40 @@ export function NativeNotificationsBridge() {
   const { lang } = useTranslation();
   const isAr = lang === "ar";
   const weatherCheckedRef = useRef(false);
+  const [permModalOpen, setPermModalOpen] = useState(false);
+
+  // 0. À la connexion sur APK Android : propose d'activer les autorisations critiques si certaines manquent
+  useEffect(() => {
+    if (!session || !isNativeAndroid()) return;
+    if (typeof window === "undefined") return;
+    try {
+      if (sessionStorage.getItem(PROMPT_DISMISSED_KEY) === "1") return;
+    } catch {}
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const st = await getCriticalPermissionsStatus();
+        const allReady =
+          st.notifications &&
+          st.dndBypass &&
+          st.channelBypassDnd &&
+          st.exactAlarm &&
+          st.batteryUnrestricted;
+        if (!allReady) {
+          setPermModalOpen(true);
+        }
+      } catch {}
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [session]);
+
+  const dismissPermModal = () => {
+    setPermModalOpen(false);
+    try {
+      sessionStorage.setItem(PROMPT_DISMISSED_KEY, "1");
+    } catch {}
+  };
 
   // 1. Initialisation différée du canal haute priorité (après rendu initial / redirection login)
   useEffect(() => {
@@ -145,5 +191,29 @@ export function NativeNotificationsBridge() {
     return () => controller.abort();
   }, [session, isAr]);
 
-  return null;
+  return (
+    <Dialog open={permModalOpen} onOpenChange={(open) => !open && dismissPermModal()}>
+      <DialogContent
+        dir={isAr ? "rtl" : "ltr"}
+        className="max-w-lg max-h-[88vh] overflow-y-auto p-4 sm:p-5"
+      >
+        <DialogHeader>
+          <DialogTitle className="text-base font-bold">
+            {isAr ? "تفعيل تنبيهات المزرعة العاجلة" : "Activer les alertes critiques"}
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            {isAr
+              ? "فعّل هذه الصلاحيات مرة واحدة لتصلك تنبيهات الطوارئ والطقس حتى مع قفل الشاشة. ستجدها دائماً في صفحة «الملف الشخصي»."
+              : "Activez ces autorisations une seule fois pour recevoir les alertes même écran verrouillé. Vous pourrez toujours les retrouver dans votre Profil."}
+          </DialogDescription>
+        </DialogHeader>
+        <CriticalNotificationsCard />
+        <div className="flex justify-end pt-1">
+          <Button type="button" variant="outline" size="sm" onClick={dismissPermModal}>
+            {isAr ? "لاحقاً (متاح في الملف الشخصي)" : "Plus tard (accessible dans Profil)"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }

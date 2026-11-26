@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { CriticalNotificationsCard } from "@/components/notifications/CriticalNotificationsCard";
 
 function ProfilPage() {
   const { session, signOut, switchRole } = useRole();
@@ -365,6 +366,10 @@ function ProfilPage() {
           </button>
         </li>
       </ul>
+
+      <div className="mt-5">
+        <CriticalNotificationsCard />
+      </div>
 
       <Dialog open={resetOpen} onOpenChange={(o) => !resetting && setResetOpen(o)}>
         <DialogContent dir={isAr ? "rtl" : "ltr"}>
