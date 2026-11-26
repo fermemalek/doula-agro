@@ -53,7 +53,7 @@ export function BottomTabs() {
 
   if (role === "admin") {
     return (
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-card/80">
         <ul className="mx-auto flex max-w-3xl">
           {ADMIN_TABS.map(({ to, label, icon: Icon }) => {
             const showBadge = to === "/tache" && badgeCount > 0;
@@ -92,7 +92,7 @@ export function BottomTabs() {
 
   if (role === "ingenieur") {
     return (
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-card/80">
         <ul className="mx-auto flex max-w-3xl">
           {INGE_TABS.map(({ to, label, icon: Icon }) => (
             <li key={to} className="flex-1">
@@ -120,7 +120,7 @@ export function BottomTabs() {
   const right = EXEC_TABS.slice(2);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <ul className="mx-auto flex max-w-3xl items-end">
         {left.map(({ to, label, icon: Icon }) => (
           <li key={to} className="flex-1">

@@ -35,9 +35,9 @@ function TabsLayout() {
       : {};
 
   return (
-    <div className="min-h-screen pb-20" dir={isAr ? "rtl" : "ltr"} style={Object.keys(bgStyle).length ? bgStyle : undefined}>
+    <div className="min-h-screen pb-[calc(5rem+env(safe-area-inset-bottom))]" dir={isAr ? "rtl" : "ltr"} style={Object.keys(bgStyle).length ? bgStyle : undefined}>
       <div className={cfg.bgImage ? "min-h-screen bg-background/70 backdrop-blur-[2px]" : "min-h-screen"}>
-        <div className="sticky top-0 z-40 flex justify-end px-3 py-1 bg-background/80 backdrop-blur-sm">
+        <div className="sticky top-0 z-40 flex justify-end px-3 py-1 pt-[max(0.25rem,env(safe-area-inset-top))] bg-background/80 backdrop-blur-sm">
           <OfflineBadge />
         </div>
         <div className="px-3 pt-2">
