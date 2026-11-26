@@ -6,6 +6,12 @@ import {
   scheduleCriticalNotification,
 } from "@/lib/notifications-native";
 
+declare const __HAS_FIREBASE_ANDROID__: boolean | undefined;
+
+export function isFirebaseAndroidConfigured(): boolean {
+  return typeof __HAS_FIREBASE_ANDROID__ !== "undefined" && Boolean(__HAS_FIREBASE_ANDROID__);
+}
+
 export interface RegisterFcmParams {
   username: string;
   role: string;
@@ -49,6 +55,9 @@ async function saveFcmTokenToSupabase(token: string, params: RegisterFcmParams):
  */
 export async function registerFcmPush(params: RegisterFcmParams): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
+  // Sécurité critique : ne jamais appeler PushNotifications tant que android/app/google-services.json est absent
+  // (évite le crash Java natif IllegalStateException: Default FirebaseApp is not initialized)
+  if (!isFirebaseAndroidConfigured()) return;
   const regKey = `${params.username}:${params.role}`;
   if (lastRegisteredKey === regKey) return;
 

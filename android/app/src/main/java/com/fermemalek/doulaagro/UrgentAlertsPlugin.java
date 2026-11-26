@@ -24,42 +24,60 @@ public class UrgentAlertsPlugin extends Plugin {
     public static final String CHANNEL_ID = "doula_urgent_alerts";
 
     public static void ensureUrgentChannel(Context context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) return;
+        try {
+            if (context == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
 
-        NotificationChannel existing = nm.getNotificationChannel(CHANNEL_ID);
-        if (existing != null) {
-            return;
+            NotificationChannel existing = nm.getNotificationChannel(CHANNEL_ID);
+            if (existing != null) {
+                return;
+            }
+
+            NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID,
+                "Urgence Ferme (Doula Agro)",
+                NotificationManager.IMPORTANCE_HIGH
+            );
+            channel.setDescription("Alertes critiques : arrosage, traitements phyto, gel, vent fort et urgences ferme.");
+            channel.enableVibration(true);
+            channel.setVibrationPattern(new long[] { 0, 600, 250, 600, 250, 800 });
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
+            try {
+                channel.setBypassDnd(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            try {
+                Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+                if (alarmSound == null) {
+                    alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+                }
+                if (alarmSound != null) {
+                    AudioAttributes attrs = new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build();
+                    channel.setSound(alarmSound, attrs);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            nm.createNotificationChannel(channel);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        NotificationChannel channel = new NotificationChannel(
-            CHANNEL_ID,
-            "Urgence Ferme (Doula Agro)",
-            NotificationManager.IMPORTANCE_HIGH
-        );
-        channel.setDescription("Alertes critiques : arrosage, traitements phyto, gel, vent fort et urgences ferme.");
-        channel.enableVibration(true);
-        channel.setVibrationPattern(new long[] { 0, 600, 250, 600, 250, 800 });
-        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-        channel.setBypassDnd(true);
-
-        Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-        if (alarmSound == null) {
-            alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-        }
-        AudioAttributes attrs = new AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build();
-        channel.setSound(alarmSound, attrs);
-
-        nm.createNotificationChannel(channel);
     }
 
     @PluginMethod
     public void createUrgentChannel(PluginCall call) {
-        ensureUrgentChannel(getContext());
+        try {
+            ensureUrgentChannel(getContext());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         JSObject ret = new JSObject();
         ret.put("channelId", CHANNEL_ID);
         call.resolve(ret);
@@ -67,35 +85,64 @@ public class UrgentAlertsPlugin extends Plugin {
 
     @PluginMethod
     public void getPermissionsStatus(PluginCall call) {
-        Context ctx = getContext();
-        NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-        AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
-        PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
-
-        boolean notificationsEnabled = NotificationManagerCompat.from(ctx).areNotificationsEnabled();
-
-        boolean dndPolicyGranted = true;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm != null) {
-            dndPolicyGranted = nm.isNotificationPolicyAccessGranted();
-        }
-
+        boolean notificationsEnabled = false;
+        boolean dndPolicyGranted = false;
         boolean channelBypassDnd = false;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
-            ensureUrgentChannel(ctx);
-            NotificationChannel ch = nm.getNotificationChannel(CHANNEL_ID);
-            if (ch != null) {
-                channelBypassDnd = ch.canBypassDnd();
+        boolean exactAlarmGranted = false;
+        boolean batteryUnrestricted = false;
+
+        try {
+            Context ctx = getContext();
+            NotificationManager nm = (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+            AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+            PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+
+            try {
+                notificationsEnabled = NotificationManagerCompat.from(ctx).areNotificationsEnabled();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-        }
 
-        boolean exactAlarmGranted = true;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && am != null) {
-            exactAlarmGranted = am.canScheduleExactAlarms();
-        }
+            try {
+                dndPolicyGranted = true;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm != null) {
+                    dndPolicyGranted = nm.isNotificationPolicyAccessGranted();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
 
-        boolean batteryUnrestricted = true;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && pm != null) {
-            batteryUnrestricted = pm.isIgnoringBatteryOptimizations(ctx.getPackageName());
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
+                    ensureUrgentChannel(ctx);
+                    NotificationChannel ch = nm.getNotificationChannel(CHANNEL_ID);
+                    if (ch != null) {
+                        channelBypassDnd = ch.canBypassDnd();
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            try {
+                exactAlarmGranted = true;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && am != null) {
+                    exactAlarmGranted = am.canScheduleExactAlarms();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            try {
+                batteryUnrestricted = true;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && pm != null) {
+                    batteryUnrestricted = pm.isIgnoringBatteryOptimizations(ctx.getPackageName());
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         JSObject ret = new JSObject();
@@ -115,6 +162,7 @@ public class UrgentAlertsPlugin extends Plugin {
             getContext().startActivity(intent);
             call.resolve();
         } catch (Exception e) {
+            e.printStackTrace();
             call.reject("Cannot open DND settings: " + e.getMessage());
         }
     }
@@ -137,6 +185,7 @@ public class UrgentAlertsPlugin extends Plugin {
             ctx.startActivity(intent);
             call.resolve();
         } catch (Exception e) {
+            e.printStackTrace();
             call.reject("Cannot open channel settings: " + e.getMessage());
         }
     }
@@ -153,6 +202,7 @@ public class UrgentAlertsPlugin extends Plugin {
             }
             call.resolve();
         } catch (Exception e) {
+            e.printStackTrace();
             call.reject("Cannot open exact alarm settings: " + e.getMessage());
         }
     }
@@ -169,12 +219,14 @@ public class UrgentAlertsPlugin extends Plugin {
             }
             call.resolve();
         } catch (Exception e) {
+            e.printStackTrace();
             try {
                 Intent fallback = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
                 fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 getContext().startActivity(fallback);
                 call.resolve();
             } catch (Exception ex) {
+                ex.printStackTrace();
                 call.reject("Cannot open battery settings: " + ex.getMessage());
             }
         }

@@ -34,12 +34,15 @@ export function NativeNotificationsBridge() {
   const isAr = lang === "ar";
   const weatherCheckedRef = useRef(false);
 
-  // 1. Initialisation du canal haute priorité au montage
+  // 1. Initialisation différée du canal haute priorité (après rendu initial / redirection login)
   useEffect(() => {
-    void initUrgentNotifications();
+    const timer = window.setTimeout(() => {
+      void initUrgentNotifications().catch(() => {});
+    }, 600);
+    return () => window.clearTimeout(timer);
   }, []);
 
-  // 1b. Enregistrement FCM distant dès que l'utilisateur est connecté sur APK
+  // 1b. Enregistrement FCM distant différé (uniquement si google-services.json est présent au build)
   useEffect(() => {
     if (!session || !role || !isNativePlatform()) return;
     const username =
@@ -47,14 +50,20 @@ export function NativeNotificationsBridge() {
       session.user?.email ||
       session.user?.id ||
       "unknown";
-    void registerFcmPush({ username, role });
+    const timer = window.setTimeout(() => {
+      void registerFcmPush({ username, role }).catch(() => {});
+    }, 800);
+    return () => window.clearTimeout(timer);
   }, [session, role]);
 
-  // 2. Synchronisation des rappels programmés vers Capacitor LocalNotifications
+  // 2. Synchronisation différée des rappels programmés vers Capacitor LocalNotifications
   useEffect(() => {
-    if (!isNativePlatform()) return;
-    void syncScheduledRemindersToNative(reminders);
-  }, [reminders]);
+    if (!session || !isNativePlatform()) return;
+    const timer = window.setTimeout(() => {
+      void syncScheduledRemindersToNative(reminders).catch(() => {});
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [session, reminders]);
 
   // 3. Écoute Supabase Realtime : nouvelle recommandation de l'ingénieur → alerte Exécutant / Admin
   useEffect(() => {

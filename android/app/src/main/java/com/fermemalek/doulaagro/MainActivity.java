@@ -6,8 +6,16 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        registerPlugin(UrgentAlertsPlugin.class);
+        try {
+            registerPlugin(UrgentAlertsPlugin.class);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         super.onCreate(savedInstanceState);
-        UrgentAlertsPlugin.ensureUrgentChannel(this);
+        try {
+            UrgentAlertsPlugin.ensureUrgentChannel(this);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
