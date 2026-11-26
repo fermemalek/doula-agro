@@ -88,10 +88,9 @@ export async function registerFcmPush(params: RegisterFcmParams): Promise<void> 
         const title = notification.title || "🚨 Alerte Urgente — Doula Agro";
         const body = notification.body || "Nouvelle notification critique de la ferme.";
         void scheduleCriticalNotification({
-          id: `fcm_${Date.now()}`,
           title,
           body,
-          at: new Date(Date.now() + 500),
+          at: new Date(Date.now() + 1000),
           extra: {
             source: "doula_urgent_once",
             ...(notification.data || {}),

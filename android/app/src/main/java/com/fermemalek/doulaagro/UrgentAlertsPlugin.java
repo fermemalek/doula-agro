@@ -7,11 +7,13 @@ import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
+import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
+import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -21,7 +23,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 @CapacitorPlugin(name = "UrgentAlerts")
 public class UrgentAlertsPlugin extends Plugin {
-    public static final String CHANNEL_ID = "doula_urgent_alerts";
+    public static final String CHANNEL_ID = "doula_urgent_alerts_v2";
 
     public static void ensureUrgentChannel(Context context) {
         try {
@@ -81,6 +83,62 @@ public class UrgentAlertsPlugin extends Plugin {
         JSObject ret = new JSObject();
         ret.put("channelId", CHANNEL_ID);
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void fireImmediateUrgentNotification(PluginCall call) {
+        try {
+            Context ctx = getContext();
+            ensureUrgentChannel(ctx);
+            int id = call.getInt("id", (int) (100000 + (Math.random() * 899999)));
+            String title = call.getString("title", "🚨 Alerte Critique — Doula Agro");
+            String body = call.getString("body", "Vérification de l'alerte sonore et vibration.");
+
+            int smallIcon = ctx.getApplicationInfo().icon;
+            if (smallIcon == 0) {
+                smallIcon = android.R.drawable.ic_dialog_alert;
+            }
+
+            Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            if (alarmSound == null) {
+                alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            }
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
+                .setSmallIcon(smallIcon)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setVibrate(new long[] { 0, 600, 250, 600, 250, 800 })
+                .setSound(alarmSound)
+                .setAutoCancel(true);
+
+            NotificationManagerCompat.from(ctx).notify(id, builder.build());
+
+            // Lecture directe d'une courte tonalité d'alarme en secours si demandé
+            boolean playRingtone = call.getBoolean("playRingtone", false);
+            if (playRingtone && alarmSound != null) {
+                try {
+                    Ringtone ringtone = RingtoneManager.getRingtone(ctx, alarmSound);
+                    if (ringtone != null) {
+                        ringtone.play();
+                    }
+                } catch (Exception re) {
+                    re.printStackTrace();
+                }
+            }
+
+            JSObject ret = new JSObject();
+            ret.put("fired", true);
+            ret.put("id", id);
+            call.resolve(ret);
+        } catch (Exception e) {
+            e.printStackTrace();
+            call.reject("fireImmediateUrgentNotification failed: " + e.getMessage());
+        }
     }
 
     @PluginMethod

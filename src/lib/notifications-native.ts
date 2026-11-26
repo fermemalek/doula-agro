@@ -2,10 +2,17 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import type { Reminder } from "@/lib/reminders-store";
 
-export const URGENT_CHANNEL_ID = "doula_urgent_alerts";
+// Nouveau canal v2 : Android ne met jamais à jour un canal déjà créé (Bypass DND + son TYPE_ALARM)
+export const URGENT_CHANNEL_ID = "doula_urgent_alerts_v2";
 
 interface UrgentAlertsNativePlugin {
   createUrgentChannel(): Promise<{ channelId: string }>;
+  fireImmediateUrgentNotification(params: {
+    id: number;
+    title: string;
+    body: string;
+    playRingtone?: boolean;
+  }): Promise<{ fired: boolean; id: number }>;
   getPermissionsStatus(): Promise<{
     notifications: boolean;
     dndBypass: boolean;
@@ -30,6 +37,14 @@ export interface CriticalPermissionsStatus {
   batteryUnrestricted: boolean;
 }
 
+export interface TestCriticalAlertResult {
+  ok: boolean;
+  id: number;
+  pendingConfirmed: boolean;
+  fallbackUsed?: boolean;
+  error?: string;
+}
+
 export function isNativeAndroid(): boolean {
   try {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
@@ -46,10 +61,54 @@ export function isNativePlatform(): boolean {
   }
 }
 
+/**
+ * Génère toujours un entier 32-bit positif strict [100000..999999] compatible Java `int` Android.
+ * (Ne jamais passer Date.now() qui dépasse 2^31-1 et fait échouer silencieusement Android.)
+ */
+export function generateSafeAndroidId(): number {
+  return Math.floor(100000 + Math.random() * 899999);
+}
+
+function resolveSafeAndroidId(seed?: number | string): number {
+  if (typeof seed === "number" && Number.isFinite(seed)) {
+    const n = Math.floor(Math.abs(seed));
+    if (n >= 1 && n <= 2_000_000_000) return n;
+    return (n % 899_999) + 100_000;
+  }
+  if (typeof seed === "string" && seed.length > 0) {
+    let h = 2166136261;
+    for (let i = 0; i < seed.length; i++) {
+      h ^= seed.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (Math.abs(h) % 899_999) + 100_000;
+  }
+  return generateSafeAndroidId();
+}
+
+function playFallbackAlarmBeep(): void {
+  try {
+    if (typeof window === "undefined") return;
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "triangle";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(0.35, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.85);
+  } catch {}
+}
+
 let initialized = false;
 
 /**
- * Initialise le canal Android haute priorité "doula_urgent_alerts" (son d'alarme + bypass DND)
+ * Initialise le canal Android haute priorité "doula_urgent_alerts_v2" (son d'alarme + bypass DND)
  * sans jamais lancer d'erreur sur navigateur Web.
  */
 export async function initUrgentNotifications(): Promise<void> {
@@ -57,6 +116,7 @@ export async function initUrgentNotifications(): Promise<void> {
   initialized = true;
   try {
     if (isNativeAndroid()) {
+      // Crée en priorité via le plugin Java natif (setBypassDnd + USAGE_ALARM + TYPE_ALARM)
       await UrgentAlerts.createUrgentChannel().catch(() => {});
       await LocalNotifications.createChannel({
         id: URGENT_CHANNEL_ID,
@@ -156,17 +216,8 @@ export async function openBatteryOptimizationSettings(): Promise<void> {
   await UrgentAlerts.openBatteryOptimizationSettings().catch(() => {});
 }
 
-function stableNumericId(seed: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return (Math.abs(h) % 900_000) + 10_000;
-}
-
 /**
- * Planifie une notification critique (résiste au mode Doze / veille via allowWhileIdle: true).
+ * Planifie une notification critique (ID 32-bit strict + allowWhileIdle: true sur doula_urgent_alerts_v2).
  */
 export async function scheduleCriticalNotification(params: {
   id?: number | string;
@@ -175,13 +226,11 @@ export async function scheduleCriticalNotification(params: {
   at?: Date;
   extra?: Record<string, unknown>;
 }): Promise<boolean> {
-  const numId =
-    typeof params.id === "number"
-      ? params.id
-      : params.id
-        ? stableNumericId(params.id)
-        : Math.floor(Date.now() % 1_000_000);
-  const fireAt = params.at && params.at.getTime() > Date.now() ? params.at : new Date(Date.now() + 1500);
+  const numId = resolveSafeAndroidId(params.id);
+  const fireAt =
+    params.at && params.at.getTime() > Date.now() + 500
+      ? params.at
+      : new Date(Date.now() + 1500);
 
   if (isNativePlatform()) {
     try {
@@ -203,7 +252,18 @@ export async function scheduleCriticalNotification(params: {
       });
       return true;
     } catch (err) {
-      console.warn("[notifications-native] scheduleCriticalNotification error:", err);
+      console.warn("[notifications-native] scheduleCriticalNotification error, trying immediate fallback:", err);
+      if (isNativeAndroid()) {
+        try {
+          await UrgentAlerts.fireImmediateUrgentNotification({
+            id: numId,
+            title: params.title,
+            body: params.body,
+            playRingtone: false,
+          });
+          return true;
+        } catch {}
+      }
       return false;
     }
   }
@@ -223,16 +283,103 @@ export async function scheduleCriticalNotification(params: {
   return false;
 }
 
-export async function scheduleTestCriticalAlert(isAr: boolean): Promise<boolean> {
-  return scheduleCriticalNotification({
-    id: 999901,
-    title: isAr ? "🚨 تنبيه تجريبي عاجل — Doula Agro" : "🚨 Test Alerte Critique — Doula Agro",
-    body: isAr
-      ? "تم التحقق: التنبيه الصوتي والاهتزاز يعملان حتى في وضع السكون."
-      : "Vérification réussie : l'alerte sonore et la vibration fonctionnent même en veille / silence.",
-    at: new Date(Date.now() + 5000),
-    extra: { kind: "test_critical" },
-  });
+/**
+ * Test fiable à 5 secondes :
+ * 1) ID entier 32-bit strict (100000..999999)
+ * 2) Schedule avec { at: +5000ms, allowWhileIdle: true } sur doula_urgent_alerts_v2
+ * 3) Vérification via LocalNotifications.getPending() que l'alarme est bien en file Android
+ * 4) En fallback si allowWhileIdle échoue (ex: restriction OEM), déclenche l'alerte native + son d'alarme
+ */
+export async function scheduleTestCriticalAlert(isAr: boolean): Promise<TestCriticalAlertResult> {
+  const id = generateSafeAndroidId();
+  const title = isAr
+    ? "🚨 تنبيه تجريبي عاجل — مزرعة عبد المالك"
+    : "🚨 Test Alerte Critique — Doula Agro";
+  const body = isAr
+    ? "تم التحقق: التنبيه الصوتي والاهتزاز يعملان حتى في وضع السكون."
+    : "Vérification réussie : l'alerte sonore et la vibration fonctionnent même en veille / silence.";
+
+  if (!isNativePlatform()) {
+    const ok = await scheduleCriticalNotification({
+      id,
+      title,
+      body,
+      at: new Date(Date.now() + 5000),
+      extra: { source: "doula_urgent_once", kind: "test_critical" },
+    });
+    return { ok, id, pendingConfirmed: ok };
+  }
+
+  try {
+    await initUrgentNotifications();
+    const fireAt = new Date(Date.now() + 5000);
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id,
+          title,
+          body,
+          channelId: URGENT_CHANNEL_ID,
+          schedule: {
+            at: fireAt,
+            allowWhileIdle: true,
+          },
+          extra: { source: "doula_urgent_once", kind: "test_critical" },
+        },
+      ],
+    });
+
+    const pending = await LocalNotifications.getPending().catch(() => ({ notifications: [] }));
+    const pendingConfirmed = (pending.notifications || []).some((n) => n.id === id);
+
+    // Si Android n'a pas conservé l'alarme en file, fallback natif direct après 5s
+    if (!pendingConfirmed && isNativeAndroid()) {
+      window.setTimeout(() => {
+        playFallbackAlarmBeep();
+        void UrgentAlerts.fireImmediateUrgentNotification({
+          id,
+          title,
+          body,
+          playRingtone: true,
+        }).catch(() => {});
+      }, 5000);
+      return { ok: true, id, pendingConfirmed: false, fallbackUsed: true };
+    }
+
+    return { ok: true, id, pendingConfirmed };
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.warn("[notifications-native] scheduleTestCriticalAlert error:", errMsg);
+
+    // Fallback : déclenchement immédiat / 5s natif + tonalité d'alarme
+    if (isNativeAndroid()) {
+      try {
+        playFallbackAlarmBeep();
+        await UrgentAlerts.fireImmediateUrgentNotification({
+          id,
+          title,
+          body,
+          playRingtone: true,
+        });
+        return {
+          ok: true,
+          id,
+          pendingConfirmed: false,
+          fallbackUsed: true,
+          error: errMsg,
+        };
+      } catch (fbErr) {
+        return {
+          ok: false,
+          id,
+          pendingConfirmed: false,
+          error: `${errMsg} | fallback: ${fbErr instanceof Error ? fbErr.message : String(fbErr)}`,
+        };
+      }
+    }
+
+    return { ok: false, id, pendingConfirmed: false, error: errMsg };
+  }
 }
 
 /**
@@ -273,20 +420,20 @@ export async function syncScheduledRemindersToNative(reminders: Reminder[]): Pro
 
 export async function notifyUrgentRecommendation(title: string, isAr: boolean): Promise<void> {
   await scheduleCriticalNotification({
-    id: `reco_${Date.now()}`,
+    id: generateSafeAndroidId(),
     title: isAr ? "🚨 توصية جديدة عاجلة من المهندس" : "🚨 Nouvelle recommandation de l'ingénieur",
     body: title,
     at: new Date(Date.now() + 1000),
-    extra: { kind: "new_recommendation" },
+    extra: { source: "doula_urgent_once", kind: "new_recommendation" },
   });
 }
 
 export async function notifyWeatherCriticalAlert(reason: string, isAr: boolean): Promise<void> {
   await scheduleCriticalNotification({
-    id: `weather_${new Date().toISOString().slice(0, 10)}`,
+    id: generateSafeAndroidId(),
     title: isAr ? "⚠️ تنبيه طقس حرج — مزرعة عبد المالك" : "⚠️ Alerte Météo Critique — Doula Agro",
     body: reason,
     at: new Date(Date.now() + 1000),
-    extra: { kind: "weather_critical" },
+    extra: { source: "doula_urgent_once", kind: "weather_critical" },
   });
 }

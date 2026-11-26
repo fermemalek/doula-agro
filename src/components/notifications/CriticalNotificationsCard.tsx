@@ -95,19 +95,42 @@ export function CriticalNotificationsCard() {
           return;
         }
       }
-      const ok = await scheduleTestCriticalAlert(isAr);
-      if (ok) {
+      const res = await scheduleTestCriticalAlert(isAr);
+      if (res.ok && res.pendingConfirmed) {
         toast.success(
           isAr
-            ? "سيصل التنبيه الحرج خلال 5 ثوانٍ — يمكنك قفل الشاشة الآن للتجربة"
-            : "Alerte critique programmée dans 5 secondes — verrouillez l'écran pour tester !",
+            ? `تمت جدولة التنبيه الحرج (#${res.id}) خلال 5 ثوانٍ — يمكنك قفل الشاشة الآن للتجربة`
+            : `Alerte critique confirmée en file Android (#${res.id}) dans 5 s — verrouillez l'écran pour tester !`,
+          { duration: 6000 },
+        );
+      } else if (res.ok && res.fallbackUsed) {
+        toast.warning(
+          res.error
+            ? isAr
+              ? `تم تفعيل التنبيه الاحتياطي (#${res.id}) — ملاحظة: ${res.error}`
+              : `Alerte secours déclenchée (#${res.id}) — info : ${res.error}`
+            : isAr
+              ? `تم تفعيل التنبيه الاحتياطي (#${res.id}) خلال 5 ثوانٍ`
+              : `Alerte critique (mode secours #${res.id}) déclenchée dans 5 s`,
+          { duration: 7000 },
+        );
+      } else if (res.ok) {
+        toast.success(
+          isAr
+            ? "سيصل التنبيه الحرج خلال 5 ثوانٍ"
+            : "Alerte critique programmée dans 5 secondes !",
           { duration: 6000 },
         );
       } else {
         toast.error(
-          isAr
-            ? "تعذر جدولة التنبيه التجريبي"
-            : "Impossible de programmer l'alerte de test",
+          res.error
+            ? isAr
+              ? `تعذر جدولة التنبيه: ${res.error}`
+              : `Échec de la notification : ${res.error}`
+            : isAr
+              ? "تعذر جدولة التنبيه التجريبي"
+              : "Impossible de programmer l'alerte de test",
+          { duration: 8000 },
         );
       }
     } finally {

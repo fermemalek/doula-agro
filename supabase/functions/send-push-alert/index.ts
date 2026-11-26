@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
             android: {
               priority: "HIGH",
               notification: {
-                channel_id: "doula_urgent_alerts",
+                channel_id: "doula_urgent_alerts_v2",
                 sound: "default",
                 visibility: "PUBLIC",
                 default_vibrate_timings: true,
