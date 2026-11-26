@@ -257,7 +257,7 @@ function LoginPage() {
     >
       <Card className="w-full max-w-sm p-6 space-y-5">
         <header className="text-center space-y-2">
-          <div className="mx-auto h-16 w-16 rounded-full bg-[#0E4D31] flex items-center justify-center overflow-hidden ring-2 ring-[#0E4D31]/30 shadow-xs transition-all">
+          <div className="mx-auto h-16 w-16 rounded-full bg-[#5C341E] flex items-center justify-center overflow-hidden ring-2 ring-[#5C341E]/35 shadow-xs transition-all">
             {previewAvatar ? (
               <img
                 src={previewAvatar}
