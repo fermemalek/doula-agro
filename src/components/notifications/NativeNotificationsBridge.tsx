@@ -11,11 +11,14 @@ import {
   notifyWeatherCriticalAlert,
 } from "@/lib/notifications-native";
 import { registerFcmPush } from "@/lib/push-fcm";
+import {
+  BENHAR_LAT,
+  BENHAR_LON,
+  COOLDOWN_MS,
+  checkAndTriggerLocalWeatherAlert,
+} from "@/lib/weather-alerts-store";
 
-const WEATHER_ALERT_KEY = "doula-last-weather-critical-alert";
-const WEATHER_THROTTLE_MS = 6 * 60 * 60 * 1000; // 6 heures
-const AIN_OUSSERA_LAT = 35.4514;
-const AIN_OUSSERA_LON = 2.9044;
+const WIND_ALERT_KEY = "doula-last-wind-critical-alert";
 
 /**
  * Pont global invisible qui :
@@ -84,7 +87,7 @@ export function NativeNotificationsBridge() {
     };
   }, [session, role, isAr]);
 
-  // 4. Vérification météo critique (gel <= 1°C ou vent > 15 km/h) — max 1 fois toutes les 6h
+  // 4. Vérification météo permanente Benhar (Chaleur >= max, Gel <= min, Vent > 15 km/h) — cooldown 6h par type
   useEffect(() => {
     if (!session || weatherCheckedRef.current) return;
     if (typeof window === "undefined" || typeof fetch !== "function") return;
@@ -92,40 +95,40 @@ export function NativeNotificationsBridge() {
     if (import.meta.env.MODE === "test") return;
     weatherCheckedRef.current = true;
 
-    try {
-      const lastTs = Number(localStorage.getItem(WEATHER_ALERT_KEY) || "0");
-      if (Date.now() - lastTs < WEATHER_THROTTLE_MS) return;
-    } catch {}
-
     const controller = new AbortController();
     fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${AIN_OUSSERA_LAT}&longitude=${AIN_OUSSERA_LON}&current=temperature_2m,wind_speed_10m&timezone=auto`,
+      `https://api.open-meteo.com/v1/forecast?latitude=${BENHAR_LAT}&longitude=${BENHAR_LON}&current=temperature_2m,relative_humidity_2m,wind_speed_10m&timezone=auto`,
       { signal: controller.signal },
     )
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         const temp = data?.current?.temperature_2m;
+        const humidity = data?.current?.relative_humidity_2m;
         const wind = data?.current?.wind_speed_10m;
-        const reasons: string[] = [];
-        if (typeof temp === "number" && temp <= 1) {
-          reasons.push(
-            isAr
-              ? `خطر الصقيع (${Math.round(temp)}°C) في عين وسارة`
-              : `Risque de gel (${Math.round(temp)}°C) à Ain Oussera`,
-          );
+        const windKmh = typeof wind === "number" ? wind * 3.6 : 0;
+
+        if (typeof temp === "number") {
+          void checkAndTriggerLocalWeatherAlert({
+            currentTemp: temp,
+            humidity: typeof humidity === "number" ? humidity : 0,
+            windKmh,
+            isAr,
+          });
         }
-        if (typeof wind === "number" && wind > 15) {
-          reasons.push(
-            isAr
-              ? `رياح قوية (${Math.round(wind)} كم/سا) — يُنصح بتأجيل الرش`
-              : `Vent fort (${Math.round(wind)} km/h) — pulvérisation déconseillée`,
-          );
-        }
-        if (reasons.length > 0 && isNativePlatform()) {
-          try {
-            localStorage.setItem(WEATHER_ALERT_KEY, String(Date.now()));
-          } catch {}
-          void notifyWeatherCriticalAlert(reasons.join(" · "), isAr);
+
+        if (windKmh > 15 && isNativePlatform()) {
+          const lastWind = Number(localStorage.getItem(WIND_ALERT_KEY) || "0");
+          if (Date.now() - lastWind >= COOLDOWN_MS) {
+            try {
+              localStorage.setItem(WIND_ALERT_KEY, String(Date.now()));
+            } catch {}
+            void notifyWeatherCriticalAlert(
+              isAr
+                ? `رياح قوية (${Math.round(windKmh)} كم/سا) في بنهار — يُنصح بتأجيل الرش`
+                : `Vent fort (${Math.round(windKmh)} km/h) à Benhar — pulvérisation déconseillée`,
+              isAr,
+            );
+          }
         }
       })
       .catch(() => {});

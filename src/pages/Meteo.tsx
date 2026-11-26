@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Sun,
@@ -9,32 +9,28 @@ import {
   Thermometer,
   Calendar,
   Bell,
-  Mail,
   AlertTriangle,
   CheckCircle2,
   ShieldAlert,
   ArrowUp,
   ArrowDown,
   Clock,
-  Send,
   Sparkles,
   RefreshCw,
   Settings,
   Sunrise,
   Sunset,
-  ChevronDown,
-  ChevronUp,
   MapPin,
+  Snowflake,
 } from "lucide-react";
 import { ChillHoursComparator } from "@/components/meteo/ChillHoursComparator";
+import { WeatherAlertsPanel } from "@/components/meteo/WeatherAlertsPanel";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
-import { useRole } from "@/lib/role";
 import { WIND_LIMIT_KMH } from "@/lib/weather-forecast";
 import { getSolarTimesForDate } from "@/lib/astronomy";
+import { useWeatherAlertSettings } from "@/lib/weather-alerts-store";
 
 // Coordonnées géographiques de la ferme Doula Agro (Benhar / Aïn Oussera, Alt. 762 m)
 const LAT = 35.286281;
@@ -344,43 +340,20 @@ const MONTHLY_CLIMATE_DATA: Array<{
 export default function MeteoPage() {
   const { lang } = useTranslation();
   const isAr = lang === "ar";
-  const { session } = useRole();
+  const alertsSectionRef = useRef<HTMLDivElement | null>(null);
 
   type MeteoTab = "realtime" | "chill" | "monthly";
   const [activeTab, setActiveTab] = useState<MeteoTab>("realtime");
   const [selectedMonthIdx, setSelectedMonthIdx] = useState<number>(new Date().getMonth());
 
-  // Panneaux repliables contrôlables depuis l'en-tête (⚙️)
-  const [heatAlertOpen, setHeatAlertOpen] = useState<boolean>(false);
+  // Panneaux de configuration contrôlables depuis l'en-tête (⚙️)
   const [chillConfigOpen, setChillConfigOpen] = useState<boolean>(false);
   const [chillRefreshTick, setChillRefreshTick] = useState<number>(0);
 
-  // Configuration de l'alerte canicule par email
-  const [maxTempThreshold, setMaxTempThreshold] = useState<number>(() => {
-    const saved = localStorage.getItem("doula-meteo-max-temp");
-    return saved ? parseFloat(saved) : 35;
-  });
-
-  const [alertEmail, setAlertEmail] = useState<string>(() => {
-    const saved = localStorage.getItem("doula-meteo-alert-email");
-    return saved || session?.user?.email || "abdelmalek@doulaagro.com";
-  });
-
-  const [alertEnabled, setAlertEnabled] = useState<boolean>(() => {
-    return localStorage.getItem("doula-meteo-alert-enabled") === "1";
-  });
-
-  const [sendingTestEmail, setSendingTestEmail] = useState(false);
-
-  const saveAlertConfig = (temp: number, email: string, enabled: boolean) => {
-    setMaxTempThreshold(temp);
-    setAlertEmail(email);
-    setAlertEnabled(enabled);
-    localStorage.setItem("doula-meteo-max-temp", temp.toString());
-    localStorage.setItem("doula-meteo-alert-email", email);
-    localStorage.setItem("doula-meteo-alert-enabled", enabled ? "1" : "0");
-    toast.success(isAr ? "تم حفظ إعدادات تنبيه الحرارة بنجاح" : "Configuration d'alerte enregistrée !");
-  };
+  // Double seuil Température Haute & Basse (Gel) + Multi-Contacts — TOUJOURS ACTIF
+  const { settings: alertSettings, updateSettings: saveAlertSettings } = useWeatherAlertSettings();
+  const maxTempThreshold = alertSettings.maxTempThreshold;
+  const minTempThreshold = alertSettings.minTempThreshold;
 
   const { data: meteo, isFetching, refetch } = useQuery({
     queryKey: ["farm-meteo-live"],
@@ -394,10 +367,12 @@ export default function MeteoPage() {
   const formattedCurrentTemp = currentTemp !== null ? `${currentTemp.toFixed(1)}°C` : "—";
   const todayMaxTemp = meteo?.daily?.temperature_2m_max?.[0] ?? currentTemp ?? 0;
   const todayMinTemp = meteo?.daily?.temperature_2m_min?.[0] ?? 0;
-  const isThresholdExceeded =
-    alertEnabled &&
-    ((currentTemp !== null && currentTemp >= maxTempThreshold) ||
-      (todayMaxTemp > 0 && todayMaxTemp >= maxTempThreshold));
+  const isHeatExceeded =
+    (currentTemp !== null && currentTemp >= maxTempThreshold) ||
+    (todayMaxTemp > 0 && todayMaxTemp >= maxTempThreshold);
+  const isFrostExceeded =
+    (currentTemp !== null && currentTemp <= minTempThreshold) ||
+    (meteo?.daily?.temperature_2m_min?.[0] !== undefined && todayMinTemp <= minTempThreshold);
 
   const benharSolar = getSolarTimesForDate(new Date().toISOString().slice(0, 10));
   const sunriseStr = meteo?.daily?.sunrise?.[0]?.slice(11, 16) || benharSolar.sunriseStr.replace("h", ":");
@@ -414,6 +389,13 @@ export default function MeteoPage() {
   const weatherMeta = getWeatherDesc(meteo?.current?.weather_code ?? 0, isAr);
   const WeatherIcon = weatherMeta.icon;
 
+  const scrollToAlerts = () => {
+    setActiveTab("realtime");
+    setTimeout(() => {
+      alertsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+  };
+
   const handleHeaderRefresh = () => {
     if (activeTab === "chill") {
       setChillRefreshTick((n) => n + 1);
@@ -427,47 +409,8 @@ export default function MeteoPage() {
     if (activeTab === "chill") {
       setChillConfigOpen((v) => !v);
     } else {
-      setActiveTab("realtime");
-      setHeatAlertOpen((v) => !v);
+      scrollToAlerts();
     }
-  };
-
-  const handleTriggerEmailAlert = () => {
-    if (!alertEmail.trim()) {
-      return toast.error(isAr ? "يرجى كتابة البريد الإلكتروني" : "Veuillez indiquer une adresse e-mail valide.");
-    }
-    setSendingTestEmail(true);
-
-    const subject = encodeURIComponent(
-      isAr
-        ? `⚠️ تنبيه حرارة قصوى DOULA AGRO (${todayMaxTemp.toFixed(1)}°C)`
-        : `⚠️ ALERTE MÉTÉO DOULA AGRO — Température Max (${todayMaxTemp.toFixed(1)}°C)`
-    );
-
-    const bodyText = isAr
-      ? `تنبيه من محطة الأرصاد DOULA AGRO:\nدرجة الحرارة القصوى اليوم: ${todayMaxTemp.toFixed(1)}°C (الحد المحدد: ${maxTempThreshold}°C).\nالحرارة الحالية: ${formattedCurrentTemp}\nالرطوبة: ${meteo?.current?.relative_humidity_2m ?? 0}%\nالرياح: ${Math.round(windKmh)} كم/سا.`
-      : `Bonjour,\n\nTempérature maximale prévue : ${todayMaxTemp.toFixed(1)}°C (seuil configuré : ${maxTempThreshold}°C).\n- Actuelle : ${formattedCurrentTemp}\n- Humidité : ${meteo?.current?.relative_humidity_2m ?? 0}%\n- Vent : ${Math.round(windKmh)} km/h\n\nRecommandation : éviter la pulvérisation aux heures chaudes et renforcer l'irrigation.\nDoula Agro 🌱`;
-
-    const body = encodeURIComponent(bodyText);
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isMobile) {
-      window.location.href = `mailto:${alertEmail}?subject=${subject}&body=${body}`;
-    } else {
-      window.open(
-        `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(alertEmail)}&su=${subject}&body=${body}`,
-        "_blank",
-        "noopener,noreferrer"
-      );
-    }
-
-    setTimeout(() => {
-      setSendingTestEmail(false);
-      toast.success(
-        isAr
-          ? "تم تجهيز رسالة التنبيه بالبريد الإلكتروني"
-          : `Alerte e-mail préparée vers ${alertEmail} !`
-      );
-    }, 500);
   };
 
   return (
@@ -498,7 +441,7 @@ export default function MeteoPage() {
           <button
             type="button"
             onClick={handleHeaderSettings}
-            className={`h-9 w-9 rounded-2xl active:scale-95 transition flex items-center justify-center cursor-pointer ${(activeTab === "chill" && chillConfigOpen) || (activeTab !== "chill" && heatAlertOpen)
+            className={`h-9 w-9 rounded-2xl active:scale-95 transition flex items-center justify-center cursor-pointer ${activeTab === "chill" && chillConfigOpen
                 ? "bg-amber-400 text-emerald-950"
                 : "bg-white/15 hover:bg-white/25 text-white"
               }`}
@@ -549,24 +492,44 @@ export default function MeteoPage() {
         </button>
       </nav>
 
-      {/* Bannière d'alerte canicule active si seuil dépassé */}
-      {isThresholdExceeded && (
+      {/* Bannières d'alerte actives (Température Haute ou Gel) — TOUJOURS ACTIVES */}
+      {isHeatExceeded && (
         <div className="rounded-2xl border-2 border-rose-500/60 bg-rose-500/10 p-3 shadow-xs flex items-center justify-between gap-2.5">
           <div className="flex items-start gap-2 min-w-0">
             <ShieldAlert className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
             <p className="text-xs font-extrabold text-rose-800 dark:text-rose-200 leading-snug">
               {isAr
-                ? `تنبيه حرارة قصوى: ${todayMaxTemp.toFixed(1)}°م (الحد ${maxTempThreshold}°م)`
-                : `Alerte chaleur : ${todayMaxTemp.toFixed(1)}°C (seuil ${maxTempThreshold}°C)`}
+                ? `🔥 تنبيه حرارة قصوى بنهار: ${todayMaxTemp.toFixed(1)}°م (الحد ≥ ${maxTempThreshold}°م)`
+                : `🔥 Alerte Chaleur Benhar : ${todayMaxTemp.toFixed(1)}°C (seuil ≥ ${maxTempThreshold}°C)`}
             </p>
           </div>
-          <Button
-            size="sm"
-            onClick={handleTriggerEmailAlert}
-            className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shrink-0 rounded-xl h-8 px-2.5"
+          <button
+            type="button"
+            onClick={scrollToAlerts}
+            className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shrink-0 rounded-xl h-8 px-2.5 cursor-pointer"
           >
-            <Mail className="h-3.5 w-3.5" />
-          </Button>
+            {isAr ? "التنبيهات" : "Alertes"}
+          </button>
+        </div>
+      )}
+
+      {isFrostExceeded && (
+        <div className="rounded-2xl border-2 border-sky-500/60 bg-sky-500/10 p-3 shadow-xs flex items-center justify-between gap-2.5">
+          <div className="flex items-start gap-2 min-w-0">
+            <Snowflake className="h-5 w-5 text-sky-600 shrink-0 mt-0.5" />
+            <p className="text-xs font-extrabold text-sky-900 dark:text-sky-200 leading-snug">
+              {isAr
+                ? `🥶 تنبيه صقيع بنهار: ${todayMinTemp.toFixed(1)}°م (الحد ≤ ${minTempThreshold}°م)`
+                : `🥶 Alerte Gel Benhar : ${todayMinTemp.toFixed(1)}°C (seuil ≤ ${minTempThreshold}°C)`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={scrollToAlerts}
+            className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs shrink-0 rounded-xl h-8 px-2.5 cursor-pointer"
+          >
+            {isAr ? "التنبيهات" : "Alertes"}
+          </button>
         </div>
       )}
 
@@ -723,27 +686,23 @@ export default function MeteoPage() {
               </p>
             </div>
 
-            {/* 4. Seuil alerte chaleur */}
+            {/* 4. Seuils alerte chaleur & gel — TOUJOURS ACTIFS */}
             <button
               type="button"
-              onClick={() => setHeatAlertOpen((v) => !v)}
-              className="text-start rounded-2xl border bg-card hover:border-amber-500/50 p-3.5 shadow-2xs space-y-1 transition cursor-pointer"
+              onClick={scrollToAlerts}
+              className="text-start rounded-2xl border bg-card hover:border-emerald-500/50 p-3.5 shadow-2xs space-y-1 transition cursor-pointer"
             >
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span className="font-bold">{isAr ? "حد تنبيه الحرارة" : "Seuil chaleur"}</span>
-                <Bell className={`h-4 w-4 ${alertEnabled ? "text-amber-500" : "text-muted-foreground"}`} />
+                <span className="font-bold">{isAr ? "حدود التنبيه" : "Seuils H / Gel"}</span>
+                <Bell className="h-4 w-4 text-emerald-600" />
               </div>
-              <p dir="ltr" className="text-xl font-black text-foreground">
-                {maxTempThreshold}°C
+              <p dir="ltr" className="text-lg font-black text-foreground leading-tight">
+                <span className="text-rose-600">≥{maxTempThreshold}°</span>
+                <span className="mx-1 text-muted-foreground">/</span>
+                <span className="text-sky-600">≤{minTempThreshold}°</span>
               </p>
-              <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400">
-                {alertEnabled
-                  ? isAr
-                    ? "مفعّل · انقر للتعديل"
-                    : "Actif · modifier"
-                  : isAr
-                    ? "معطّل · انقر للتفعيل"
-                    : "Inactif · configurer"}
+              <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
+                {isAr ? "نشط 24/24 · تعديل" : "Actif 24h/24 · modifier"}
               </p>
             </button>
           </div>
@@ -762,19 +721,22 @@ export default function MeteoPage() {
                 const rainProb = meteo?.hourly?.precipitation_probability?.[idx] ?? 0;
                 const wind = Math.round((meteo?.hourly?.wind_speed_10m?.[idx] ?? 0) * 3.6);
                 const isHot = temp >= maxTempThreshold;
+                const isCold = temp <= minTempThreshold;
 
                 return (
                   <div
                     key={tIso}
                     className={`snap-start shrink-0 w-[72px] rounded-2xl border p-2 text-center shadow-2xs ${isHot
                         ? "bg-rose-500/10 border-rose-500/40"
-                        : "bg-card border-border"
+                        : isCold
+                          ? "bg-sky-500/10 border-sky-500/40"
+                          : "bg-card border-border"
                       }`}
                   >
                     <p dir="ltr" className="text-[11px] font-bold text-muted-foreground">
                       {hour}
                     </p>
-                    <p dir="ltr" className={`text-sm font-black my-1 ${isHot ? "text-rose-600 dark:text-rose-400" : "text-foreground"}`}>
+                    <p dir="ltr" className={`text-sm font-black my-1 ${isHot ? "text-rose-600 dark:text-rose-400" : isCold ? "text-sky-600 dark:text-sky-400" : "text-foreground"}`}>
                       {temp.toFixed(0)}°
                     </p>
                     <div className="text-[10px] text-muted-foreground space-y-0.5">
@@ -813,16 +775,22 @@ export default function MeteoPage() {
                 const rainSum = meteo?.daily?.precipitation_sum?.[idx] ?? 0;
                 const rainProb = meteo?.daily?.precipitation_probability_max?.[idx] ?? 0;
                 const et0 = meteo?.daily?.et0_fao_evapotranspiration?.[idx] ?? 0;
-                const isOverThreshold = alertEnabled && max >= maxTempThreshold;
+                const isOverThreshold = max >= maxTempThreshold;
+                const isUnderThreshold = min <= minTempThreshold;
 
                 return (
                   <div
                     key={dayIso}
-                    className={`flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs ${isOverThreshold ? "bg-rose-500/5" : ""
+                    className={`flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs ${isOverThreshold
+                        ? "bg-rose-500/5"
+                        : isUnderThreshold
+                          ? "bg-sky-500/5"
+                          : ""
                       }`}
                   >
                     <div className="w-28 font-bold capitalize text-foreground flex items-center gap-1.5 truncate">
                       {isOverThreshold && <AlertTriangle className="h-3.5 w-3.5 text-rose-500 shrink-0" />}
+                      {!isOverThreshold && isUnderThreshold && <Snowflake className="h-3.5 w-3.5 text-sky-500 shrink-0" />}
                       <span className="truncate">{dayName}</span>
                     </div>
 
@@ -858,114 +826,16 @@ export default function MeteoPage() {
             </div>
           </div>
 
-          {/* Bloc Alerte Canicule repliable */}
-          <div className="rounded-2xl border border-amber-500/30 bg-card overflow-hidden shadow-2xs">
-            <button
-              type="button"
-              onClick={() => setHeatAlertOpen((v) => !v)}
-              className="w-full flex items-center justify-between gap-2 px-4 py-3 text-xs font-black text-foreground hover:bg-muted/40 transition cursor-pointer"
-            >
-              <span className="flex items-center gap-2">
-                <Bell className="h-4 w-4 text-amber-600 shrink-0" />
-                <span>{isAr ? "إعدادات تنبيه موجة الحر عبر البريد" : "Alerte Canicule par E-mail"}</span>
-              </span>
-              <span className="flex items-center gap-2">
-                <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${alertEnabled
-                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
-                      : "bg-muted text-muted-foreground"
-                    }`}
-                >
-                  {alertEnabled ? (isAr ? "مفعّل" : "Actif") : isAr ? "معطّل" : "Inactif"}
-                </span>
-                {heatAlertOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-              </span>
-            </button>
-
-            {heatAlertOpen && (
-              <div className="border-t border-amber-500/20 bg-amber-500/[0.03] p-4 space-y-3.5 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-foreground">
-                    {isAr ? "تفعيل التنبيه التلقائي" : "Activer l'alerte canicule"}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={alertEnabled}
-                    onChange={(e) => saveAlertConfig(maxTempThreshold, alertEmail, e.target.checked)}
-                    className="h-5 w-5 rounded border-input accent-emerald-700 cursor-pointer"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-muted-foreground block">
-                      {isAr ? "حد الحرارة القصوى (°م)" : "Seuil maximal (°C)"}
-                    </label>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <Input
-                        type="number"
-                        dir="ltr"
-                        min={25}
-                        max={50}
-                        step={1}
-                        value={maxTempThreshold}
-                        onChange={(e) => setMaxTempThreshold(parseFloat(e.target.value) || 35)}
-                        className="h-9 font-black text-sm w-20 rounded-xl"
-                      />
-                      {[32, 35, 38, 40].map((tVal) => (
-                        <button
-                          key={tVal}
-                          type="button"
-                          onClick={() => saveAlertConfig(tVal, alertEmail, alertEnabled)}
-                          className={`px-2 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer ${maxTempThreshold === tVal
-                              ? "bg-amber-600 text-white border-amber-600"
-                              : "bg-background text-foreground hover:bg-muted"
-                            }`}
-                        >
-                          <span dir="ltr">{tVal}°</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold text-muted-foreground block">
-                      {isAr ? "البريد الإلكتروني" : "Adresse e-mail"}
-                    </label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="email"
-                        dir="ltr"
-                        value={alertEmail}
-                        onChange={(e) => setAlertEmail(e.target.value)}
-                        placeholder="ingenieur@ferme.com"
-                        className="h-9 text-xs font-semibold rounded-xl flex-1"
-                      />
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => saveAlertConfig(maxTempThreshold, alertEmail, alertEnabled)}
-                        className="rounded-xl font-bold text-xs h-9 px-3 shrink-0"
-                      >
-                        {isAr ? "حفظ" : "Sauver"}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-end pt-1">
-                  <Button
-                    size="sm"
-                    onClick={handleTriggerEmailAlert}
-                    disabled={sendingTestEmail}
-                    className="rounded-xl font-bold text-xs bg-amber-600 hover:bg-amber-700 text-white flex items-center gap-1.5"
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    <span>{isAr ? "تجربة إرسال تنبيه" : "Tester l'envoi"}</span>
-                  </Button>
-                </div>
-              </div>
-            )}
+          {/* Bloc Permanent Alertes Température Haute & Basse (Gel) + Multi-Contacts */}
+          <div ref={alertsSectionRef}>
+            <WeatherAlertsPanel
+              settings={alertSettings}
+              onSave={saveAlertSettings}
+              currentTemp={currentTemp}
+              humidity={meteo?.current?.relative_humidity_2m}
+              windKmh={windKmh}
+              isAr={isAr}
+            />
           </div>
         </div>
       )}
