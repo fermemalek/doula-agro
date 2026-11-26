@@ -13,6 +13,13 @@ interface UrgentAlertsNativePlugin {
     body: string;
     playRingtone?: boolean;
   }): Promise<{ fired: boolean; id: number }>;
+  scheduleNativeCriticalAlarm(params: {
+    id: number;
+    title: string;
+    body: string;
+    delayMs: number;
+    playRingtone?: boolean;
+  }): Promise<{ scheduled: boolean; id: number; mode: string }>;
   getPermissionsStatus(): Promise<{
     notifications: boolean;
     dndBypass: boolean;
@@ -232,6 +239,23 @@ export async function scheduleCriticalNotification(params: {
       ? params.at
       : new Date(Date.now() + 1500);
 
+  if (isNativeAndroid()) {
+    try {
+      await initUrgentNotifications();
+      const delayMs = Math.max(500, fireAt.getTime() - Date.now());
+      await UrgentAlerts.scheduleNativeCriticalAlarm({
+        id: numId,
+        title: params.title,
+        body: params.body,
+        delayMs,
+        playRingtone: true,
+      });
+      return true;
+    } catch (err) {
+      console.warn("[notifications-native] scheduleNativeCriticalAlarm fallback:", err);
+    }
+  }
+
   if (isNativePlatform()) {
     try {
       await initUrgentNotifications();
@@ -308,6 +332,43 @@ export async function scheduleTestCriticalAlert(isAr: boolean): Promise<TestCrit
       extra: { source: "doula_urgent_once", kind: "test_critical" },
     });
     return { ok, id, pendingConfirmed: ok };
+  }
+
+  if (isNativeAndroid()) {
+    try {
+      await initUrgentNotifications();
+      const res = await UrgentAlerts.scheduleNativeCriticalAlarm({
+        id,
+        title,
+        body,
+        delayMs: 5000,
+        playRingtone: true,
+      });
+      return {
+        ok: Boolean(res?.scheduled),
+        id,
+        pendingConfirmed: Boolean(res?.scheduled),
+      };
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      try {
+        playFallbackAlarmBeep();
+        await UrgentAlerts.fireImmediateUrgentNotification({
+          id,
+          title,
+          body,
+          playRingtone: true,
+        });
+        return { ok: true, id, pendingConfirmed: false, fallbackUsed: true, error: errMsg };
+      } catch (fbErr) {
+        return {
+          ok: false,
+          id,
+          pendingConfirmed: false,
+          error: `${errMsg} | fallback: ${fbErr instanceof Error ? fbErr.message : String(fbErr)}`,
+        };
+      }
+    }
   }
 
   try {

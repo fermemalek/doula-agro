@@ -4,16 +4,17 @@ import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.media.AudioAttributes;
-import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.provider.Settings;
-import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -89,47 +90,12 @@ public class UrgentAlertsPlugin extends Plugin {
     public void fireImmediateUrgentNotification(PluginCall call) {
         try {
             Context ctx = getContext();
-            ensureUrgentChannel(ctx);
             int id = call.getInt("id", (int) (100000 + (Math.random() * 899999)));
             String title = call.getString("title", "🚨 Alerte Critique — Doula Agro");
             String body = call.getString("body", "Vérification de l'alerte sonore et vibration.");
+            boolean playRingtone = call.getBoolean("playRingtone", true);
 
-            int smallIcon = ctx.getApplicationInfo().icon;
-            if (smallIcon == 0) {
-                smallIcon = android.R.drawable.ic_dialog_alert;
-            }
-
-            Uri alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
-            if (alarmSound == null) {
-                alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-            }
-
-            NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
-                .setSmallIcon(smallIcon)
-                .setContentTitle(title)
-                .setContentText(body)
-                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setVibrate(new long[] { 0, 600, 250, 600, 250, 800 })
-                .setSound(alarmSound)
-                .setAutoCancel(true);
-
-            NotificationManagerCompat.from(ctx).notify(id, builder.build());
-
-            // Lecture directe d'une courte tonalité d'alarme en secours si demandé
-            boolean playRingtone = call.getBoolean("playRingtone", false);
-            if (playRingtone && alarmSound != null) {
-                try {
-                    Ringtone ringtone = RingtoneManager.getRingtone(ctx, alarmSound);
-                    if (ringtone != null) {
-                        ringtone.play();
-                    }
-                } catch (Exception re) {
-                    re.printStackTrace();
-                }
-            }
+            UrgentAlertReceiver.fireNow(ctx, id, title, body, playRingtone);
 
             JSObject ret = new JSObject();
             ret.put("fired", true);
@@ -138,6 +104,90 @@ public class UrgentAlertsPlugin extends Plugin {
         } catch (Exception e) {
             e.printStackTrace();
             call.reject("fireImmediateUrgentNotification failed: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Planifie une alarme critique 100 % native via AlarmManager.setAlarmClock()
+     * (jamais différée ni bloquée par Doze, fonctionne écran verrouillé et en mode Silence/DND).
+     * Inclut un Handler de secours pour les délais courts (<= 15 s) dédupliqué par ID.
+     */
+    @PluginMethod
+    public void scheduleNativeCriticalAlarm(PluginCall call) {
+        try {
+            Context ctx = getContext();
+            ensureUrgentChannel(ctx);
+
+            int id = call.getInt("id", (int) (100000 + (Math.random() * 899999)));
+            String title = call.getString("title", "🚨 Alerte Critique — Doula Agro");
+            String body = call.getString("body", "Vérification de l'alerte sonore et vibration.");
+            int delayMs = Math.max(500, call.getInt("delayMs", 5000));
+            boolean playRingtone = call.getBoolean("playRingtone", true);
+
+            long triggerAtMillis = System.currentTimeMillis() + delayMs;
+            String mode = "alarm_clock";
+
+            AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+            if (am != null) {
+                Intent receiverIntent = new Intent(ctx, UrgentAlertReceiver.class);
+                receiverIntent.putExtra(UrgentAlertReceiver.EXTRA_ID, id);
+                receiverIntent.putExtra(UrgentAlertReceiver.EXTRA_TITLE, title);
+                receiverIntent.putExtra(UrgentAlertReceiver.EXTRA_BODY, body);
+                receiverIntent.putExtra(UrgentAlertReceiver.EXTRA_PLAY_RINGTONE, playRingtone);
+
+                int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    flags |= PendingIntent.FLAG_IMMUTABLE;
+                }
+                PendingIntent pendingIntent = PendingIntent.getBroadcast(ctx, id, receiverIntent, flags);
+
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        Intent showIntent = new Intent(ctx, MainActivity.class);
+                        PendingIntent showPi = PendingIntent.getActivity(ctx, id + 1, showIntent, flags);
+                        AlarmManager.AlarmClockInfo info = new AlarmManager.AlarmClockInfo(triggerAtMillis, showPi);
+                        am.setAlarmClock(info, pendingIntent);
+                        mode = "alarm_clock";
+                    } else {
+                        am.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
+                        mode = "exact";
+                    }
+                } catch (Exception se) {
+                    se.printStackTrace();
+                    mode = "allow_while_idle";
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
+                        } else {
+                            am.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent);
+                        }
+                    } catch (Exception ignored) {
+                        mode = "handler_only";
+                    }
+                }
+            } else {
+                mode = "handler_only";
+            }
+
+            // Filet de sécurité garanti pour les tests courts (<= 15 s) :
+            // si AlarmManager est retardé par le constructeur, le Handler déclenche à delayMs + 400ms
+            // (UrgentAlertReceiver.FIRED_IDS empêche tout double déclenchement).
+            if (delayMs <= 15_000) {
+                final Context appCtx = ctx.getApplicationContext();
+                new Handler(Looper.getMainLooper()).postDelayed(
+                    () -> UrgentAlertReceiver.fireNow(appCtx, id, title, body, playRingtone),
+                    delayMs + 400L
+                );
+            }
+
+            JSObject ret = new JSObject();
+            ret.put("scheduled", true);
+            ret.put("id", id);
+            ret.put("mode", mode);
+            call.resolve(ret);
+        } catch (Exception e) {
+            e.printStackTrace();
+            call.reject("scheduleNativeCriticalAlarm failed: " + e.getMessage());
         }
     }
 
