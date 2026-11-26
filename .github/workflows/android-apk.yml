@@ -32,9 +32,11 @@ jobs:
         run: npm test
 
   build-apk:
-    name: Build Android Debug APK
+    name: Build & Publish Android APK (GitHub Releases)
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -79,14 +81,32 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Verify APK output
+      - name: Prepare doula-agro.apk for release
         run: |
-          ls -lh android/app/build/outputs/apk/debug/doula-agro-debug.apk
+          cp android/app/build/outputs/apk/debug/doula-agro-debug.apk doula-agro.apk
+          ls -lh doula-agro.apk
 
-      - name: Upload doula-agro-debug.apk artifact
+      - name: Upload doula-agro.apk artifact
         uses: actions/upload-artifact@v4
         with:
           name: doula-agro-debug.apk
-          path: android/app/build/outputs/apk/debug/doula-agro-debug.apk
+          path: doula-agro.apk
           retention-days: 30
           if-no-files-found: error
+
+      - name: Publish doula-agro.apk to GitHub Releases (latest)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Doula Agro — Dernière version Android (APK)
+          body: |
+            Téléchargement direct de la dernière version Android de **Doula Agro** (build automatique sur `${{ github.sha }}`).
+
+            **Installation :**
+            1. Téléchargez **`doula-agro.apk`** sur votre téléphone Android.
+            2. Ouvrez le fichier et autorisez l'installation depuis des sources inconnues si demandé.
+            3. Dans **Paramètres / Rappels**, activez les **Autorisations Notifications Critiques** pour recevoir les alertes même en veille ou en mode Silence.
+          files: doula-agro.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

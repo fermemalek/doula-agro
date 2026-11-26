@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "./realtime";
+import { sendRemotePushAlert } from "@/lib/push-fcm";
 
 export type AlertKind = "fuite" | "tuyau" | "maladie" | "autre" | "casse";
 export type AlertStatus =
@@ -144,6 +145,13 @@ export function useAlertActions() {
           source_role: input.source_role ?? null,
           created_by: u.user.id,
         },
+      });
+      // Notification Push FCM distante (non-bloquante, cible Admin + Ingénieur)
+      sendRemotePushAlert({
+        title: `⚠️ Anomalie signalée (${input.type})`,
+        body: input.comment?.trim() || `Nouvelle anomalie sur la parcelle ${input.parcel_id}`,
+        targetRoles: ["admin", "ingenieur"],
+        data: { kind: "alert", id: client_id, route: "/anomalies" },
       });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeInvalidate } from "./realtime";
 import { deletePurchasesForReco } from "@/lib/suppliers-store";
+import { sendRemotePushAlert } from "@/lib/push-fcm";
 
 export type RecoKind = "fertilisation" | "phytosanitaire" | "irrigation";
 export type RecoMethod = "pulverisation" | "irrigation";
@@ -322,6 +323,16 @@ export function useRecommendationActions() {
           payload: newRecord,
         });
         scheduleSync();
+      }
+
+      // 4. Notification Push FCM distante (non-bloquante, cible Exécutant + Admin)
+      if (directInserted) {
+        sendRemotePushAlert({
+          title: "🚨 Nouvelle recommandation de l'ingénieur",
+          body: newRecord.title || "Une nouvelle ordonnance agricole est prête.",
+          targetRoles: ["executant", "admin"],
+          data: { kind: "recommendation", id: newId, route: "/recommandations" },
+        });
       }
 
       return newRecord as Recommendation;

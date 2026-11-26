@@ -10,6 +10,7 @@ import {
   notifyUrgentRecommendation,
   notifyWeatherCriticalAlert,
 } from "@/lib/notifications-native";
+import { registerFcmPush } from "@/lib/push-fcm";
 
 const WEATHER_ALERT_KEY = "doula-last-weather-critical-alert";
 const WEATHER_THROTTLE_MS = 6 * 60 * 60 * 1000; // 6 heures
@@ -34,6 +35,17 @@ export function NativeNotificationsBridge() {
   useEffect(() => {
     void initUrgentNotifications();
   }, []);
+
+  // 1b. Enregistrement FCM distant dès que l'utilisateur est connecté sur APK
+  useEffect(() => {
+    if (!session || !role || !isNativePlatform()) return;
+    const username =
+      (session.user?.user_metadata?.username as string | undefined) ||
+      session.user?.email ||
+      session.user?.id ||
+      "unknown";
+    void registerFcmPush({ username, role });
+  }, [session, role]);
 
   // 2. Synchronisation des rappels programmés vers Capacitor LocalNotifications
   useEffect(() => {
