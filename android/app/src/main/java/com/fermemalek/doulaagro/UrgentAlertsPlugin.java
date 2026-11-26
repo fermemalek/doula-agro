@@ -192,6 +192,33 @@ public class UrgentAlertsPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void cancelNativeCriticalAlarm(PluginCall call) {
+        try {
+            Context ctx = getContext();
+            int id = call.getInt("id", -1);
+            if (id > 0) {
+                AlarmManager am = (AlarmManager) ctx.getSystemService(Context.ALARM_SERVICE);
+                if (am != null) {
+                    Intent receiverIntent = new Intent(ctx, UrgentAlertReceiver.class);
+                    int flags = PendingIntent.FLAG_NO_CREATE;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        flags |= PendingIntent.FLAG_IMMUTABLE;
+                    }
+                    PendingIntent pi = PendingIntent.getBroadcast(ctx, id, receiverIntent, flags);
+                    if (pi != null) {
+                        am.cancel(pi);
+                        pi.cancel();
+                    }
+                }
+            }
+            call.resolve();
+        } catch (Exception e) {
+            e.printStackTrace();
+            call.resolve();
+        }
+    }
+
+    @PluginMethod
     public void getPermissionsStatus(PluginCall call) {
         boolean notificationsEnabled = false;
         boolean dndPolicyGranted = false;

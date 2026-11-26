@@ -20,6 +20,7 @@ interface UrgentAlertsNativePlugin {
     delayMs: number;
     playRingtone?: boolean;
   }): Promise<{ scheduled: boolean; id: number; mode: string }>;
+  cancelNativeCriticalAlarm(params: { id: number }): Promise<void>;
   getPermissionsStatus(): Promise<{
     notifications: boolean;
     dndBypass: boolean;
@@ -109,7 +110,7 @@ function playFallbackAlarmBeep(): void {
     gain.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + 0.85);
-  } catch {}
+  } catch { }
 }
 
 let initialized = false;
@@ -124,7 +125,7 @@ export async function initUrgentNotifications(): Promise<void> {
   try {
     if (isNativeAndroid()) {
       // Crée en priorité via le plugin Java natif (setBypassDnd + USAGE_ALARM + TYPE_ALARM)
-      await UrgentAlerts.createUrgentChannel().catch(() => {});
+      await UrgentAlerts.createUrgentChannel().catch(() => { });
       await LocalNotifications.createChannel({
         id: URGENT_CHANNEL_ID,
         name: "Urgence Ferme (Doula Agro)",
@@ -134,7 +135,7 @@ export async function initUrgentNotifications(): Promise<void> {
         visibility: 1,
         lights: true,
         lightColor: "#EF4444",
-      }).catch(() => {});
+      }).catch(() => { });
     }
   } catch (err) {
     console.warn("[notifications-native] initUrgentNotifications:", err);
@@ -205,22 +206,22 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
 export async function openDndSettings(): Promise<void> {
   if (!isNativeAndroid()) return;
-  await UrgentAlerts.openDndSettings().catch(() => {});
+  await UrgentAlerts.openDndSettings().catch(() => { });
 }
 
 export async function openUrgentChannelSettings(): Promise<void> {
   if (!isNativeAndroid()) return;
-  await UrgentAlerts.openChannelSettings().catch(() => {});
+  await UrgentAlerts.openChannelSettings().catch(() => { });
 }
 
 export async function openExactAlarmSettings(): Promise<void> {
   if (!isNativeAndroid()) return;
-  await UrgentAlerts.openExactAlarmSettings().catch(() => {});
+  await UrgentAlerts.openExactAlarmSettings().catch(() => { });
 }
 
 export async function openBatteryOptimizationSettings(): Promise<void> {
   if (!isNativeAndroid()) return;
-  await UrgentAlerts.openBatteryOptimizationSettings().catch(() => {});
+  await UrgentAlerts.openBatteryOptimizationSettings().catch(() => { });
 }
 
 /**
@@ -286,7 +287,7 @@ export async function scheduleCriticalNotification(params: {
             playRingtone: false,
           });
           return true;
-        } catch {}
+        } catch { }
       }
       return false;
     }
@@ -299,7 +300,7 @@ export async function scheduleCriticalNotification(params: {
       window.setTimeout(() => {
         try {
           new window.Notification(params.title, { body: params.body });
-        } catch {}
+        } catch { }
       }, delay);
       return true;
     }
@@ -402,7 +403,7 @@ export async function scheduleTestCriticalAlert(isAr: boolean): Promise<TestCrit
           title,
           body,
           playRingtone: true,
-        }).catch(() => {});
+        }).catch(() => { });
       }, 5000);
       return { ok: true, id, pendingConfirmed: false, fallbackUsed: true };
     }
@@ -443,37 +444,82 @@ export async function scheduleTestCriticalAlert(isAr: boolean): Promise<TestCrit
   }
 }
 
+const SYNCED_REMINDER_IDS_KEY = "doula-synced-reminder-alarm-ids";
+
+export function computeNextReminderDate(r: Reminder, from: Date = new Date()): Date | null {
+  if (!r.active || !/^\d{2}:\d{2}$/.test(r.time)) return null;
+  const [hh, mm] = r.time.split(":").map(Number);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+
+  for (let offsetDays = 0; offsetDays <= 7; offsetDays++) {
+    const candidate = new Date(
+      from.getFullYear(),
+      from.getMonth(),
+      from.getDate() + offsetDays,
+      hh,
+      mm,
+      0,
+      0,
+    );
+    if (candidate.getTime() <= from.getTime() + 1000) continue;
+    const dow = candidate.getDay(); // 0=Dim .. 6=Sam
+    if (r.frequency === "daily") return candidate;
+    if (r.frequency === "weekdays" && dow >= 1 && dow <= 5) return candidate;
+    if (r.frequency === "weekly" && dow === 1) return candidate;
+  }
+  return null;
+}
+
 /**
- * Synchronise les rappels quotidiens/hebdomadaires de la ferme vers des alarmes Android exactes.
+ * Synchronise les rappels quotidiens/hebdomadaires de la ferme vers des alarmes Android natives
+ * (AlarmManager.setAlarmClock via UrgentAlertsPlugin — fonctionne écran verrouillé et mode Doze).
  */
 export async function syncScheduledRemindersToNative(reminders: Reminder[]): Promise<void> {
   if (!isNativePlatform()) return;
   try {
     await initUrgentNotifications();
-    const pending = await LocalNotifications.getPending().catch(() => ({ notifications: [] }));
-    const oldReminderIds = (pending.notifications || [])
-      .filter((n) => (n.extra as any)?.source === "doula_reminder")
-      .map((n) => ({ id: n.id }));
-    if (oldReminderIds.length > 0) {
-      await LocalNotifications.cancel({ notifications: oldReminderIds }).catch(() => {});
+
+    // 1. Annule les anciennes alarmes natives des rappels supprimés ou désactivés
+    let prevIds: number[] = [];
+    try {
+      const raw = localStorage.getItem(SYNCED_REMINDER_IDS_KEY);
+      if (raw) prevIds = JSON.parse(raw);
+    } catch { }
+
+    if (isNativeAndroid() && prevIds.length > 0) {
+      for (const oldId of prevIds) {
+        await UrgentAlerts.cancelNativeCriticalAlarm({ id: oldId }).catch(() => { });
+      }
+    } else if (!isNativeAndroid()) {
+      const pending = await LocalNotifications.getPending().catch(() => ({ notifications: [] }));
+      const oldReminderIds = (pending.notifications || [])
+        .filter((n) => (n.extra as any)?.source === "doula_reminder")
+        .map((n) => ({ id: n.id }));
+      if (oldReminderIds.length > 0) {
+        await LocalNotifications.cancel({ notifications: oldReminderIds }).catch(() => { });
+      }
     }
 
-    const activeReminders = reminders.filter((r) => r.active && /^\d{2}:\d{2}$/.test(r.time));
+    // 2. Planifie la prochaine occurrence exacte de chaque rappel actif
+    const nextIds: number[] = [];
     const now = new Date();
-    for (const r of activeReminders) {
-      const [hh, mm] = r.time.split(":").map(Number);
-      const next = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
-      if (next.getTime() <= now.getTime()) {
-        next.setDate(next.getDate() + 1);
-      }
+    for (const r of reminders) {
+      const next = computeNextReminderDate(r, now);
+      if (!next) continue;
+      const alarmId = resolveSafeAndroidId(`rem_${r.id}`);
+      nextIds.push(alarmId);
       await scheduleCriticalNotification({
-        id: `rem_${r.id}`,
+        id: alarmId,
         title: `⏰ Rappel Ferme — ${r.title}`,
         body: `Heure programmée : ${r.time}`,
         at: next,
         extra: { source: "doula_reminder", reminderId: r.id },
       });
     }
+
+    try {
+      localStorage.setItem(SYNCED_REMINDER_IDS_KEY, JSON.stringify(nextIds));
+    } catch { }
   } catch (err) {
     console.warn("[notifications-native] syncScheduledRemindersToNative:", err);
   }

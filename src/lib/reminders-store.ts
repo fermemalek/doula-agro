@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Capacitor } from "@capacitor/core";
-import { LocalNotifications } from "@capacitor/local-notifications";
-import { URGENT_CHANNEL_ID, initUrgentNotifications } from "@/lib/notifications-native";
+import { syncScheduledRemindersToNative } from "@/lib/notifications-native";
 
 const KEY = "doula-reminders";
 
@@ -14,107 +12,12 @@ export interface Reminder {
   frequency: ReminderFrequency;
   parcelId?: string;
   active: boolean;
-  lastCheckedAt?: string; // ISO date "YYYY-MM-DD"
+  lastCheckedAt?: string; // Local date "YYYY-MM-DD"
   createdAt: number;
 }
 
 let data: Reminder[] = [];
 const listeners = new Set<() => void>();
-
-// Helper: Hash UUID to a unique 32-bit positive integer (under 1,000,000)
-function getNumericId(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash) % 1000000;
-}
-
-// Helper: Sync all active reminders with Capacitor LocalNotifications
-async function syncNativeReminders(reminders: Reminder[]) {
-  if (!Capacitor.isNativePlatform()) return;
-  try {
-    await initUrgentNotifications();
-    // 1. Cancel existing reminder notifications only (preserve agitator 9999 and test 999901)
-    const pending = await LocalNotifications.getPending();
-    const idsToCancel = pending.notifications
-      .filter((n) => n.id !== 9999 && n.id !== 999901 && (n.extra as any)?.source !== "doula_urgent_once")
-      .map((n) => n.id);
-    if (idsToCancel.length > 0) {
-      await LocalNotifications.cancel({ notifications: idsToCancel.map((id) => ({ id })) });
-    }
-
-    // 2. Request permissions if not granted
-    const perm = await LocalNotifications.checkPermissions();
-    if (perm.display !== "granted") {
-      await LocalNotifications.requestPermissions();
-    }
-
-    // 3. Schedule all active reminders on high-priority urgent channel
-    const notificationsToSchedule = [];
-    for (const r of reminders) {
-      if (!r.active) continue;
-
-      const [hStr, mStr] = r.time.split(":");
-      const hour = parseInt(hStr) || 0;
-      const minute = parseInt(mStr) || 0;
-      const baseId = getNumericId(r.id);
-
-      if (r.frequency === "daily") {
-        notificationsToSchedule.push({
-          id: baseId,
-          title: "⏰ Rappel du matin — Doula Agro",
-          body: r.title,
-          channelId: URGENT_CHANNEL_ID,
-          schedule: {
-            on: { hour, minute },
-            every: "day" as const,
-            allowWhileIdle: true,
-          },
-          extra: { source: "doula_reminder", reminderId: r.id },
-        });
-      } else if (r.frequency === "weekly") {
-        notificationsToSchedule.push({
-          id: baseId,
-          title: "⏰ Rappel hebdomadaire — Doula Agro",
-          body: r.title,
-          channelId: URGENT_CHANNEL_ID,
-          schedule: {
-            on: { weekday: 2, hour, minute }, // 2 = Monday
-            every: "week" as const,
-            allowWhileIdle: true,
-          },
-          extra: { source: "doula_reminder", reminderId: r.id },
-        });
-      } else if (r.frequency === "weekdays") {
-        // Weekdays Mon-Fri (weekday 2 to 6)
-        for (let weekday = 2; weekday <= 6; weekday++) {
-          notificationsToSchedule.push({
-            id: baseId + weekday * 1000000,
-            title: "⏰ Rappel du matin (semaine) — Doula Agro",
-            body: r.title,
-            channelId: URGENT_CHANNEL_ID,
-            schedule: {
-              on: { weekday, hour, minute },
-              every: "week" as const,
-              allowWhileIdle: true,
-            },
-            extra: { source: "doula_reminder", reminderId: r.id },
-          });
-        }
-      }
-    }
-
-    if (notificationsToSchedule.length > 0) {
-      await LocalNotifications.schedule({
-        notifications: notificationsToSchedule,
-      });
-    }
-  } catch (e) {
-    console.warn("Failed to sync native reminders", e);
-  }
-}
 
 function load() {
   if (typeof window === "undefined") return;
@@ -134,33 +37,35 @@ function load() {
 }
 load();
 
-// Trigger Native Sync 1.5 seconds after app startup to ensure Capacitor is ready
-if (typeof window !== "undefined") {
-  setTimeout(() => {
-    syncNativeReminders(data);
-  }, 1500);
-}
-
 function persist() {
-  if (typeof window !== "undefined") localStorage.setItem(KEY, JSON.stringify(data));
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(data));
+    } catch {}
+  }
   listeners.forEach((l) => l());
-  syncNativeReminders(data);
+  void syncScheduledRemindersToNative(data);
 }
 
 export function useReminders(): Reminder[] {
-  const [, setTick] = useState(0);
+  const [snapshot, setSnapshot] = useState<Reminder[]>(() => data);
   useEffect(() => {
-    const fn = () => setTick((t) => t + 1);
+    const fn = () => setSnapshot(data);
     listeners.add(fn);
     return () => {
       listeners.delete(fn);
     };
   }, []);
-  return data;
+  return snapshot;
 }
 
+/** Date locale YYYY-MM-DD (évite le décalage UTC minuit-1h en Algérie) */
 export function todayKey(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 export function isDueToday(r: Reminder): boolean {
@@ -173,39 +78,54 @@ export function isDueToday(r: Reminder): boolean {
 }
 
 export function useRemindersActions() {
-  const add = useCallback((r: Omit<Reminder, "id" | "createdAt" | "active"> & { active?: boolean }) => {
-    data.unshift({
-      id: crypto.randomUUID(),
-      createdAt: Date.now(),
-      active: r.active ?? true,
-      ...r,
-    });
-    persist();
-  }, []);
+  const add = useCallback(
+    (r: Omit<Reminder, "id" | "createdAt" | "active"> & { active?: boolean }) => {
+      const newItem: Reminder = {
+        id: crypto.randomUUID(),
+        createdAt: Date.now(),
+        active: r.active ?? true,
+        ...r,
+      };
+      data = [newItem, ...data];
+      persist();
+    },
+    [],
+  );
+
+  const update = useCallback(
+    (id: string, patch: Partial<Omit<Reminder, "id" | "createdAt">>) => {
+      data = data.map((item) => (item.id === id ? { ...item, ...patch } : item));
+      persist();
+    },
+    [],
+  );
+
   const remove = useCallback((id: string) => {
     data = data.filter((r) => r.id !== id);
     persist();
   }, []);
+
   const toggleActive = useCallback((id: string) => {
-    const r = data.find((x) => x.id === id);
-    if (r) {
-      r.active = !r.active;
-      persist();
-    }
+    data = data.map((item) =>
+      item.id === id ? { ...item, active: !item.active } : item,
+    );
+    persist();
   }, []);
+
   const markChecked = useCallback((id: string) => {
-    const r = data.find((x) => x.id === id);
-    if (r) {
-      r.lastCheckedAt = todayKey();
-      persist();
-    }
+    const today = todayKey();
+    data = data.map((item) =>
+      item.id === id ? { ...item, lastCheckedAt: today } : item,
+    );
+    persist();
   }, []);
+
   const unmarkChecked = useCallback((id: string) => {
-    const r = data.find((x) => x.id === id);
-    if (r) {
-      r.lastCheckedAt = undefined;
-      persist();
-    }
+    data = data.map((item) =>
+      item.id === id ? { ...item, lastCheckedAt: undefined } : item,
+    );
+    persist();
   }, []);
-  return { add, remove, toggleActive, markChecked, unmarkChecked };
+
+  return { add, update, remove, toggleActive, markChecked, unmarkChecked };
 }
