@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "696754768104",
+    "project_id": "doula-agro",
+    "storage_bucket": "doula-agro.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:696754768104:android:4ef66a7496e74f4d79a15d",
+        "android_client_info": {
+          "package_name": "com.fermemalek.doulaagro"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBRCBhzX0Jr6-trxzYzANutSeAZfgKDnn0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
