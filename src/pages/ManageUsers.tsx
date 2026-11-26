@@ -27,11 +27,20 @@ import {
   Eye,
   EyeOff,
   KeyRound,
+  Camera,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRole } from "@/lib/role";
 import { useTranslation } from "@/lib/i18n";
-import { getUserAvatar, getUserInitials } from "@/lib/avatars";
+import {
+  compressAvatarFile,
+  getUserAvatar,
+  getUserInitials,
+  removeCustomUserAvatar,
+  saveCustomUserAvatar,
+  useAvatarVersion,
+} from "@/lib/avatars";
 import { buildAuthAlias } from "@/pages/Login";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -60,6 +69,7 @@ export default function ManageUsers() {
   const { session, loading } = useRole();
   const { lang } = useTranslation();
   const isAr = lang === "ar";
+  useAvatarVersion();
 
   // Formulaire d'ajout
   const [username, setUsername] = useState("");
@@ -67,6 +77,7 @@ export default function ManageUsers() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [selectedRole, setSelectedRole] = useState<"admin" | "executant" | "ingenieur">("executant");
+  const [createAvatarPreview, setCreateAvatarPreview] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
   // Liste des utilisateurs
@@ -80,6 +91,8 @@ export default function ManageUsers() {
   const [editUsername, setEditUsername] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editPassword, setEditPassword] = useState("");
+  const [editAvatarPreview, setEditAvatarPreview] = useState<string | null>(null);
+  const [editAvatarRemoved, setEditAvatarRemoved] = useState(false);
   const [showCreatePwd, setShowCreatePwd] = useState(false);
   const [showEditPwd, setShowEditPwd] = useState(false);
   const [editRole, setEditRole] = useState<"admin" | "executant" | "ingenieur">("executant");
@@ -271,6 +284,10 @@ export default function ManageUsers() {
         .eq("id", newUserId);
       if (profileErr) throw profileErr;
 
+      if (createAvatarPreview) {
+        saveCustomUserAvatar([newUserId, cleanUsername, fullName.trim()], createAvatarPreview);
+      }
+
       toast.success(
         isAr
           ? `تم إنشاء المستخدم "${fullName}" بنجاح.`
@@ -282,6 +299,7 @@ export default function ManageUsers() {
       setPhone("");
       setPassword("");
       setSelectedRole("executant");
+      setCreateAvatarPreview(null);
 
       fetchUsers();
     } catch (err: any) {
@@ -299,6 +317,10 @@ export default function ManageUsers() {
     setEditPhone(user.phone);
     setEditPassword("");
     setShowEditPwd(false);
+    setEditAvatarPreview(
+      getUserAvatar({ id: user.id, fullName: user.fullName, username: user.username, role: user.role }),
+    );
+    setEditAvatarRemoved(false);
   };
 
   const handleSaveEdit = async () => {
@@ -403,6 +425,22 @@ export default function ManageUsers() {
         .eq("id", targetUserId);
       if (profileErr) throw profileErr;
 
+      if (editAvatarRemoved) {
+        removeCustomUserAvatar([
+          editingUser.id,
+          targetUserId,
+          editingUser.username,
+          cleanEditUser,
+          editingUser.fullName,
+          editFullName.trim(),
+        ]);
+      } else if (editAvatarPreview && editAvatarPreview.startsWith("data:")) {
+        saveCustomUserAvatar(
+          [targetUserId, editingUser.id, cleanEditUser, editFullName.trim()],
+          editAvatarPreview,
+        );
+      }
+
       toast.success(
         newPwd
           ? isAr
@@ -451,6 +489,7 @@ export default function ManageUsers() {
         .eq("id", userId);
       if (profileErr) throw profileErr;
 
+      removeCustomUserAvatar([userId]);
       toast.success(isAr ? "تم حذف المستخدم بنجاح." : "Utilisateur supprimé avec succès.");
       fetchUsers();
     } catch (err: any) {
@@ -518,6 +557,59 @@ export default function ManageUsers() {
             </div>
 
             <form onSubmit={handleCreateUser} className="space-y-3">
+              {/* Photo de profil optionnelle */}
+              <div className="flex items-center gap-3 rounded-xl border bg-muted/20 p-2.5">
+                {createAvatarPreview ? (
+                  <img
+                    src={createAvatarPreview}
+                    alt="Avatar"
+                    className="h-12 w-12 rounded-full object-cover ring-2 ring-primary/30 shrink-0"
+                  />
+                ) : (
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                    <Camera className="h-5 w-5" />
+                  </span>
+                )}
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p className="text-xs font-semibold text-foreground">
+                    {isAr ? "صورة الملف الشخصي (اختياري)" : "Photo de profil (optionnel)"}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <label className="inline-flex items-center gap-1 rounded-lg border bg-background hover:bg-muted px-2.5 py-1 text-[11px] font-bold cursor-pointer">
+                      <Camera className="h-3 w-3" />
+                      <span>{isAr ? "اختيار صورة" : "Choisir une photo"}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={creating}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const dataUrl = await compressAvatarFile(file);
+                            setCreateAvatarPreview(dataUrl);
+                          } catch (err: any) {
+                            toast.error(err?.message || "Erreur image");
+                          }
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {createAvatarPreview && (
+                      <button
+                        type="button"
+                        onClick={() => setCreateAvatarPreview(null)}
+                        className="inline-flex items-center gap-0.5 rounded-lg border border-destructive/40 px-2 py-1 text-[11px] font-bold text-destructive hover:bg-destructive/10 cursor-pointer"
+                      >
+                        <X className="h-3 w-3" />
+                        <span>{isAr ? "إزالة" : "Retirer"}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <Label htmlFor="username">
                   {isAr ? "اسم المستخدم (Username)" : "Nom d'utilisateur (Username)"}
@@ -671,6 +763,7 @@ export default function ManageUsers() {
               <div className="divide-y">
                 {usersList.map((user) => {
                   const userAvatar = getUserAvatar({
+                    id: user.id,
                     fullName: user.fullName,
                     username: user.username,
                     role: user.role,
@@ -758,6 +851,63 @@ export default function ManageUsers() {
 
           {editingUser && (
             <div className="space-y-4 py-2">
+              {/* Modifier la photo de profil */}
+              <div className="flex items-center gap-3 rounded-xl border bg-muted/20 p-3">
+                {editAvatarPreview && !editAvatarRemoved ? (
+                  <img
+                    src={editAvatarPreview}
+                    alt={editFullName}
+                    className="h-14 w-14 rounded-full object-cover ring-2 ring-primary/35 shrink-0"
+                  />
+                ) : (
+                  <span className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-sm font-black text-muted-foreground shrink-0">
+                    {getUserInitials(editFullName)}
+                  </span>
+                )}
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <p className="text-xs font-bold text-foreground">
+                    {isAr ? "صورة الملف الشخصي" : "Photo de profil"}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <label className="inline-flex items-center gap-1 rounded-lg border bg-background hover:bg-muted px-2.5 py-1 text-[11px] font-bold cursor-pointer">
+                      <Camera className="h-3.5 w-3.5" />
+                      <span>{isAr ? "تغيير الصورة" : "Changer la photo"}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={savingEdit}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const dataUrl = await compressAvatarFile(file);
+                            setEditAvatarPreview(dataUrl);
+                            setEditAvatarRemoved(false);
+                          } catch (err: any) {
+                            toast.error(err?.message || "Erreur image");
+                          }
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {editAvatarPreview && !editAvatarRemoved && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditAvatarPreview(null);
+                          setEditAvatarRemoved(true);
+                        }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-destructive/40 px-2 py-1 text-[11px] font-bold text-destructive hover:bg-destructive/10 cursor-pointer"
+                      >
+                        <X className="h-3 w-3" />
+                        <span>{isAr ? "حذف الصورة" : "Supprimer"}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="space-y-1.5">
                 <Label htmlFor="editUsername">
                   {isAr ? "اسم المستخدم (المعرّف)" : "Nom d'utilisateur (Identifiant)"}

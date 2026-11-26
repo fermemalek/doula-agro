@@ -1,11 +1,16 @@
 import { Link, useNavigate } from "@/lib/router-compat";
 import { useState } from "react";
-import { LogOut, Settings, User as UserIcon, HardHat, Shield, Trash2, RotateCcw, CloudOff, FlaskConical, Check, Users } from "lucide-react";
+import { LogOut, Settings, User as UserIcon, HardHat, Shield, Trash2, RotateCcw, CloudOff, FlaskConical, Check, Users, Camera } from "lucide-react";
 import { toast } from "sonner";
 import { useRole } from "@/lib/role";
 import { useDisplayRole } from "@/lib/display-role";
 import { useTranslation } from "@/lib/i18n";
-import { getUserAvatar } from "@/lib/avatars";
+import {
+  compressAvatarFile,
+  getUserAvatar,
+  saveCustomUserAvatar,
+  useAvatarVersion,
+} from "@/lib/avatars";
 import { resetFarmData } from "@/lib/cloud/admin-reset";
 import { offlineDB } from "@/lib/offline/db";
 import {
@@ -23,6 +28,7 @@ function ProfilPage() {
   const { session, signOut, switchRole } = useRole();
   const { lang } = useTranslation();
   const isAr = lang === "ar";
+  useAvatarVersion();
   const navigate = useNavigate();
   const role = useDisplayRole();
   const email = session?.user?.email ?? "";
@@ -75,17 +81,44 @@ function ProfilPage() {
 
       <section className="mb-4 flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-2xs">
         {(() => {
-          const profilAvatar = getUserAvatar({ name, email, role });
-          return profilAvatar ? (
-            <img
-              src={profilAvatar}
-              alt={name || email}
-              className="h-14 w-14 rounded-full object-cover ring-2 ring-primary/35 shrink-0"
-            />
-          ) : (
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
-              <UserIcon className="h-7 w-7" />
-            </span>
+          const profilAvatar = getUserAvatar({ id: session?.user?.id, name, email, role });
+          return (
+            <label
+              className="relative group cursor-pointer shrink-0"
+              title={isAr ? "تغيير صورة الملف الشخصي" : "Changer la photo de profil"}
+            >
+              {profilAvatar ? (
+                <img
+                  src={profilAvatar}
+                  alt={name || email}
+                  className="h-14 w-14 rounded-full object-cover ring-2 ring-primary/35 group-hover:opacity-85 transition"
+                />
+              ) : (
+                <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary group-hover:bg-primary/20 transition">
+                  <UserIcon className="h-7 w-7" />
+                </span>
+              )}
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground shadow ring-2 ring-card">
+                <Camera className="h-3 w-3" />
+              </span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const dataUrl = await compressAvatarFile(file);
+                    saveCustomUserAvatar([session?.user?.id, email, name], dataUrl);
+                    toast.success(isAr ? "تم تحديث صورة الملف الشخصي" : "Photo de profil mise à jour !");
+                  } catch (err: any) {
+                    toast.error(err?.message || "Erreur image");
+                  }
+                  e.target.value = "";
+                }}
+              />
+            </label>
           );
         })()}
         <div className="flex-1 min-w-0">
