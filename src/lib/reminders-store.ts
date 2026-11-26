@@ -58,6 +58,8 @@ function saveLocalAndNotify(next: Reminder[], syncNative = true) {
 async function pushRemindersToCloud(list: Reminder[]) {
   if (import.meta.env.MODE === "test") return;
   try {
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess?.session) return;
     await (supabase as any).from("supplier_purchases").upsert(
       {
         id: CLOUD_ROW_ID,
@@ -98,6 +100,8 @@ function parseCloudReminders(raw: unknown): Reminder[] | null {
 export async function syncRemindersFromCloud(): Promise<void> {
   if (import.meta.env.MODE === "test") return;
   try {
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess?.session) return;
     const { data: row, error } = await (supabase as any)
       .from("supplier_purchases")
       .select("product_name, updated_at")

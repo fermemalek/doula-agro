@@ -226,13 +226,15 @@ function load() {
   const { clean, removed } = cleanBuggyPurchases(purchases);
   purchases = clean;
   if (removed.length > 0) {
-    for (const b of removed) {
-      void (async () => {
-        try {
+    void (async () => {
+      try {
+        const { data: s } = await supabase.auth.getSession();
+        if (!s?.session) return;
+        for (const b of removed) {
           await supabase.from("supplier_purchases" as any).delete().eq("id" as never, b.id as never);
-        } catch { }
-      })();
-    }
+        }
+      } catch { }
+    })();
   }
 
   // 2. Alimentation automatique des achats réels fournisseur Agrimax
@@ -247,10 +249,14 @@ function load() {
       localStorage.setItem(KEY, JSON.stringify(purchases));
     }
     const toSync = [...addedAgrimax, ...changedItems];
-    for (const item of toSync) {
+    if (toSync.length > 0) {
       void (async () => {
         try {
-          await supabase.from("supplier_purchases" as any).upsert(mapToDb(item) as never, { onConflict: "id" });
+          const { data: s } = await supabase.auth.getSession();
+          if (!s?.session) return;
+          for (const item of toSync) {
+            await supabase.from("supplier_purchases" as any).upsert(mapToDb(item) as never, { onConflict: "id" });
+          }
         } catch { }
       })();
     }
@@ -314,6 +320,8 @@ function persist() {
 
 async function fetchOnline() {
   try {
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess?.session) return;
     const { data: dbData, error } = await supabase
       .from("supplier_purchases" as any)
       .select("*")

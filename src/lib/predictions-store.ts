@@ -65,6 +65,8 @@ function persist() {
 
 async function fetchOnline() {
   try {
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess?.session) return;
     const { data: dbData, error } = await supabase
       .from("parcel_predictions" as any)
       .select("*");

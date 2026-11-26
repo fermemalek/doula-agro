@@ -86,6 +86,8 @@ if (typeof window !== "undefined") {
  */
 export async function fetchCloudParcels() {
   try {
+    const { data: sess } = await supabase.auth.getSession();
+    if (!sess?.session) return;
     const { data: cloudParcels, error } = await supabase
       .from("parcels")
       .select("*");
