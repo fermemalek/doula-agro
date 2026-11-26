@@ -257,7 +257,7 @@ function LoginPage() {
     >
       <Card className="w-full max-w-sm p-6 space-y-5">
         <header className="text-center space-y-2">
-          <div className="mx-auto h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden ring-2 ring-primary/25 shadow-xs transition-all">
+          <div className="mx-auto h-16 w-16 rounded-full bg-[#0E4D31] flex items-center justify-center overflow-hidden ring-2 ring-[#0E4D31]/30 shadow-xs transition-all">
             {previewAvatar ? (
               <img
                 src={previewAvatar}
@@ -265,7 +265,11 @@ function LoginPage() {
                 className="h-full w-full rounded-full object-cover"
               />
             ) : (
-              <Sprout className="h-7 w-7 text-primary" />
+              <img
+                src={`${import.meta.env.BASE_URL}logo.png`}
+                alt="Doula Agro"
+                className="h-full w-full rounded-full object-cover"
+              />
             )}
           </div>
           <h1 className="text-xl font-bold">Doula Agro</h1>
