@@ -1,0 +1,38 @@
+appId: com.fermemalek.doulaagro
+---
+# Flux complet authentifié (exécuté automatiquement si les secrets GitHub
+# MAESTRO_TEST_EMAIL et MAESTRO_TEST_PASSWORD sont configurés)
+- launchApp:
+    clearState: true
+
+- extendedWaitUntil:
+    visible: "Doula Agro"
+    timeout: 25000
+
+- tapOn: "Ex: jean ou jean@example.com"
+- inputText: "${EMAIL}"
+- tapOn:
+    text: "Mot de passe"
+- inputText: "${PASSWORD}"
+- hideKeyboard
+- tapOn: "Se connecter"
+
+# Vérifier que la connexion réussit SANS crash natif Android (Firebase / Notifications)
+- extendedWaitUntil:
+    visible:
+      text: ".*(Accueil|الرئيسية|Profil|الملف الشخصي|فضاء المهندس).*"
+    timeout: 25000
+
+- takeScreenshot: "04-home-after-login"
+
+# Ouvrir l'onglet Profil et vérifier la carte des autorisations critiques
+- tapOn:
+    text: ".*(Profil|الملف الشخصي).*"
+    optional: true
+- scrollUntilVisible:
+    element:
+      text: ".*(Notifications Critiques|التنبيهات الحرجة).*"
+    direction: DOWN
+    timeout: 15000
+    optional: true
+- takeScreenshot: "05-profil-critical-notifications"

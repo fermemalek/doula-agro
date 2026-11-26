@@ -1,0 +1,29 @@
+appId: com.fermemalek.doulaagro
+---
+# 1. Lancement propre de l'APK Android Doula Agro (vérifie zéro crash au démarrage)
+- launchApp:
+    clearState: true
+
+# 2. Attendre le rendu du WebView Capacitor (écran de connexion)
+- extendedWaitUntil:
+    visible: "Doula Agro"
+    timeout: 25000
+
+- assertVisible: "Connexion à votre compte"
+- assertVisible: "Se connecter"
+- takeScreenshot: "01-login-default-logo"
+
+# 3. Tester la saisie d'identifiant (aperçu dynamique des avatars sans crash)
+- tapOn: "Ex: jean ou jean@example.com"
+- inputText: "zeinab"
+- hideKeyboard
+- takeScreenshot: "02-login-avatar-zeinab"
+
+- tapOn: "zeinab"
+- eraseText: 10
+- inputText: "mohcherif"
+- hideKeyboard
+- takeScreenshot: "03-login-avatar-mohcherif"
+
+# 4. Vérifier que l'application reste parfaitement stable
+- assertVisible: "Se connecter"

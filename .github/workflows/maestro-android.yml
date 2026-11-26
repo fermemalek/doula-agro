@@ -1,0 +1,101 @@
+name: Maestro E2E — Test Automatique APK Android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  maestro-android-e2e:
+    name: Test APK réel sur émulateur Android (Maestro)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Setup Java 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web assets for Android APK
+        env:
+          VITE_SUPABASE_URL: "https://krmvdahejfczrziobesi.supabase.co"
+          VITE_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_9GTs8V5G33NYHqEQUPoHzA_Nd4xHgRq"
+        run: npm run build:mobile
+
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
+
+      - name: Build Android Debug APK
+        working-directory: android
+        run: |
+          sed -i 's/\r$//' gradlew
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Enable KVM for fast Android Emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Maestro E2E on Android Emulator (API 34)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            set -e
+            curl -Ls "https://get.maestro.mobile.dev" | bash
+            export PATH="$PATH:$HOME/.maestro/bin"
+            maestro --version
+
+            adb install -r android/app/build/outputs/apk/debug/doula-agro-debug.apk
+            mkdir -p maestro-artifacts
+
+            # 1. Test démarrage + Login + Avatars (toujours exécuté)
+            maestro test .maestro/01-launch-and-login-ui.yaml --debug-output maestro-artifacts
+
+            # 2. Test complet authentifié (si secrets MAESTRO_TEST_EMAIL & MAESTRO_TEST_PASSWORD renseignés)
+            if [ -n "$MAESTRO_TEST_EMAIL" ] && [ -n "$MAESTRO_TEST_PASSWORD" ]; then
+              maestro test \
+                -e EMAIL="$MAESTRO_TEST_EMAIL" \
+                -e PASSWORD="$MAESTRO_TEST_PASSWORD" \
+                .maestro/02-authenticated-smoke.yaml \
+                --debug-output maestro-artifacts
+            else
+              echo "Info: MAESTRO_TEST_EMAIL/MAESTRO_TEST_PASSWORD non définis — flux 02 ignoré."
+            fi
+        env:
+          MAESTRO_TEST_EMAIL: ${{ secrets.MAESTRO_TEST_EMAIL }}
+          MAESTRO_TEST_PASSWORD: ${{ secrets.MAESTRO_TEST_PASSWORD }}
+
+      - name: Upload Maestro screenshots & logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-android-report
+          path: |
+            maestro-artifacts
+            *.png
+          if-no-files-found: ignore
+          retention-days: 14
