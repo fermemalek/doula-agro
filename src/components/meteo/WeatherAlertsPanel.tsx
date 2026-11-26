@@ -219,19 +219,29 @@ export function WeatherAlertsPanel({
         parts.push(isAr ? `${res.pushSent} دفع عن بُعد` : `${res.pushSent} Push FCM`);
       }
 
-      if (parts.length > 0) {
+      if (parts.length > 0 && res.errors.length === 0) {
         toast.success(
           isAr
             ? `تم إطلاق التنبيه التجريبي: ${parts.join(" · ")}`
             : `Test envoyé : ${parts.join(" · ")}`,
-          { duration: 5000 },
+          { duration: 6000 },
+        );
+      } else if (parts.length > 0 && res.errors.length > 0) {
+        toast.warning(
+          isAr
+            ? `إرسال جزئي (${parts.join(" · ")}) — تفاصيل: ${res.errors.join(" | ")}`
+            : `Envoi partiel (${parts.join(" · ")}) — Détails : ${res.errors.join(" | ")}`,
+          { duration: 8000 },
         );
       } else {
         toast.info(
-          res.serverMessage ||
-            (isAr
-              ? "تمت محاكاة التنبيه — أضف جهات اتصال أو فعّل صلاحيات الإشعارات."
-              : "Test déclenché — configurez vos contacts ou les secrets serveur pour l'e-mail/WhatsApp."),
+          res.errors.length > 0
+            ? res.errors.join(" | ")
+            : res.serverMessage ||
+                (isAr
+                  ? "تمت محاكاة التنبيه — أضف جهات اتصال أو فعّل صلاحيات الإشعارات."
+                  : "Test déclenché — configurez vos contacts ou les secrets serveur pour l'e-mail/WhatsApp."),
+          { duration: 8000 },
         );
       }
     } finally {

@@ -326,12 +326,13 @@ export interface WeatherTestResult {
   emailsSent: number;
   whatsappSent: number;
   pushSent: number;
+  errors: string[];
   serverMessage?: string;
 }
 
 /**
  * Teste immédiatement une alerte Chaleur ou Gel :
- * 1) Notification critique locale sur le téléphone (canal doula_urgent_alerts)
+ * 1) Notification critique locale immédiate sur le téléphone (canal doula_urgent_alerts)
  * 2) Appel serveur Supabase `weather-threshold-alert` (E-mail Resend/SMTP + WhatsApp CallMeBot + FCM)
  */
 export async function triggerWeatherThresholdTest(params: {
@@ -371,6 +372,7 @@ export async function triggerWeatherThresholdTest(params: {
       emailsSent: 0,
       whatsappSent: 0,
       pushSent: 0,
+      errors: [],
     };
   }
 
@@ -393,25 +395,32 @@ export async function triggerWeatherThresholdTest(params: {
         emailsSent: 0,
         whatsappSent: 0,
         pushSent: 0,
+        errors: [error.message],
         serverMessage: error.message,
       };
     }
+    const serverErrors = Array.isArray(data?.errors)
+      ? (data.errors as unknown[]).map((e) => String(e))
+      : [];
     return {
       localApkScheduled,
       serverCalled: true,
-      emailsSent: Number(data?.emailsSent ?? 0),
-      whatsappSent: Number(data?.whatsappSent ?? 0),
-      pushSent: Number(data?.pushSent ?? 0),
+      emailsSent: Number(data?.sent?.email ?? data?.emailsSent ?? 0),
+      whatsappSent: Number(data?.sent?.whatsapp ?? data?.whatsappSent ?? 0),
+      pushSent: Number(data?.sent?.fcm ?? data?.pushSent ?? 0),
+      errors: serverErrors,
       serverMessage: typeof data?.message === "string" ? data.message : undefined,
     };
   } catch (err) {
+    const msgErr = err instanceof Error ? err.message : String(err);
     return {
       localApkScheduled,
       serverCalled: false,
       emailsSent: 0,
       whatsappSent: 0,
       pushSent: 0,
-      serverMessage: err instanceof Error ? err.message : String(err),
+      errors: [msgErr],
+      serverMessage: msgErr,
     };
   }
 }

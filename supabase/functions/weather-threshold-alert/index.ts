@@ -1,12 +1,9 @@
 // Supabase Edge Function: weather-threshold-alert
 // Surveillance permanente Benhar (lat=35.286281, lon=3.103180) toutes les 30 min (cron) ou en test manuel.
-// Déclenche dès que temp >= max_temp_threshold (Chaleur) OU temp <= min_temp_threshold (Gel) avec cooldown 6h :
-//   1. Notification critique APK via FCM (Edge Function `send-push-alert`, canal `doula_urgent_alerts`)
-//   2. E-mail automatique côté serveur via Resend (`RESEND_API_KEY`) OU SMTP (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`)
-//   3. WhatsApp automatique côté serveur via CallMeBot API
+// Chaque canal (FCM, E-mail Resend/SMTP, WhatsApp CallMeBot) est isolé dans son propre try/catch
+// afin qu'une erreur sur un canal n'empêche jamais les autres de partir ni ne renvoie de 500 opaque.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import nodemailer from "npm:nodemailer@6.9.16";
 
 const BENHAR_LAT = 35.286281;
 const BENHAR_LON = 3.103180;
@@ -98,65 +95,84 @@ async function sendEmailServerSide(
   toEmails: string[],
   subject: string,
   textBody: string,
+  errors: string[],
 ): Promise<{ sent: number; provider: string }> {
   const validEmails = toEmails
     .map((e) => e.trim())
     .filter((e) => e.includes("@") && !e.toLowerCase().endsWith(".local"));
   if (validEmails.length === 0) return { sent: 0, provider: "none" };
 
+  // Option 1 : Resend API (HTTP pur — 100 % natif Deno, recommandé)
   const resendKey = Deno.env.get("RESEND_API_KEY");
   const fromEmail = Deno.env.get("ALERT_FROM_EMAIL") || "Doula Agro <onboarding@resend.dev>";
 
-  // Option 1 : Resend API (recommandé — 1 seul secret RESEND_API_KEY)
   if (resendKey) {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: validEmails,
-        subject,
-        text: textBody,
-      }),
-    });
-    if (res.ok) {
-      return { sent: validEmails.length, provider: "resend" };
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${resendKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: validEmails,
+          subject,
+          text: textBody,
+        }),
+      });
+      if (res.ok) {
+        return { sent: validEmails.length, provider: "resend" };
+      }
+      const errText = await res.text();
+      errors.push(`E-mail Resend (${res.status}): ${errText.slice(0, 180)}`);
+    } catch (err) {
+      errors.push(`E-mail Resend: ${err instanceof Error ? err.message : String(err)}`);
     }
-    const errText = await res.text();
-    console.warn("[weather-threshold-alert] Resend error:", errText);
   }
 
-  // Option 2 : SMTP direct (ex: Gmail App Password)
+  // Option 2 : SMTP direct (lazy-import nodemailer isolé dans try/catch)
   const smtpHost = Deno.env.get("SMTP_HOST");
   const smtpUser = Deno.env.get("SMTP_USER");
   const smtpPass = Deno.env.get("SMTP_PASS");
-  const smtpPort = Number(Deno.env.get("SMTP_PORT") || "587");
+  const smtpPort = Number(Deno.env.get("SMTP_PORT") || "465");
 
   if (smtpHost && smtpUser && smtpPass) {
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpPort === 465,
-      auth: { user: smtpUser, pass: smtpPass },
-    });
-    await transporter.sendMail({
-      from: Deno.env.get("ALERT_FROM_EMAIL") || smtpUser,
-      to: validEmails.join(", "),
-      subject,
-      text: textBody,
-    });
-    return { sent: validEmails.length, provider: "smtp" };
+    try {
+      const nodemailerMod = await import("npm:nodemailer@6.9.16");
+      const nodemailer = nodemailerMod.default ?? nodemailerMod;
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpPort === 465,
+        auth: { user: smtpUser, pass: smtpPass },
+        connectionTimeout: 8000,
+        greetingTimeout: 8000,
+        socketTimeout: 10000,
+      });
+      await transporter.sendMail({
+        from: Deno.env.get("ALERT_FROM_EMAIL") || smtpUser,
+        to: validEmails.join(", "),
+        subject,
+        text: textBody,
+      });
+      return { sent: validEmails.length, provider: "smtp" };
+    } catch (err) {
+      errors.push(`E-mail SMTP (${smtpHost}:${smtpPort}): ${err instanceof Error ? err.message : String(err)}`);
+      return { sent: 0, provider: "smtp_error" };
+    }
   }
 
+  if (!resendKey) {
+    errors.push("E-mail non configuré : ajoutez RESEND_API_KEY (ou SMTP_HOST/SMTP_USER/SMTP_PASS) dans les Secrets Supabase.");
+  }
   return { sent: 0, provider: "unconfigured" };
 }
 
 async function sendWhatsAppCallMeBot(
   contacts: AlertContact[],
   message: string,
+  errors: string[],
 ): Promise<number> {
   let sent = 0;
   for (const c of contacts) {
@@ -167,9 +183,14 @@ async function sendWhatsAppCallMeBot(
     try {
       const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(apikey)}`;
       const res = await fetch(url);
-      if (res.ok) sent++;
+      if (res.ok) {
+        sent++;
+      } else {
+        const txt = await res.text().catch(() => "");
+        errors.push(`WhatsApp (${c.name || phone}): HTTP ${res.status} ${txt.slice(0, 80)}`);
+      }
     } catch (err) {
-      console.warn("[weather-threshold-alert] CallMeBot error:", err);
+      errors.push(`WhatsApp (${c.name || phone}): ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   return sent;
@@ -181,7 +202,12 @@ async function dispatchFcmPush(
   title: string,
   body: string,
   kind: "heat" | "frost",
+  errors: string[],
 ): Promise<number> {
+  if (!supabaseUrl || !serviceRoleKey) {
+    errors.push("FCM: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY manquant.");
+    return 0;
+  }
   try {
     const res = await fetch(`${supabaseUrl}/functions/v1/send-push-alert`, {
       method: "POST",
@@ -196,10 +222,26 @@ async function dispatchFcmPush(
         data: { kind: `weather_${kind}`, route: "/meteo" },
       }),
     });
-    if (!res.ok) return 0;
-    const json = await res.json();
+    const text = await res.text();
+    let json: any = {};
+    try {
+      json = JSON.parse(text);
+    } catch {}
+    if (!res.ok) {
+      errors.push(`FCM (${res.status}): ${json?.error || text.slice(0, 140)}`);
+      return 0;
+    }
+    if (json?.skipped) {
+      errors.push(`FCM ignoré: ${json.reason || "FIREBASE_SERVICE_ACCOUNT_JSON absent"}`);
+      return 0;
+    }
+    if (json?.error) {
+      errors.push(`FCM: ${json.error}`);
+      return 0;
+    }
     return Number(json?.sent ?? 0);
-  } catch {
+  } catch (err) {
+    errors.push(`FCM: ${err instanceof Error ? err.message : String(err)}`);
     return 0;
   }
 }
@@ -209,10 +251,13 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  const errors: string[] = [];
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const adminClient =
+      supabaseUrl && serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey) : null;
 
     let reqBody: any = {};
     if (req.method === "POST") {
@@ -226,27 +271,64 @@ Deno.serve(async (req) => {
     const isTest = Boolean(reqBody?.test);
     const lang = reqBody?.lang === "ar" ? "ar" : "fr";
 
-    // 1. Lire la configuration depuis Supabase (ou le payload de test)
-    const { data: dbRow } = await adminClient
-      .from("weather_alert_settings")
-      .select("*")
-      .eq("farm_id", DEFAULT_FARM_ID)
-      .maybeSingle();
+    // 1. Lire la configuration depuis Supabase avec fallback automatique vers reqBody.settings
+    let dbRow: AlertSettingsRow | null = null;
+    if (adminClient) {
+      try {
+        const { data, error } = await adminClient
+          .from("weather_alert_settings")
+          .select("*")
+          .eq("farm_id", DEFAULT_FARM_ID)
+          .maybeSingle();
+        if (error) {
+          errors.push(`Table weather_alert_settings: ${error.message}`);
+        } else {
+          dbRow = data as AlertSettingsRow | null;
+        }
+      } catch (err) {
+        errors.push(`Lecture DB: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
 
-    const cfg: AlertSettingsRow = reqBody?.settings || dbRow || {};
-    const maxThreshold = Number(cfg.maxTempThreshold ?? cfg.max_temp_threshold ?? 35);
-    const minThreshold = Number(cfg.minTempThreshold ?? cfg.min_temp_threshold ?? 2);
-    const contacts: AlertContact[] = Array.isArray(cfg.contacts) ? cfg.contacts : [];
+    const bodySettings: AlertSettingsRow | null = reqBody?.settings || null;
+    const dbContacts = Array.isArray(dbRow?.contacts) ? dbRow!.contacts : [];
+    const bodyContacts = Array.isArray(bodySettings?.contacts) ? bodySettings!.contacts : [];
+
+    // En test (ou si la table est vide), priorité aux contacts transmis par le client
+    const contacts: AlertContact[] =
+      isTest && bodyContacts.length > 0
+        ? bodyContacts
+        : dbContacts.length > 0
+          ? dbContacts
+          : bodyContacts;
+
+    const maxThreshold = Number(
+      (isTest ? bodySettings?.maxTempThreshold : undefined) ??
+        dbRow?.max_temp_threshold ??
+        bodySettings?.maxTempThreshold ??
+        35,
+    );
+    const minThreshold = Number(
+      (isTest ? bodySettings?.minTempThreshold : undefined) ??
+        dbRow?.min_temp_threshold ??
+        bodySettings?.minTempThreshold ??
+        2,
+    );
 
     // 2. Météo en direct Benhar (ou transmise en test)
-    const live =
-      isTest && typeof reqBody?.currentTemp === "number"
-        ? {
-            temp: Number(reqBody.currentTemp),
-            humidity: Number(reqBody.humidity ?? 0),
-            windKmh: Number(reqBody.windKmh ?? 0),
-          }
-        : await fetchBenharWeather();
+    let live = {
+      temp: typeof reqBody?.currentTemp === "number" ? Number(reqBody.currentTemp) : 20,
+      humidity: typeof reqBody?.humidity === "number" ? Number(reqBody.humidity) : 0,
+      windKmh: typeof reqBody?.windKmh === "number" ? Number(reqBody.windKmh) : 0,
+    };
+
+    if (!(isTest && typeof reqBody?.currentTemp === "number")) {
+      try {
+        live = await fetchBenharWeather();
+      } catch (err) {
+        errors.push(`Open-Meteo: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
 
     const triggers: Array<"heat" | "frost"> = [];
     const now = Date.now();
@@ -273,6 +355,11 @@ Deno.serve(async (req) => {
           currentTemp: live.temp,
           maxThreshold,
           minThreshold,
+          sent: { email: 0, fcm: 0, whatsapp: 0 },
+          emailsSent: 0,
+          pushSent: 0,
+          whatsappSent: 0,
+          errors,
           message: "Température dans la plage normale (ou cooldown 6h actif).",
         }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -303,9 +390,11 @@ Deno.serve(async (req) => {
       });
 
       const [emailRes, waCount, fcmCount] = await Promise.all([
-        sendEmailServerSide(emailRecipients, msg.title, msg.body),
-        sendWhatsAppCallMeBot(contacts, `${msg.title}\n${msg.body}`),
-        apkEnabled ? dispatchFcmPush(supabaseUrl, serviceRoleKey, msg.title, msg.body, kind) : Promise.resolve(0),
+        sendEmailServerSide(emailRecipients, msg.title, msg.body, errors),
+        sendWhatsAppCallMeBot(contacts, `${msg.title}\n${msg.body}`, errors),
+        apkEnabled
+          ? dispatchFcmPush(supabaseUrl, serviceRoleKey, msg.title, msg.body, kind, errors)
+          : Promise.resolve(0),
       ]);
 
       emailsSent += emailRes.sent;
@@ -313,15 +402,17 @@ Deno.serve(async (req) => {
       whatsappSent += waCount;
       pushSent += fcmCount;
 
-      if (!isTest) {
-        const patch =
-          kind === "frost"
-            ? { last_frost_alert_at: new Date().toISOString() }
-            : { last_heat_alert_at: new Date().toISOString() };
-        await adminClient
-          .from("weather_alert_settings")
-          .update(patch)
-          .eq("farm_id", DEFAULT_FARM_ID);
+      if (!isTest && adminClient) {
+        try {
+          const patch =
+            kind === "frost"
+              ? { last_frost_alert_at: new Date().toISOString() }
+              : { last_heat_alert_at: new Date().toISOString() };
+          await adminClient
+            .from("weather_alert_settings")
+            .update(patch)
+            .eq("farm_id", DEFAULT_FARM_ID);
+        } catch {}
       }
     }
 
@@ -331,21 +422,37 @@ Deno.serve(async (req) => {
         test: isTest,
         triggered: triggers,
         currentTemp: live.temp,
+        sent: {
+          email: emailsSent,
+          fcm: pushSent,
+          whatsapp: whatsappSent,
+        },
         emailsSent,
         emailProvider,
         whatsappSent,
         pushSent,
+        errors,
         message:
-          emailProvider === "unconfigured" && emailRecipients.length > 0
-            ? "Secret RESEND_API_KEY ou SMTP non configuré dans Supabase."
+          errors.length > 0
+            ? errors.join(" | ")
             : "Alertes traitées avec succès.",
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    errors.push(message);
     return new Response(
-      JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      JSON.stringify({
+        ok: false,
+        sent: { email: 0, fcm: 0, whatsapp: 0 },
+        emailsSent: 0,
+        pushSent: 0,
+        whatsappSent: 0,
+        errors,
+        message,
+      }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
 });
