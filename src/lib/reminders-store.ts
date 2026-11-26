@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
+import { URGENT_CHANNEL_ID, initUrgentNotifications } from "@/lib/notifications-native";
 
 const KEY = "doula-reminders";
 
@@ -34,10 +35,11 @@ function getNumericId(str: string): number {
 async function syncNativeReminders(reminders: Reminder[]) {
   if (!Capacitor.isNativePlatform()) return;
   try {
-    // 1. Cancel all existing notifications first
+    await initUrgentNotifications();
+    // 1. Cancel existing reminder notifications only (preserve agitator 9999 and test 999901)
     const pending = await LocalNotifications.getPending();
     const idsToCancel = pending.notifications
-      .filter((n) => n.id !== 9999) // don't cancel active agitator notification
+      .filter((n) => n.id !== 9999 && n.id !== 999901 && (n.extra as any)?.source !== "doula_urgent_once")
       .map((n) => n.id);
     if (idsToCancel.length > 0) {
       await LocalNotifications.cancel({ notifications: idsToCancel.map((id) => ({ id })) });
@@ -49,7 +51,7 @@ async function syncNativeReminders(reminders: Reminder[]) {
       await LocalNotifications.requestPermissions();
     }
 
-    // 3. Schedule all active reminders
+    // 3. Schedule all active reminders on high-priority urgent channel
     const notificationsToSchedule = [];
     for (const r of reminders) {
       if (!r.active) continue;
@@ -62,40 +64,43 @@ async function syncNativeReminders(reminders: Reminder[]) {
       if (r.frequency === "daily") {
         notificationsToSchedule.push({
           id: baseId,
-          title: "Rappel du matin",
+          title: "⏰ Rappel du matin — Doula Agro",
           body: r.title,
+          channelId: URGENT_CHANNEL_ID,
           schedule: {
             on: { hour, minute },
             every: "day" as const,
             allowWhileIdle: true,
           },
-          sound: "default",
+          extra: { source: "doula_reminder", reminderId: r.id },
         });
       } else if (r.frequency === "weekly") {
         notificationsToSchedule.push({
           id: baseId,
-          title: "Rappel hebdomadaire",
+          title: "⏰ Rappel hebdomadaire — Doula Agro",
           body: r.title,
+          channelId: URGENT_CHANNEL_ID,
           schedule: {
             on: { weekday: 2, hour, minute }, // 2 = Monday
             every: "week" as const,
             allowWhileIdle: true,
           },
-          sound: "default",
+          extra: { source: "doula_reminder", reminderId: r.id },
         });
       } else if (r.frequency === "weekdays") {
         // Weekdays Mon-Fri (weekday 2 to 6)
         for (let weekday = 2; weekday <= 6; weekday++) {
           notificationsToSchedule.push({
             id: baseId + weekday * 1000000,
-            title: "Rappel du matin (semaine)",
+            title: "⏰ Rappel du matin (semaine) — Doula Agro",
             body: r.title,
+            channelId: URGENT_CHANNEL_ID,
             schedule: {
               on: { weekday, hour, minute },
               every: "week" as const,
               allowWhileIdle: true,
             },
-            sound: "default",
+            extra: { source: "doula_reminder", reminderId: r.id },
           });
         }
       }

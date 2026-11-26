@@ -19,6 +19,7 @@ import { resetFarmData } from "@/lib/cloud/admin-reset";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { CriticalNotificationsCard } from "@/components/notifications/CriticalNotificationsCard";
 
 const PRESET_COLORS = [
   { name: "Vert nature", value: "#dcfce7" },
@@ -238,6 +239,8 @@ function ConfigPage() {
             )}
           </div>
         </Card>
+
+        <CriticalNotificationsCard />
 
         <Button className="w-full" size="lg" onClick={onValidate}>
           Valider et continuer

@@ -5,6 +5,7 @@ import { useParcels } from "@/lib/parcel-store";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerTrigger } from "@/components/ui/drawer";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { CriticalNotificationsCard } from "@/components/notifications/CriticalNotificationsCard";
 
 const FREQ_LABEL: Record<ReminderFrequency, string> = {
   daily: "Tous les jours",
@@ -159,6 +160,10 @@ function RappelsPage() {
           })}
         </ul>
       )}
+
+      <div className="mt-6">
+        <CriticalNotificationsCard />
+      </div>
     </main>
   );
 }

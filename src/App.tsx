@@ -22,6 +22,7 @@ import DonneesEnAttente from "@/pages/DonneesEnAttente";
 import ManageUsers from "@/pages/ManageUsers";
 import Meteo from "@/pages/Meteo";
 import Rendement from "@/pages/Rendement";
+import { NativeNotificationsBridge } from "@/components/notifications/NativeNotificationsBridge";
 
 function ScrollToTop() {
   const { pathname, search } = useLocation();
@@ -35,6 +36,7 @@ export default function App() {
   return (
     <>
       <ScrollToTop />
+      <NativeNotificationsBridge />
       <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/configuration" element={<Configuration />} />
