@@ -64,37 +64,59 @@ function formatMessage(params: {
 }) {
   const tStr = `${params.temp.toFixed(1)}°C`;
   const thStr = `${params.threshold}°C`;
-  const prefix = params.isTest ? (params.lang === "ar" ? "[تجربة] " : "[TEST] ") : "";
+  const humStr = `${Math.round(params.humidity)}%`;
+  const windVal = `${Math.round(params.windKmh)}`;
+  const isAr = params.lang === "ar";
+  const prefix = params.isTest ? (isAr ? "[تجربة] " : "[TEST] ") : "";
+  const ltrSpan = (v: string) =>
+    `<span dir="ltr" style="display:inline-block;white-space:nowrap;unicode-bidi:isolate;font-weight:700;">${v}</span>`;
 
   if (params.kind === "frost") {
-    return {
-      title:
-        params.lang === "ar"
-          ? `${prefix}🥶 تنبيه صقيع بنهار : ${tStr} (≤ ${thStr})`
-          : `${prefix}🥶 Alerte Gel Benhar : ${tStr} (≤ ${thStr})`,
-      body:
-        params.lang === "ar"
-          ? `محطة بنهار (مزرعة الدولة): درجة الحرارة الحالية ${tStr} (الحد الأدنى ${thStr}). الرطوبة ${Math.round(params.humidity)}% · الرياح ${Math.round(params.windKmh)} كم/سا.`
-          : `Station Benhar (Doula Agro) : température actuelle ${tStr} (seuil gel : ${thStr}). Humidité ${Math.round(params.humidity)}% · Vent ${Math.round(params.windKmh)} km/h. Activez la protection antigel.`,
-    };
+    const title = isAr
+      ? `${prefix}🥶 تنبيه صقيع بنهار : ${tStr} (≤ ${thStr})`
+      : `${prefix}🥶 Alerte Gel Benhar : ${tStr} (≤ ${thStr})`;
+    const body = isAr
+      ? `محطة بنهار (مزرعة عبد المالك): درجة الحرارة الحالية ${tStr} (الحد الأدنى ${thStr}). الرطوبة ${humStr} · الرياح ${windVal} كم/سا.`
+      : `Station Benhar (Doula Agro) : température actuelle ${tStr} (seuil gel : ${thStr}). Humidité ${humStr} · Vent ${windVal} km/h. Activez la protection antigel.`;
+    const html = isAr
+      ? `<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.7;color:#111827;text-align:right;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:16px;">
+          <h2 style="margin:0 0 10px 0;font-size:17px;color:#0369a1;">${prefix}🥶 تنبيه صقيع بنهار : ${ltrSpan(tStr)} (${ltrSpan(`≤ ${thStr}`)})</h2>
+          <p style="margin:0 0 8px 0;"><strong>محطة بنهار (مزرعة عبد المالك)</strong> : درجة الحرارة الحالية ${ltrSpan(tStr)} (الحد الأدنى ${ltrSpan(thStr)}).</p>
+          <p style="margin:0;color:#374151;">الرطوبة : ${ltrSpan(humStr)} &nbsp;·&nbsp; الرياح : ${ltrSpan(`${windVal} كم/سا`)}</p>
+        </div>`
+      : `<div dir="ltr" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#111827;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:16px;">
+          <h2 style="margin:0 0 10px 0;font-size:17px;color:#0369a1;">${title}</h2>
+          <p style="margin:0 0 8px 0;"><strong>Station Benhar (Doula Agro)</strong> : température actuelle ${ltrSpan(tStr)} (seuil gel : ${ltrSpan(thStr)}).</p>
+          <p style="margin:0;color:#374151;">Humidité : ${ltrSpan(humStr)} &nbsp;·&nbsp; Vent : ${ltrSpan(`${windVal} km/h`)}. Activez la protection antigel.</p>
+        </div>`;
+    return { title, body, html };
   }
 
-  return {
-    title:
-      params.lang === "ar"
-        ? `${prefix}🔥 تنبيه حرارة مرتفعة بنهار : ${tStr} (≥ ${thStr})`
-        : `${prefix}🔥 Alerte Chaleur Benhar : ${tStr} (≥ ${thStr})`,
-    body:
-      params.lang === "ar"
-        ? `محطة بنهار (مزرعة الدولة): درجة الحرارة الحالية ${tStr} (الحد الأقصى ${thStr}). الرطوبة ${Math.round(params.humidity)}% · الرياح ${Math.round(params.windKmh)} كم/سا.`
-        : `Station Benhar (Doula Agro) : température actuelle ${tStr} (seuil chaleur : ${thStr}). Humidité ${Math.round(params.humidity)}% · Vent ${Math.round(params.windKmh)} km/h. Évitez la pulvérisation et renforcez l'irrigation.`,
-  };
+  const title = isAr
+    ? `${prefix}🔥 تنبيه حرارة مرتفعة بنهار : ${tStr} (≥ ${thStr})`
+    : `${prefix}🔥 Alerte Chaleur Benhar : ${tStr} (≥ ${thStr})`;
+  const body = isAr
+    ? `محطة بنهار (مزرعة عبد المالك): درجة الحرارة الحالية ${tStr} (الحد الأقصى ${thStr}). الرطوبة ${humStr} · الرياح ${windVal} كم/سا.`
+    : `Station Benhar (Doula Agro) : température actuelle ${tStr} (seuil chaleur : ${thStr}). Humidité ${humStr} · Vent ${windVal} km/h. Évitez la pulvérisation et renforcez l'irrigation.`;
+  const html = isAr
+    ? `<div dir="rtl" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.7;color:#111827;text-align:right;background:#fff1f2;border:1px solid #fecdd3;border-radius:12px;padding:16px;">
+        <h2 style="margin:0 0 10px 0;font-size:17px;color:#be123c;">${prefix}🔥 تنبيه حرارة مرتفعة بنهار : ${ltrSpan(tStr)} (${ltrSpan(`≥ ${thStr}`)})</h2>
+        <p style="margin:0 0 8px 0;"><strong>محطة بنهار (مزرعة عبد المالك)</strong> : درجة الحرارة الحالية ${ltrSpan(tStr)} (الحد الأقصى ${ltrSpan(thStr)}).</p>
+        <p style="margin:0;color:#374151;">الرطوبة : ${ltrSpan(humStr)} &nbsp;·&nbsp; الرياح : ${ltrSpan(`${windVal} كم/سا`)}</p>
+      </div>`
+    : `<div dir="ltr" style="font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#111827;background:#fff1f2;border:1px solid #fecdd3;border-radius:12px;padding:16px;">
+        <h2 style="margin:0 0 10px 0;font-size:17px;color:#be123c;">${title}</h2>
+        <p style="margin:0 0 8px 0;"><strong>Station Benhar (Doula Agro)</strong> : température actuelle ${ltrSpan(tStr)} (seuil chaleur : ${ltrSpan(thStr)}).</p>
+        <p style="margin:0;color:#374151;">Humidité : ${ltrSpan(humStr)} &nbsp;·&nbsp; Vent : ${ltrSpan(`${windVal} km/h`)}. Évitez la pulvérisation et renforcez l'irrigation.</p>
+      </div>`;
+  return { title, body, html };
 }
 
 async function sendEmailServerSide(
   toEmails: string[],
   subject: string,
   textBody: string,
+  htmlBody: string,
   errors: string[],
 ): Promise<{ sent: number; provider: string }> {
   const validEmails = toEmails
@@ -119,6 +141,7 @@ async function sendEmailServerSide(
           to: validEmails,
           subject,
           text: textBody,
+          html: htmlBody,
         }),
       });
       if (res.ok) {
@@ -155,6 +178,7 @@ async function sendEmailServerSide(
         to: validEmails.join(", "),
         subject,
         text: textBody,
+        html: htmlBody,
       });
       return { sent: validEmails.length, provider: "smtp" };
     } catch (err) {
@@ -390,7 +414,7 @@ Deno.serve(async (req) => {
       });
 
       const [emailRes, waCount, fcmCount] = await Promise.all([
-        sendEmailServerSide(emailRecipients, msg.title, msg.body, errors),
+        sendEmailServerSide(emailRecipients, msg.title, msg.body, msg.html, errors),
         sendWhatsAppCallMeBot(contacts, `${msg.title}\n${msg.body}`, errors),
         apkEnabled
           ? dispatchFcmPush(supabaseUrl, serviceRoleKey, msg.title, msg.body, kind, errors)

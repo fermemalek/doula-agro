@@ -284,7 +284,7 @@ export async function notifyUrgentRecommendation(title: string, isAr: boolean): 
 export async function notifyWeatherCriticalAlert(reason: string, isAr: boolean): Promise<void> {
   await scheduleCriticalNotification({
     id: `weather_${new Date().toISOString().slice(0, 10)}`,
-    title: isAr ? "⚠️ تنبيه طقس حرج — مزرعة الدولة" : "⚠️ Alerte Météo Critique — Doula Agro",
+    title: isAr ? "⚠️ تنبيه طقس حرج — مزرعة عبد المالك" : "⚠️ Alerte Météo Critique — Doula Agro",
     body: reason,
     at: new Date(Date.now() + 1000),
     extra: { kind: "weather_critical" },
