@@ -103,8 +103,8 @@ async function sendEmailServerSide(
   if (validEmails.length === 0) return { sent: 0, provider: "none" };
 
   // Option 1 : Resend API (HTTP pur — 100 % natif Deno, recommandé)
-  const resendKey = Deno.env.get("RESEND_API_KEY");
-  const fromEmail = Deno.env.get("ALERT_FROM_EMAIL") || "Doula Agro <onboarding@resend.dev>";
+  const resendKey = Deno.env.get("RESEND_API_KEY")?.trim();
+  const fromEmail = Deno.env.get("ALERT_FROM_EMAIL")?.trim() || "Doula Agro <onboarding@resend.dev>";
 
   if (resendKey) {
     try {
@@ -131,11 +131,11 @@ async function sendEmailServerSide(
     }
   }
 
-  // Option 2 : SMTP direct (lazy-import nodemailer isolé dans try/catch)
-  const smtpHost = Deno.env.get("SMTP_HOST");
-  const smtpUser = Deno.env.get("SMTP_USER");
-  const smtpPass = Deno.env.get("SMTP_PASS");
-  const smtpPort = Number(Deno.env.get("SMTP_PORT") || "465");
+  // Option 2 : SMTP direct (lazy-import nodemailer isolé dans try/catch + trim contre retours à la ligne)
+  const smtpHost = Deno.env.get("SMTP_HOST")?.trim();
+  const smtpUser = Deno.env.get("SMTP_USER")?.trim();
+  const smtpPass = Deno.env.get("SMTP_PASS")?.trim();
+  const smtpPort = Number((Deno.env.get("SMTP_PORT") || "465").trim());
 
   if (smtpHost && smtpUser && smtpPass) {
     try {
@@ -151,7 +151,7 @@ async function sendEmailServerSide(
         socketTimeout: 10000,
       });
       await transporter.sendMail({
-        from: Deno.env.get("ALERT_FROM_EMAIL") || smtpUser,
+        from: Deno.env.get("ALERT_FROM_EMAIL")?.trim() || smtpUser,
         to: validEmails.join(", "),
         subject,
         text: textBody,
