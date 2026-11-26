@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useReminders } from "@/lib/reminders-store";
+import {
+  useReminders,
+  isDueToday,
+  todayKey,
+  syncRemindersFromCloud,
+} from "@/lib/reminders-store";
 import { useRole } from "@/lib/role";
 import { useTranslation } from "@/lib/i18n";
 import {
@@ -8,6 +14,8 @@ import {
   initUrgentNotifications,
   isNativeAndroid,
   isNativePlatform,
+  playAlarmChime,
+  scheduleCriticalNotification,
   syncScheduledRemindersToNative,
   notifyUrgentRecommendation,
   notifyWeatherCriticalAlert,
@@ -102,7 +110,12 @@ export function NativeNotificationsBridge() {
     return () => window.clearTimeout(timer);
   }, [session, role]);
 
-  // 2. Synchronisation différée des rappels programmés vers Capacitor LocalNotifications
+  // 2. Synchronisation cloud + alarmes natives des rappels programmés
+  useEffect(() => {
+    if (!session) return;
+    void syncRemindersFromCloud();
+  }, [session]);
+
   useEffect(() => {
     if (!session || !isNativePlatform()) return;
     const timer = window.setTimeout(() => {
@@ -110,6 +123,55 @@ export function NativeNotificationsBridge() {
     }, 900);
     return () => window.clearTimeout(timer);
   }, [session, reminders]);
+
+  // 2b. Veilleur en direct PC & Mobile (vérifie toutes les 10 s l'heure exacte HH:mm des rappels)
+  useEffect(() => {
+    if (!session || import.meta.env.MODE === "test") return;
+    const checkDueReminders = () => {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      const currentHHMM = `${hh}:${mm}`;
+      const today = todayKey();
+
+      for (const r of reminders) {
+        if (!isDueToday(r) || r.time !== currentHHMM) continue;
+        const firedKey = `doula-rem-fired:${r.id}:${today}:${currentHHMM}`;
+        try {
+          if (localStorage.getItem(firedKey) === "1") continue;
+          localStorage.setItem(firedKey, "1");
+        } catch {}
+
+        const title = isAr ? `⏰ تذكير المزرعة — ${r.title}` : `⏰ Rappel Ferme — ${r.title}`;
+        const body = isAr
+          ? `الساعة المبرمجة : ${r.time}`
+          : `Heure programmée : ${r.time}`;
+
+        playAlarmChime();
+        toast.warning(`${title} (${r.time})`, { duration: 15000 });
+
+        if (!isNativePlatform() && typeof window !== "undefined" && "Notification" in window) {
+          if (window.Notification.permission === "granted") {
+            try {
+              new window.Notification(title, { body });
+            } catch {}
+          }
+        } else if (isNativePlatform()) {
+          void scheduleCriticalNotification({
+            id: `rem_live_${r.id}`,
+            title,
+            body,
+            at: new Date(Date.now() + 500),
+            extra: { source: "doula_urgent_once", kind: "reminder_due", reminderId: r.id },
+          });
+        }
+      }
+    };
+
+    checkDueReminders();
+    const interval = window.setInterval(checkDueReminders, 10_000);
+    return () => window.clearInterval(interval);
+  }, [session, reminders, isAr]);
 
   // 3. Écoute Supabase Realtime : nouvelle recommandation de l'ingénieur → alerte Exécutant / Admin
   useEffect(() => {

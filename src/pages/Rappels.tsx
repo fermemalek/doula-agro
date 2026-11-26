@@ -11,6 +11,9 @@ import { useParcels } from "@/lib/parcel-store";
 import { useTranslation } from "@/lib/i18n";
 import {
   computeNextReminderDate,
+  isNativePlatform,
+  playAlarmChime,
+  requestNotificationPermission,
   scheduleCriticalNotification,
 } from "@/lib/notifications-native";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
@@ -122,9 +125,31 @@ function RappelsPage() {
   };
 
   const handleTestReminder = async (r: Reminder) => {
+    const titleText = isAr ? `⏰ تذكير المزرعة — ${r.title}` : `⏰ Rappel Ferme — ${r.title}`;
+    const bodyText = isAr ? `تجربة المنبه المبرمج على ${r.time}` : `Test de l'alarme programmée à ${r.time}`;
+
+    if (!isNativePlatform()) {
+      await requestNotificationPermission();
+      toast.info(
+        isAr
+          ? "سيرن هذا التذكير خلال 3 ثوانٍ للتجربة..."
+          : "Alarme de test dans 3 secondes...",
+      );
+      window.setTimeout(() => {
+        playAlarmChime();
+        toast.warning(titleText, { description: bodyText, duration: 10000 });
+        if (typeof window !== "undefined" && "Notification" in window && window.Notification.permission === "granted") {
+          try {
+            new window.Notification(titleText, { body: bodyText });
+          } catch {}
+        }
+      }, 3000);
+      return;
+    }
+
     const ok = await scheduleCriticalNotification({
-      title: isAr ? `⏰ تذكير المزرعة — ${r.title}` : `⏰ Rappel Ferme — ${r.title}`,
-      body: isAr ? `تجربة المنبه المبرمج على ${r.time}` : `Test de l'alarme programmée à ${r.time}`,
+      title: titleText,
+      body: bodyText,
       at: new Date(Date.now() + 3000),
       extra: { source: "doula_urgent_once", kind: "test_reminder", reminderId: r.id },
     });

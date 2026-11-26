@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { syncScheduledRemindersToNative } from "@/lib/notifications-native";
 
 const KEY = "doula-reminders";
+const CLOUD_ROW_ID = "__SYSTEM_FARM_REMINDERS__";
+const FARM_ID = "00000000-0000-0000-0000-000000000001";
 
 export type ReminderFrequency = "daily" | "weekdays" | "weekly";
 
@@ -18,8 +21,10 @@ export interface Reminder {
 
 let data: Reminder[] = [];
 const listeners = new Set<() => void>();
+let cloudInitialized = false;
+let cloudChannel: ReturnType<typeof supabase.channel> | null = null;
 
-function load() {
+function loadLocal() {
   if (typeof window === "undefined") return;
   try {
     const raw = localStorage.getItem(KEY);
@@ -35,21 +40,121 @@ function load() {
     data = [];
   }
 }
-load();
+loadLocal();
 
-function persist() {
+function saveLocalAndNotify(next: Reminder[], syncNative = true) {
+  data = next;
   if (typeof window !== "undefined") {
     try {
       localStorage.setItem(KEY, JSON.stringify(data));
     } catch {}
   }
   listeners.forEach((l) => l());
-  void syncScheduledRemindersToNative(data);
+  if (syncNative) {
+    void syncScheduledRemindersToNative(data);
+  }
+}
+
+async function pushRemindersToCloud(list: Reminder[]) {
+  if (import.meta.env.MODE === "test") return;
+  try {
+    await (supabase as any).from("supplier_purchases").upsert(
+      {
+        id: CLOUD_ROW_ID,
+        farm_id: FARM_ID,
+        supplier_name: CLOUD_ROW_ID,
+        product_name: JSON.stringify(list),
+        purchase_date: new Date().toISOString(),
+        quantity: 0,
+        unit: "json",
+        price_per_unit: 0,
+        total_cost: 0,
+        paid_amount: 0,
+        consumed: 0,
+      },
+      { onConflict: "id" },
+    );
+  } catch (err) {
+    console.warn("[reminders-store] pushRemindersToCloud:", err);
+  }
+}
+
+function parseCloudReminders(raw: unknown): Reminder[] | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (x): x is Reminder => Boolean(x && typeof x === "object" && typeof x.id === "string"),
+      );
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Charge les rappels depuis Supabase et active la synchronisation temps réel PC ↔ Mobile.
+ */
+export async function syncRemindersFromCloud(): Promise<void> {
+  if (import.meta.env.MODE === "test") return;
+  try {
+    const { data: row, error } = await (supabase as any)
+      .from("supplier_purchases")
+      .select("product_name, updated_at")
+      .eq("id", CLOUD_ROW_ID)
+      .maybeSingle();
+
+    if (!error && row?.product_name) {
+      const remoteList = parseCloudReminders(row.product_name);
+      if (remoteList) {
+        saveLocalAndNotify(remoteList, true);
+      }
+    } else if (!error && !row && data.length > 0) {
+      // Premier appareil ayant déjà des rappels locaux → pousse vers le cloud
+      void pushRemindersToCloud(data);
+    }
+  } catch (err) {
+    console.warn("[reminders-store] syncRemindersFromCloud:", err);
+  }
+}
+
+export function initRemindersCloudRealtime(): void {
+  if (cloudInitialized || import.meta.env.MODE === "test") return;
+  cloudInitialized = true;
+  void syncRemindersFromCloud();
+
+  try {
+    cloudChannel = supabase
+      .channel("doula-farm-reminders-sync")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "supplier_purchases",
+          filter: `id=eq.${CLOUD_ROW_ID}`,
+        },
+        (payload) => {
+          const nextRaw = (payload.new as any)?.product_name;
+          const remoteList = parseCloudReminders(nextRaw);
+          if (remoteList) {
+            saveLocalAndNotify(remoteList, true);
+          }
+        },
+      )
+      .subscribe();
+  } catch {}
+}
+
+function persist(next: Reminder[]) {
+  saveLocalAndNotify(next, true);
+  void pushRemindersToCloud(next);
 }
 
 export function useReminders(): Reminder[] {
   const [snapshot, setSnapshot] = useState<Reminder[]>(() => data);
   useEffect(() => {
+    initRemindersCloudRealtime();
     const fn = () => setSnapshot(data);
     listeners.add(fn);
     return () => {
@@ -86,45 +191,45 @@ export function useRemindersActions() {
         active: r.active ?? true,
         ...r,
       };
-      data = [newItem, ...data];
-      persist();
+      persist([newItem, ...data]);
     },
     [],
   );
 
   const update = useCallback(
     (id: string, patch: Partial<Omit<Reminder, "id" | "createdAt">>) => {
-      data = data.map((item) => (item.id === id ? { ...item, ...patch } : item));
-      persist();
+      persist(data.map((item) => (item.id === id ? { ...item, ...patch } : item)));
     },
     [],
   );
 
   const remove = useCallback((id: string) => {
-    data = data.filter((r) => r.id !== id);
-    persist();
+    persist(data.filter((r) => r.id !== id));
   }, []);
 
   const toggleActive = useCallback((id: string) => {
-    data = data.map((item) =>
-      item.id === id ? { ...item, active: !item.active } : item,
+    persist(
+      data.map((item) =>
+        item.id === id ? { ...item, active: !item.active } : item,
+      ),
     );
-    persist();
   }, []);
 
   const markChecked = useCallback((id: string) => {
     const today = todayKey();
-    data = data.map((item) =>
-      item.id === id ? { ...item, lastCheckedAt: today } : item,
+    persist(
+      data.map((item) =>
+        item.id === id ? { ...item, lastCheckedAt: today } : item,
+      ),
     );
-    persist();
   }, []);
 
   const unmarkChecked = useCallback((id: string) => {
-    data = data.map((item) =>
-      item.id === id ? { ...item, lastCheckedAt: undefined } : item,
+    persist(
+      data.map((item) =>
+        item.id === id ? { ...item, lastCheckedAt: undefined } : item,
+      ),
     );
-    persist();
   }, []);
 
   return { add, update, remove, toggleActive, markChecked, unmarkChecked };
